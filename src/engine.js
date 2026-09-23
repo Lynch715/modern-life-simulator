@@ -26,8 +26,12 @@ const CITIES = {
 };
 
 const FREEDOM = {
-  '心想事成': { check: 15, cost: 0.4, badMul: 0.45, growth: 1.35, keyEase: 12, bizEase: 1.25,
-    tone: '【本局口径】心想事成：主角运气极好，玩家自己写的行动只要不荒诞就当作做成了，失败也写成有惊无险。代价从轻，别让人难受。' },
+  '心想事成': { check: 15, cost: 0.4, badMul: 0.45, growth: 1.35, keyEase: 18, bizEase: 1.25,
+    fiat: true, fateFloor: 11,
+    tone: `【本局口径·心想事成】这一局是玩家点单，他说什么就是什么。
+玩家写下的行动，一律视为已经办成，你只负责写它是怎么办成的。不许判断它合不合理，不许替他打折。
+这一局里没有"差一点""再等等""先试试看"这种东西；也不要写倒霉事、不要写他被人晾着、被拒绝、被放鸽子。
+他要见的人见得到，要的东西拿得到，开的口对方接得住。荒唐的事也照办，但要写得像真的发生过。` },
   '都市传奇': { check: 6, cost: 0.7, badMul: 0.75, growth: 1.15, keyEase: 5, bizEase: 1.1,
     tone: '【本局口径】都市传奇：比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。' },
   '写实人生': { check: 0, cost: 1, badMul: 1, growth: 1, keyEase: 0, bizEase: 1,
@@ -121,9 +125,10 @@ function rollCheck(S, attr, need, rng) {
   const roll = d20(rng);
   const total = val + rollMod(roll);
   const dc = Math.max(20, num(need));
-  const crit = roll === 20 ? '大成功' : (roll === 1 ? '大失败' : '');
-  const success = roll === 20 ? true : (roll === 1 ? false : total >= dc);
-  return { attr, val, roll, mod: rollMod(roll), need: dc, total, success, crit };
+  const fiat = !!fdm(S).fiat;                       // 言出法随：判定只是走个过场
+  const crit = fiat ? (roll >= 18 ? '大成功' : '') : (roll === 20 ? '大成功' : (roll === 1 ? '大失败' : ''));
+  const success = fiat ? true : (roll === 20 ? true : (roll === 1 ? false : total >= dc));
+  return { attr, val, roll, mod: rollMod(roll), need: dc, total, success, crit, fiat };
 }
 
 /* ---------- 开局 ---------- */
@@ -1436,6 +1441,8 @@ function keyRound(S, move, rng) {
       K.result = score >= 15 ? '谈成' : score >= -12 ? '留口子' : '谈崩';
     }
   }
+  // 这一档里没有翻脸这回事，最差也就是改天再说
+  if (K.over && K.result === '谈崩' && fdm(S).fiat) { K.result = '留口子'; K.why = '话没说死，改天再约'; }
   rec.result = K.result;
   return rec;
 }

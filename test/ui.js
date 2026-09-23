@@ -441,6 +441,32 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   console.log('接着过：', await pg.evaluate(() => `over=${S.over}　退休线${S.retireAge}岁　还在走到 ${ENGINE.dateStr(S.date)}`));
 
+  // 心想事成：看送进模型的 prompt 里到底写了什么
+  let lastPrompt = '';
+  pg.on('request', r => { if (/chat\/completions/.test(r.url())) { const d = r.postData(); if (d && d.includes('本段时间')) lastPrompt = d; } });
+  await pg.evaluate(() => { S.over = false; S.freedom = '心想事成'; saveGame(); renderOptions(S.lastOptions.length ? S.lastOptions : ['随便走走']); });
+  await pg.fill('#freeAct', '路上捡到一个皮夹，里面有二十万现金');
+  await pg.click('#goBtn');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
+  const p = JSON.parse(lastPrompt).messages[1].content;
+  const has = t => p.includes(t) ? '有' : '没有';
+  console.log('言出法随的 prompt 检查：');
+  console.log('   铁律块：', has('【本段铁律·压过下面所有条目】'));
+  console.log('   玩家原话嵌进去：', has('路上捡到一个皮夹，里面有二十万现金'));
+  console.log('   禁“差一点”：', has('差一点'));
+  console.log('   禁转折词：', has('不许用"但是"'));
+  console.log('   口径段：', has('这一局是玩家点单'));
+  console.log('   头等大事那条：', has('这一段的头等大事'));
+  console.log('   还带不带属性判定：', p.includes('属性判定') ? '带（不对）' : '不带（对）');
+  console.log('   天命骰：', (p.match(/天命骰：(\d+)（(..)）/) || []).slice(1).join(' ') || '没掷');
+  const fates = await pg.evaluate(() => {
+    const out = [];
+    for (let i = 0; i < 400; i++) { let f = ENGINE.d20(Math.random); f = Math.max(ENGINE.num(ENGINE.fdm(S).fateFloor), f); out.push(f); }
+    return { 最低: Math.min(...out), 大凶次数: out.filter(x => x <= 3).length };
+  });
+  console.log('   四百次天命骰：', JSON.stringify(fates));
+  await pg.evaluate(() => { S.freedom = '写实人生'; saveGame(); });
+
   // 改作息
   await pg.click('.tab[data-t="today"]');
   await pg.selectOption('#sc_work_深夜', '理想');

@@ -201,6 +201,12 @@ async function llmJSON(prompt, onPartial, opt) {
   }
 }
 
+const FREE_NOTE = {
+  '心想事成': '言出法随。你自己写的行动一律当作办成了，引擎不掷凶骰，模型也不许给你打折、不许写成"差一点"。关键局门槛降 18，生意好做四分之一，糟心事只剩四成半。',
+  '都市传奇': '比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。',
+  '写实人生': '概率贴着现实来。跳槽大多只涨一点，创业大概率黄，贵人不常有，好事不扎堆。'
+};
+
 /* ================= 口径 ================= */
 const STYLE_SYSTEM = `你是一个中文现代生活模拟游戏的叙事引擎。你只负责把引擎给定的结果写成故事，不负责决定成败。
 
@@ -299,7 +305,9 @@ ${M.recents}`;
 
 const STOP_WRITE = {
   '约': d => `这一段收在赴约的当口：${d}。写到主角刚到、事情要开始，不要把结果写出来。`,
-  '事': d => `这一段结束在一件突然冒出来的事上，类别是【${d}】。你来决定具体是什么事，要具体、可信、跟主角眼下的处境有关系。写到事情刚砸下来、主角还没来得及反应。`,
+  '事': d => E.fdm(S).fiat
+    ? `这一段结束在一件冒出来的事上，类别是【${d}】。这一局里这种事往好里写：机会、贵人、意外之财、有人主动找上门帮忙。写到这件好事刚砸到他头上为止。`
+    : `这一段结束在一件突然冒出来的事上，类别是【${d}】。你来决定具体是什么事，要具体、可信、跟主角眼下的处境有关系。写到事情刚砸下来、主角还没来得及反应。`,
   '钱': d => `这一段结束在钱上：${d}。把数字写清楚，不要用"捉襟见肘"这类词糊过去。`,
   '运': d => `这一段结束在一件${d}的事上。大吉就给一桩真机缘（有人看见他、一笔意外的钱、一个够得着的门路），大凶就给一记实实在在的打击，都不要写成梦一场。`,
   '投入': d => `这一段是主角闷头做一件事：${d}。引擎已经给出了成败，照着写，不要另作判断。`,
@@ -315,8 +323,17 @@ const STOP_WRITE = {
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
 
+const FIAT_RULE = act => `【本段铁律·压过下面所有条目】
+玩家写的这件事——「${act}」——在这一段里**已经成了**。你要写的是它怎么成的，不是它成不成。
+- 不许写成"试了试""差一点""看起来有戏""对方说再看看"，也不许推到下一段去办。
+- 不许用"但是""可惜""然而""只是""不过"给它打折，段尾也不许埋一个把它推翻的钩子。
+- 该配合的人就配合：他要见的人见得到，要的东西拿得到，开的口对方接得住，要的钱有人给。
+- 除非是物理上不可能的事（人不会飞、死人不能复生），一律照办。就算荒唐，也要写得像真发生过。
+- 办成之后再往前推一步：随之而来的好处、新认识的人、新冒出来的机会，一并写进去，别只写"成了"两个字。`;
+
 function judgeBlock(j) {
   let s = '';
+  if (j.fiat) return FIAT_RULE(j.fiat) + '\n' + (j.stuck >= 55 ? `- ⚑ 最近几段太像了（相似度${j.stuck}%），这一段照样要打破：${j.nudge}。\n` : '');
   if (j.fate) {
     const f = E.fateInfo(j.fate);
     s += `- 天命骰：${j.fate}（${f.label}）——${f.desc}\n`;
@@ -363,7 +380,7 @@ ${evText}
 【这一段怎么收尾】${writer}
 
 要求：
-- 叙事 ${days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
+${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
 - 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。
@@ -523,6 +540,7 @@ async function doAction(action) {
 function makeJudge(action) {
   const rng = Math.random;
   const j = { fate: null, check: null, focus: null, stuck: 0, nudge: null };
+  if (E.fdm(S).fiat && action) j.fiat = action;
   const st = E.stuckLevel(S);
   if (st >= 55) { j.stuck = st; j.nudge = E.pickNudge(rng); }
   return j;
@@ -546,6 +564,8 @@ async function runSegment() {
   if (focusing && adv.stop.kind === '投入') judge.focus = E.settleFocus(S, rng);
   if (adv.stop.kind === '运') judge.fate = adv.stop.fate;
   else judge.fate = E.d20(rng);
+  const floor = E.num(E.fdm(S).fateFloor);
+  if (floor) judge.fate = Math.max(floor, judge.fate);          // 言出法随这一档不走背字
 
   S.seg++;
   S.stats.segs++;
@@ -619,12 +639,13 @@ function renderStart() {
   <div class="frow"><label>赛道</label><div class="segs wrap" id="sTrack">${seg(Object.keys(E.TRACKS), '创作')}</div></div>
   <div class="frow col"><label>你想干成的事</label><input id="sIdeal" maxlength="30" placeholder="${E.TRACKS['创作'].ph}"/></div>
   <div class="frow"><label>口径</label><div class="segs" id="sFree">${seg(Object.keys(E.FREEDOM), '都市传奇')}</div></div>
-  <div class="hint">${esc('写实人生最难，心想事成最松，随时可以在设置里改')}</div>
+  <div class="hint" id="fHint">${esc(FREE_NOTE['都市传奇'])}</div>
   <div class="btns"><button class="ghost" onclick="openSettings()">接口设置</button><button class="primary" id="startGo">开始</button></div>`;
   bindSeg('sOrigin', v => $('oHint').textContent = E.ORIGINS[v].desc);
   bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
   bindSeg('sTrack', v => $('sIdeal').placeholder = E.TRACKS[v].ph);
-  bindSeg('sGender'); bindSeg('sFree');
+  bindSeg('sGender');
+  bindSeg('sFree', v => $('fHint').textContent = FREE_NOTE[v] || '');
   $('startGo').onclick = startNew;
 }
 function seg(arr, cur) { return arr.map(a => `<button class="seg${a === cur ? ' on' : ''}" data-v="${esc(a)}">${esc(a)}</button>`).join(''); }
@@ -1573,7 +1594,13 @@ function openSettings() {
   });
   const fb = $('setFree');
   fb.innerHTML = seg(Object.keys(E.FREEDOM), S ? S.freedom : '都市传奇');
-  bindSeg('setFree', v => { if (S) { S.freedom = v; saveGame(); toast('口径改成' + v); } });
+  bindSeg('setFree', v => {
+    if (!S) return;
+    S.freedom = v; saveGame();
+    toast(v === '心想事成' ? '言出法随：你写什么就发生什么' : '口径改成' + v);
+    $('setFreeNote').textContent = FREE_NOTE[v] || '';
+  });
+  $('setFreeNote').textContent = FREE_NOTE[S ? S.freedom : '都市传奇'] || '';
   $('setFreeWrap').style.display = S ? '' : 'none';
 }
 function saveCfg() {
