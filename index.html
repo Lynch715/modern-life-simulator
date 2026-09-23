@@ -3667,9 +3667,11 @@ ${judge
 {"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-8到8的整数),"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","attr":"表达|情绪|谋划|专业","need":40到85,"money":如果是借钱就写数额否则0,"days":多少天内还}'},"end":对方想结束对话就true,"summary":"这次聊天到现在的一句话（20字内）"}`;
 }
 
+let convoFrom = '';     // 从哪个面板点进来的，返回时回那儿
 function openConvo(name) {
   const n = S.npcs.find(x => x.name === name);
   if (!n || busy) return;
+  convoFrom = curTab || '';
   S.convo = { name, lines: [], turns: 0, summary: '', rel: 0, hist: S.msgs.filter(m => m.from === name).slice(-14) };
   closePanel();
   $('chat').classList.add('on');
@@ -3769,6 +3771,8 @@ function endConvo(goOn) {
   $('chat').classList.remove('on');
   saveGame();
   rebuildTop();
+  const back = convoFrom; convoFrom = '';
+  if (!goOn && back) gotoTab(back);           // 点返回：回到刚才那个面板
   if (goOn && said.length) { S.actTyped = false; S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment({ quick: true }); }
 }
 
