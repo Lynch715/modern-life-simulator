@@ -6,7 +6,7 @@ const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
 
 let S = null;
-let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false, theme: 'dark', font: 'm' };
+let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false, theme: 'dark', font: 'm', person: 'you' };
 try { const c = JSON.parse(localStorage.getItem(LS_CFG) || 'null'); if (c) cfg = Object.assign(cfg, c); } catch (_) { }
 // 老存的模型名已经停用了，悄悄换掉
 if (/^deepseek-(chat|reasoner)$/i.test(cfg.model || '')) { cfg.model = 'deepseek-v4-flash'; try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { } }
@@ -95,7 +95,7 @@ async function callLLM(prompt, onPartial, opt) {
   const url = cfg.base.replace(/\/+$/, '') + '/chat/completions';
   const body = {
     model: cfg.model || 'deepseek-v4-flash',
-    messages: [{ role: 'system', content: STYLE_SYSTEM }, { role: 'user', content: prompt }],
+    messages: [{ role: 'system', content: styleSystem() }, { role: 'user', content: prompt }],
     temperature: opt.temperature != null ? opt.temperature : 1.02,
     max_tokens: opt.maxTokens || 8000,
     stream: true,
@@ -223,6 +223,23 @@ const FREE_NOTE = {
 };
 
 /* ================= 口径 ================= */
+const PERSON = () => cfg.person === 'ta'
+  ? `【人称】通篇用第三人称写主角，主语用他的名字或者"他"。`
+  : `【人称】通篇用第二人称写主角：主语是"你"，不许用他的名字当主语，也不许用"他""主角"指代主角。别人说话时可以直接叫他的名字。`;
+
+const SAY_RULE = `【必须有人说话】这是最要紧的一条。
+- 但凡有人出现，就得让他开口，把原话用引号写出来。一段里至少三处直接对白，场面戏（见人、谈事、被问、起争执、求人、被拒）必须靠对话推进。
+- 不许把话转述掉。下面这种写法是错的：
+    ✗ 他说没拍，本子写完了，二十分钟，还没打印。
+  要写成：
+    ✓ "没拍。"他把本子往前推了推，"写完了，二十分钟的。还没打印。"
+- 对白要像真人说话：短句、口语、半截话、答非所问、被打断、有停顿。不许每个人都说完整漂亮的长句，不许拿对白交代设定。
+- 说话的人可以带一个很小的动作或语气（把手机扣在桌上、笑了一下、没接这句），但别在每句后面都缀一串形容。`;
+
+const styleSystem = () => `${PERSON()}
+${SAY_RULE}
+
+` + STYLE_SYSTEM;
 const STYLE_SYSTEM = `你是一个中文现代生活模拟游戏的叙事引擎。你只负责把引擎给定的结果写成故事，不负责决定成败。
 
 怎么写：
@@ -237,7 +254,10 @@ const STYLE_SYSTEM = `你是一个中文现代生活模拟游戏的叙事引擎�
 
 function worldRules() {
   const f = E.FREEDOM[S.freedom];
-  return `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角22岁刚出校门，从零开始。
+  return `${PERSON()}
+${SAY_RULE}
+
+【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角22岁刚出校门，从零开始。
 这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
 
 【铁律】
@@ -403,7 +423,8 @@ ${evText}
 ${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
-- 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。
+- ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**这一段里至少要有三处人物直接说话，用引号写原话**，不许把对话转述成"他说……"。
+- 手机消息写进 messages，1-3 条，短。
 - moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事。其中至少一条要来自【认识的人】里已经有的某个人——可以是废话、可以是没头没尾、可以是跟这一段无关的日常（约饭、转发、抱怨、问一句在不在），像真人一样。
 - 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
 - 新出现的人写 newNpcs（最多2人），已有的人有变化写 npcUpdates。
@@ -434,7 +455,8 @@ ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.ca
 要求：
 ${E.fdm(S).fiat ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${S.lastAction}」这件事**。250-380 字。
 - 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
-- 写具体：去了哪儿、见了谁、花了多少钱、对方原话大概是什么、最后手里多了什么少了什么。
+- 写具体：去了哪儿、见了谁、花了多少钱、最后手里多了什么少了什么。
+- ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**只要碰上人，就得让他开口说话，用引号写原话**，这一段至少两处直接对白。没有人的时候可以不写对话，但别整段白描。
 - 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
 - ${ap ? `收尾接上撞见的那件事：${ap.detail}。` : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
 - options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
@@ -452,7 +474,8 @@ function bootPrompt(o) {
 他想干成的事：${o.ideal}（赛道：${o.track}）
 手头：存款${S.player.money}元，房租${S.ledger.rent}，一个月生活费${S.ledger.living}${S.ledger.remit ? `，每月还要往家寄${S.ledger.remit}` : ''}，找到的第一份活月薪${S.ledger.salary}。
 
-请铸造开局，写 350-500 字的开场：他住进了什么地方、第一份活是干什么的、7月1日这天在干什么。不要交代背景板，从一个具体的场面切进去。
+请铸造开局，写 350-500 字的开场：${cfg.person === 'ta' ? '他' : '你'}住进了什么地方、第一份活是干什么的、7月1日这天在干什么。不要交代背景板，从一个具体的场面切进去。
+开场里至少要有两处人说话（房东、同事、家里人、室友都行），用引号写原话。
 
 另外给出：
 - employer：他上班那家单位的名字（8字内，虚构，比如"明河设计""云榆文化"）
@@ -1521,6 +1544,7 @@ ${stateBlocks()}
 
 写这一局的结尾，450-650 字。要求：
 - 从一个具体的场面切进去：某天早上、某个房间、手里正在做的一件事。不要从"回首这些年"开头。
+- 结尾这一场里至少要有一两句真的对白。
 - 把四条线都落到实处，尤其是最高和最低那两条的对照——他得到的和他搭进去的。
 - 不许写成励志故事，也不许写成惨剧。${sc.avg >= 65 ? '他这一局过得不算差，但代价要写出来。' : sc.avg >= 40 ? '有得有失，两边都别美化。' : '过得不顺，但也别把他写成废人。'}
 - 不许升华，不许"人生就是"，不许展望。最后一句停在一个动作或者一个具体的东西上。
@@ -1688,7 +1712,7 @@ ${now.biz ? `- 自己的摊子：${now.biz.name}，上个月净${now.biz.net}，
 ${(S.era || []).length ? `- 这一年外面发生的：${S.era.map(e => e.text).join('；')}` : ''}
 
 写一篇 320-450 字的年终小结。要求：
-- 口气是他自己在年底回头看这一年，不是旁白，也不是总结报告。
+- 口气是${cfg.person === 'ta' ? '他' : '你'}自己在年底回头看这一年，不是旁白，也不是总结报告。年终小结可以少些对白，但别一句话都没有。
 - 必须落在具体的事上：哪个月在干什么、谁走了谁来了、哪一笔钱花得肉疼、身体是怎么垮下去或者撑住的。
 - 数字可以提，但别罗列，别写成流水账。
 - 不许升华，不许"这一年我懂得了"，不许展望明年。结尾停在一个具体的场面上就行。
@@ -1762,6 +1786,10 @@ function openSettings() {
     b.classList.toggle('on', b.dataset.v === (cfg.theme || 'dark'));
     b.onclick = () => { setSkin('theme', b.dataset.v); document.querySelectorAll('#setTheme .seg').forEach(x => x.classList.toggle('on', x === b)); };
   });
+  document.querySelectorAll('#setPerson .seg').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === (cfg.person || 'you'));
+    b.onclick = () => { setSkin('person', b.dataset.v); document.querySelectorAll('#setPerson .seg').forEach(x => x.classList.toggle('on', x === b)); };
+  });
   document.querySelectorAll('#setFont .seg').forEach(b => {
     b.classList.toggle('on', b.dataset.v === (cfg.font || 'm'));
     b.onclick = () => { setSkin('font', b.dataset.v); document.querySelectorAll('#setFont .seg').forEach(x => x.classList.toggle('on', x === b)); };
@@ -1787,7 +1815,7 @@ function saveCfg() {
     key: $('cfgKey').value.trim(),
     model: $('cfgModel').value.trim() || 'deepseek-v4-flash',
     think: $('cfgThink').value === 'on',
-    theme: cfg.theme, font: cfg.font
+    theme: cfg.theme, font: cfg.font, person: cfg.person
   };
   localStorage.setItem(LS_CFG, JSON.stringify(cfg));
   mask('setMask', false);
