@@ -87,7 +87,7 @@ const SEG = n => ({
   scene: { location: '公司', unresolved: ['押一付三还差两千'] },
   resolvedInfo: [],
   playerChanges: { attributes: { 专业: 0.4 }, energy: -6, money: -320, 信誉: 1, statusAdd: n === 2 ? [{ name: '感冒', desc: '空调房里吹出来的', days: 4 }] : [] },
-  npcUpdates: [{ name: '赵鹏', rel: 3, mem: '他问你借房租的时间' }],
+  npcUpdates: [{ name: '赵鹏', rel: 3, mem: '他问你借房租的时间' }].concat(n === 2 ? [{ name: '孙姐', rel: 6, mem: '加班那晚一起回的她家', intimate: true }] : []),
   newNpcs: n === 3 ? [{ name: '林工', age: 34, job: '带你的设计师', tie: '师傅', care: '交稿时间', note: '话少，改图很狠', rel: 15 }] : [],
   messages: [{ from: '赵鹏', text: '哥们 谢了' }],
   moments: n === 1 ? [{ who: '孙姐', text: '空调修了三天了 还是三十度 谁受得了' }] : [],
@@ -546,7 +546,7 @@ const SEG = n => ({
   console.log('   口径段：', has('这一局是玩家点单'));
   console.log('   头等大事那条：', has('这一段的头等大事'));
   console.log('   还带不带属性判定：', p.includes('属性判定') ? '带（不对）' : '不带（对）');
-  console.log('   括号要求单列：', has('【玩家在括号里提的要求·无条件照办·优先级最高】'), '｜内容：', has('1. 详细写他数钱时手在抖，最后把钱存进了银行'), '｜字数放开：', has('至少 600 字，不设上限'));
+  console.log('   括号要求单列：', has('【玩家在括号里提的要求·无条件照办·优先级最高】'), '｜内容：', has('1. 详细写他数钱时手在抖，最后把钱存进了银行'), '｜字数放开：', has('要求写细就写长'));
   console.log('   天命骰：', (p.match(/天命骰：(\d+)（(..)）/) || []).slice(1).join(' ') || '没掷');
   const fates = await pg.evaluate(() => {
     const out = [];

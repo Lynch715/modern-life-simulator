@@ -1213,11 +1213,18 @@ function applyTurn(S, d) {
     if (u.tie) n.tie = String(u.tie).slice(0, 12);
     if (u.note) n.note = String(u.note).slice(0, 50);
     if (u.mem) { npcMem(S, n, u.mem); memo[n.name] = 1; n.lastSeen = S.stats.days; }
+    if (u.intimate === true) { markIntimate(S, n); n.lastSeen = S.stats.days; }
   }
   // 剧情里点到名、模型又没给他记一笔的，引擎替他记下这一段是怎么回事——不然过两天他就忘了
   if (d.narrative && d.summary) for (const n of S.npcs) {
     if (memo[n.name] || !n.name || String(d.narrative).indexOf(n.name) < 0) continue;
     npcMem(S, n, `${d.summary}${S.lastAction ? `（那回主角在：${String(S.lastAction).slice(0, 20)}）` : ''}`);
+  }
+  // 剧情里两人说开、确定在一起了：记成伴侣（还没有伴侣时）
+  if (d.together && !partnerOf(S)) {
+    const who = whoIs(S, String(d.together).slice(0, 12));
+    const n = S.npcs.find(x => x.name === who);
+    if (n && !(num(n.age) && num(n.age) < 18)) startRomance(S, n.name, '在一起');
   }
   for (const r of (d.newRifts || []).slice(0, 1)) {
     if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
@@ -1283,6 +1290,15 @@ function fixWho(S) {
   for (const m of (S.msgs || [])) m.from = whoIs(S, m.from);
   for (const m of (S.moments || [])) if (m.who) m.who = whoIs(S, m.who);
 }
+// 跟谁发生过关系：只记成年人，记第一次、最近一次和次数
+function markIntimate(S, n) {
+  if (!n || (num(n.age) && num(n.age) < 18)) return;
+  const d = shortDate(S.date);
+  if (!n.intimate) n.intimate = { first: d, firstY: S.date.y, times: 0 };
+  if (n.intimate.lastDay === S.stats.days) return;
+  n.intimate.times++; n.intimate.last = d; n.intimate.lastDay = S.stats.days;
+}
+function lovers(S) { return S.npcs.filter(n => n.intimate).sort((a, b) => (b.intimate.lastDay || 0) - (a.intimate.lastDay || 0)); }
 // 人物记事：带日子，留最近 16 条
 function npcMem(S, n, text) {
   const line = `${shortDate(S.date)} ${String(text).replace(/\s+/g, '').slice(0, 60)}`;
@@ -2263,6 +2279,7 @@ function addNpcs(S, list, max) {
       care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
       close: !!n.close, mem: [], lastSeen: S.stats.days
     });
+    if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
 }
 
@@ -2301,7 +2318,7 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
-  npcMem, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
+  npcMem, markIntimate, lovers, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
@@ -2633,12 +2650,13 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "check":null或{"type":"判定名","attr":"属性","need":70,"success":true},
 "playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
-"npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得"}],
-"newNpcs":[{"name":"","age":0,"job":"","tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
+"npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","intimate":false}],
+"newNpcs":[{"name":"","age":0,"job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信"}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
+"together":"这一段里主角跟谁明确确定了恋爱关系（说开了、答应了、在一起了）就写那人名字，没有就写空字符串",
 "newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
 "riftEased":["这一段里主角把梁子解开了的人名"],
 "newJob":null或{"employer":"新东家名字","title":"岗位（干什么的，比如「编辑助理」「后厨」「客户经理」）","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
@@ -2678,6 +2696,8 @@ ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，�
     const H = S.home || {}; const P = E.partnerOf(S); const kids = (S.family && S.family.kids || []).filter(k => !k.unborn);
     const a = [H.kind === '买' ? `有自己的房子（${H.loan && !H.loan.done ? `月供${H.loan.monthly}，还欠${H.loan.left}` : '贷款还清了'}）` : `还在租房，房租${S.ledger.rent}`];
     a.push(P ? `跟${P.name}${P.stage}${P.warm >= 60 ? '，还热乎' : P.warm >= 30 ? '，不咸不淡' : '，早淡了'}` : '一个人过');
+    const lv = E.lovers(S);
+    if (lv.length) a.push(`发生过关系的：${lv.map(n => `${n.name}（${P && P.name === n.name ? P.stage : callName(n) || '没名分'}，最近一次${n.intimate.last}）`).join('、')}`);
     if (kids.length) a.push(`孩子${kids.map(k => `${k.name}${k.age}岁`).join('、')}，每月养孩子${E.kidCost(S)}`);
     return a.join('；');
   })()}
@@ -2733,7 +2753,7 @@ ${asks.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 这是玩家直接下给你的写作和推演指令，不是剧情里的人说的话：
 - 要求写什么场面、什么细节，就写什么，写到他要的那个细度；要求推演出什么结果、什么后续，剧情就走到那一步。
 - 不许省略、不许改写、不许打折、不许只写一句带过，也不许以"不合理""太快""不符合现实"为由不写。
-- 跟下面的字数、结尾写法、对话条数、选项要求有冲突时，一律以这里为准；篇幅不够就加长，写到一千字以上也可以。
+- 跟下面的字数、结尾写法、对话条数、选项要求有冲突时，一律以这里为准；要求写得细就写长些，没提篇幅就照常。
 - 括号里的话本身不要原样抄进叙事。
 `;
 const FIAT_RULE = act0 => { const sp = S.actTyped ? splitAct(act0) : { doing: act0, asks: [] }, act = sp.doing; return `${sp.asks.length ? ASK_RULE(sp.asks) + '\n' : ''}【本段铁律·压过下面所有条目】
@@ -2776,7 +2796,7 @@ function segPrompt(seg) {
     : '（没什么值得记的）';
   const writer = (STOP_WRITE[stop.kind] || STOP_WRITE['事'])(stop.detail);
   const actBlock = S.lastAction
-    ? `【主角自己安排的事】${S.lastAction}\n（这一段先把这件事的经过写足——至少 200 字，照玩家写的去办：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说，一样不落，写过程而不是一句话交代结果——然后再往下走）`
+    ? `【主角自己安排的事】${S.lastAction}\n（这一段先把这件事的经过写出来——150 字上下，照玩家写的去办：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说，一样不落，写过程而不是一句话交代结果——然后再往下走）`
     : '（这是开局之后的第一段）';
   return `${worldRules()}
 
@@ -2794,7 +2814,7 @@ ${evText}
 【这一段怎么收尾】${writer}
 
 要求：
-${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${fiatAsks().length ? '按括号里的要求写足，至少 600 字，不设上限' : days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
+${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${fiatAsks().length ? '按括号里的要求来，没提篇幅就照常 300-500' : days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**这一段里至少要有三处人物直接说话，用引号写原话**，不许把对话转述成"他说……"。
@@ -2802,6 +2822,7 @@ ${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写
 - moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事。其中至少一条要来自【认识的人】里已经有的某个人——可以是废话、可以是没头没尾、可以是跟这一段无关的日常（约饭、转发、抱怨、问一句在不在），像真人一样。
 - 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
 - 新出现的人写 newNpcs（最多2人）。**这一段里出场、被提到、或者跟主角有来往的每一个已有人物，都要在 npcUpdates 里写一条 mem**，写具体的事，以后他会凭这个记得主角干过什么。
+- 这一段里主角跟谁发生了关系（双方都是成年人），就在那个人的 npcUpdates（新认识的写在 newNpcs）里写 intimate:true，没有就写 false。正文点到为止，不写露骨细节。
 - 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
 - options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
 ${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
@@ -2827,7 +2848,7 @@ ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.ca
 【时间】${E.shortDate(from)} 到 ${E.shortDate(to)}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
 
 要求：
-${E.fdm(S).fiat ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${fiatAsks().length ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${fiatAsks().length ? '篇幅按括号里的要求来，至少 600 字，不设上限。' : '450-700 字。'}
+${E.fdm(S).fiat ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${fiatAsks().length ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${fiatAsks().length ? '篇幅按括号里的要求来：要求写细就写长，没提篇幅就 300-500 字。' : '300-500 字。'}
 - 照玩家写的原样去办，一个细节都不许丢：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说、想达到什么，都要在剧情里落到实处。玩家没写的细节由你补足，但不许改他写的。
 - 写过程，不写梗概：怎么去的、到了看见什么、跟人怎么一来一回谈的、中间哪里卡住了又怎么过去的，最后得到了什么。不许用"经过一番努力""几经周折"这类话把过程跳过去。
 - 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
@@ -3621,12 +3642,13 @@ function showNpc(name) {
     <div class="tip" style="margin-top:-10px">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div>
     <div class="card" style="margin-top:14px"><div class="lines">
       <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
+      ${n.intimate ? `<div><b>你们之间</b><span>${esc(n.intimate.first)}起有过关系${n.intimate.times > 1 ? `，${n.intimate.times}回` : ''}</span></div>` : ''}
       <div><b>上次来往</b><span>${gap <= 0 ? '就这几天' : gap + '天前'}</span></div>
       ${n.care ? `<div><b>在意</b><span>${esc(n.care)}</span></div>` : ''}
     </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
     ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.slice(-8).reverse().map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>
-    ${!E.partnerOf(S) && n.rel >= 55 && !/爱人|前任|前妻|前夫/.test(n.tie || '') && !isKin(n.tie)
+    ${!E.partnerOf(S) && (n.rel >= 55 || n.intimate) && !/爱人|前任|前妻|前夫/.test(n.tie || '') && !isKin(n.tie)
       ? `<div class="btns"><button class="ghost" onclick="mask('npcMask',false);askLove('${esc(n.name)}')">把话挑明</button></div>`
       : ''}`;
   mask('npcMask', true);
@@ -3932,6 +3954,17 @@ function renderHome() {
     out.push(`<div class="tip">眼下一个人过。${n ? `手机里有 ${n} 个走得够近的人，点开谁的名片就能把话挑明。` : '手机里还没有走得够近的人——聊得多了才谈得上这个。'}</div>`);
   }
   out.push(`</div>`);
+
+  // 有过关系的人
+  const lv = E.lovers(S);
+  if (lv.length) {
+    out.push(`<h4>有过关系的人</h4><div class="card">${lv.map(n => {
+      const st = P && P.name === n.name ? P.stage : /前任|前妻|前夫/.test(n.tie || '') ? n.tie : '没名分';
+      return `<div class="li" onclick="showNpc('${esc(n.name)}')"><b>${esc(n.name)}</b><span class="rel">${esc(st)}</span>
+        <div class="tip">${esc([callName(n), `${n.intimate.first}头一回`, n.intimate.times > 1 ? `${n.intimate.times}回` : '', `最近${n.intimate.last}`, `关系${relWord(n.rel, n.tie)}`].filter(Boolean).join('｜'))}</div></div>`;
+    }).join('')}
+      ${!P ? '<div class="tip">想给谁一个名分，点开他的名片「把话挑明」。</div>' : ''}</div>`);
+  }
 
   // 孩子
   out.push(`<h4>孩子</h4><div class="card">`);

@@ -766,11 +766,18 @@ function applyTurn(S, d) {
     if (u.tie) n.tie = String(u.tie).slice(0, 12);
     if (u.note) n.note = String(u.note).slice(0, 50);
     if (u.mem) { npcMem(S, n, u.mem); memo[n.name] = 1; n.lastSeen = S.stats.days; }
+    if (u.intimate === true) { markIntimate(S, n); n.lastSeen = S.stats.days; }
   }
   // 剧情里点到名、模型又没给他记一笔的，引擎替他记下这一段是怎么回事——不然过两天他就忘了
   if (d.narrative && d.summary) for (const n of S.npcs) {
     if (memo[n.name] || !n.name || String(d.narrative).indexOf(n.name) < 0) continue;
     npcMem(S, n, `${d.summary}${S.lastAction ? `（那回主角在：${String(S.lastAction).slice(0, 20)}）` : ''}`);
+  }
+  // 剧情里两人说开、确定在一起了：记成伴侣（还没有伴侣时）
+  if (d.together && !partnerOf(S)) {
+    const who = whoIs(S, String(d.together).slice(0, 12));
+    const n = S.npcs.find(x => x.name === who);
+    if (n && !(num(n.age) && num(n.age) < 18)) startRomance(S, n.name, '在一起');
   }
   for (const r of (d.newRifts || []).slice(0, 1)) {
     if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
@@ -836,6 +843,15 @@ function fixWho(S) {
   for (const m of (S.msgs || [])) m.from = whoIs(S, m.from);
   for (const m of (S.moments || [])) if (m.who) m.who = whoIs(S, m.who);
 }
+// 跟谁发生过关系：只记成年人，记第一次、最近一次和次数
+function markIntimate(S, n) {
+  if (!n || (num(n.age) && num(n.age) < 18)) return;
+  const d = shortDate(S.date);
+  if (!n.intimate) n.intimate = { first: d, firstY: S.date.y, times: 0 };
+  if (n.intimate.lastDay === S.stats.days) return;
+  n.intimate.times++; n.intimate.last = d; n.intimate.lastDay = S.stats.days;
+}
+function lovers(S) { return S.npcs.filter(n => n.intimate).sort((a, b) => (b.intimate.lastDay || 0) - (a.intimate.lastDay || 0)); }
 // 人物记事：带日子，留最近 16 条
 function npcMem(S, n, text) {
   const line = `${shortDate(S.date)} ${String(text).replace(/\s+/g, '').slice(0, 60)}`;
@@ -1816,6 +1832,7 @@ function addNpcs(S, list, max) {
       care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
       close: !!n.close, mem: [], lastSeen: S.stats.days
     });
+    if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
 }
 
@@ -1854,7 +1871,7 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
-  npcMem, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
+  npcMem, markIntimate, lovers, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
