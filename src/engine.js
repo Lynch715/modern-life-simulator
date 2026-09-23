@@ -10,6 +10,45 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const r2 = v => Math.round(v * 100) / 100;
 
 /* ---------- 出身 / 城市 / 自由度 / 赛道 ---------- */
+/* ---------- 捏人：学历、学校、专业、性格、长相 ---------- */
+const EDUS = {
+  '大专': { age: 21, pay: 0.85, attrs: { '专业': 2, '谋划': -2 }, desc: '21岁出来，手上活练得早，简历上吃点亏' },
+  '本科': { age: 22, pay: 1, attrs: {}, desc: '22岁出来，大多数人走的那条路' },
+  '硕士': { age: 25, pay: 1.22, attrs: { '专业': 6, '谋划': 3, '体能': -2 }, desc: '25岁才出来，起薪高一截，同龄人已经工作三年了' }
+};
+const SCHOOLS = {
+  '名校': { pay: 1.15, rep: 6, attrs: { '表达': 2, '谋划': 2 }, desc: '名字说出去有人认，同学里不少去了好地方' },
+  '重点': { pay: 1.06, rep: 3, attrs: { '谋划': 1 }, desc: '说得过去的学校，简历能过第一轮' },
+  '普通': { pay: 1, rep: 0, attrs: {}, desc: '没人问你哪个学校，也没人因为学校多看你一眼' },
+  '民办': { pay: 0.94, rep: -2, attrs: { '情绪': 1 }, desc: '学费贵，名气小，出来全凭自己' }
+};
+const MAJORS = {
+  '理工': { '专业': 3 }, '文科': { '表达': 3 }, '商科': { '谋划': 3 }, '艺术': { '专业': 2, '表达': 1 },
+  '医学': { '专业': 4, '体能': -1 }, '法学': { '谋划': 2, '表达': 1 }, '师范': { '表达': 2, '情绪': 1 }, '体育': { '体能': 6 }
+};
+const PERSONAS = {
+  '内向': { attrs: { '情绪': 3, '表达': -3 }, desc: '话少，心里有数，跟生人熟得慢' },
+  '外向': { attrs: { '表达': 4, '情绪': -1 }, desc: '爱说话、能来事，情绪也来得快' },
+  '稳重': { attrs: { '谋划': 3, '表达': -1 }, desc: '想好了再动，不容易出错，也不容易出彩' },
+  '要强': { attrs: { '专业': 2, '体能': 1, '情绪': -2 }, desc: '什么都想争个第一，累了也不说' },
+  '随和': { attrs: { '情绪': 3, '谋划': -1 }, desc: '好相处，不跟人较劲，也不太替自己争' }
+};
+const LOOKS = { '普通': '长相普通，扔进人堆里找不着', '周正': '长得周正，看着让人放心', '出挑': '长得出挑，走哪儿都有人多看两眼' };
+function bgEffect(o) {
+  const ed = EDUS[o.edu] || EDUS['本科'], sc = SCHOOLS[o.school] || SCHOOLS['普通'];
+  const add = {};
+  for (const src of [ed.attrs, sc.attrs, MAJORS[o.major] || {}, (PERSONAS[o.persona] || {}).attrs || {}])
+    for (const k in src) add[k] = (add[k] || 0) + src[k];
+  return { age: ed.age, pay: ed.pay * sc.pay, rep: sc.rep, add };
+}
+// 给模型看的一句背景
+function bgLine(p) {
+  const b = p && p.bg;
+  if (!b) return '';
+  return [`${b.school}${b.school === '名校' || b.school === '重点' ? '' : '学校'}${b.major ? b.major + '专业' : ''}${b.edu}毕业`,
+    b.persona ? `性子${b.persona}（${PERSONAS[b.persona].desc}）` : '', b.looks ? LOOKS[b.looks] : ''].filter(Boolean).join('，');
+}
+
 const ORIGINS = {
   '家里托底': { money: 30000, remit: 0, subsidy: 1200, rentCut: 0.5, retreat: true,
     desc: '爸妈在老家有房有退休金，房租他们帮着出一半，每月还给你打点钱。你可以不慌，但也总有人问你什么时候回去考个编。' },
@@ -51,7 +90,7 @@ const TRACKS = {
   '从政':   { skill: '政务', ph: '从基层干起，做到能真正管一方事的位置',
     rule: '体制内的路：先考进去（公务员、选调、事业编），再一级一级往上走。升迁看资历、政绩、站队和机会，考不上、卡在一个位置上好多年都是常事。写真实的机关日子，不写官场爽文。' },
   '体育':   { skill: '竞技', ph: '拿一个像样的冠军，名字写进成绩单',
-    rule: '22岁才正式走这条路，当职业运动员的门很窄：更现实的是业余赛、半职业联赛、教练、裁判、体育机构。伤病和年龄是硬约束，练坏了就是练坏了。' },
+    rule: '刚出校门才正式走这条路，当职业运动员的门很窄：更现实的是业余赛、半职业联赛、教练、裁判、体育机构。伤病和年龄是硬约束，练坏了就是练坏了。' },
   '捞偏门': { skill: '门道', ph: '在道上站稳，有自己的一摊和规矩',
     rule: '这是一条灰色、违法的路：可以写主角被卷进去、一步步陷深、赚到快钱、结仇、被查、被抓、判刑坐牢，后果必须是真的，不许轻轻带过。只写人、事和代价，不写任何能照着做的具体手法——怎么骗、怎么做货、怎么洗钱这类细节一律虚写带过。' },
   '行医':   { skill: '医术', ph: '成为一个病人会点名来找的医生',
@@ -182,8 +221,10 @@ function newState(o) {
   const track = TRACKS[o.track] || TRACKS['职场'];
   const startY = o.startYear || new Date().getFullYear();
   const start = { y: startY, m: 7, d: 1 };
-  const pay = Math.round(city.pay * (0.82 + (o.payRoll || 0.3) * 0.26));
+  const bg = bgEffect(o);
+  const pay = Math.round(city.pay * (0.82 + (o.payRoll || 0.3) * 0.26) * bg.pay / 100) * 100;
   const attrs = { '专业': 22, '表达': 20, '谋划': 20, '情绪': 24, '体能': 30 };
+  for (const k in bg.add) attrs[k] = clamp(attrs[k] + bg.add[k], 5, 60);
   return {
     v: SAVE_VERSION,
     runId: 'r' + startY + '-' + Math.floor((o.rngSeed || 1) % 100000),
@@ -192,7 +233,8 @@ function newState(o) {
     freedom: o.freedom || '都市传奇',
     origin: o.origin, city: o.city,
     player: {
-      name: o.name || '无名', gender: o.gender || '男', age: 22,
+      name: o.name || '无名', gender: o.gender || '男', age: bg.age, age0: bg.age,
+      bg: { edu: EDUS[o.edu] ? o.edu : '本科', school: SCHOOLS[o.school] ? o.school : '普通', major: MAJORS[o.major] ? o.major : '', persona: PERSONAS[o.persona] ? o.persona : '', looks: LOOKS[o.looks] ? o.looks : '' },
       track: o.track, skillName: track.skill,
       ideal: o.ideal || track.ph,
       job: o.job || '一份刚找到的活',
@@ -200,7 +242,7 @@ function newState(o) {
       attrF: Object.assign({}, attrs),
       energy: 78,
       money: org.money,
-      信誉: 8, 人品: 50,
+      信誉: clamp(8 + bg.rep, 0, 100), 人品: 50,
       资历天: 0
     },
     ledger: {
@@ -541,7 +583,7 @@ function advance(S, opt) {
 
     // 生日：开局那个月日
     if (S.date.m === S.startDate.m && S.date.d === S.startDate.d && S.date.y > S.startDate.y) {
-      S.player.age = 22 + (S.date.y - S.startDate.y);
+      S.player.age = (S.player.age0 || 22) + (S.date.y - S.startDate.y);
       kidsGrow(S);
       events.push({ t: '家里', s: `你${S.player.age}岁了${(S.family.kids || []).filter(k => !k.unborn).length ? `，${S.family.kids.filter(k => !k.unborn).map(k => k.name + k.age + '岁').join('、')}` : ''}` });
     }
@@ -1788,7 +1830,7 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 
 /* ---------- 导出 ---------- */
 const API = {
-  SAVE_VERSION, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
+  SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
   num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,

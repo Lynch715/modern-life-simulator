@@ -289,7 +289,7 @@ function worldRules() {
   return `${PERSON()}
 ${SAY_RULE}
 
-【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角22岁刚出校门，从零开始。
+【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角${S && S.player ? S.player.age0 || 22 : 22}岁刚出校门，从零开始。
 这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
 
 【铁律】
@@ -342,7 +342,7 @@ function stateBlocks() {
   const plan = `「${S.pace}」：${PC.story}${pf}`;
   return `【今天】${E.dateStr(S.date)}
 【人在哪】${S.place || '不详'}
-【主角】${p.name}，${p.gender}，${p.age}岁，${S.city}。眼下的营生：${p.job}
+【主角】${p.name}，${p.gender}，${p.age}岁，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}眼下的营生：${p.job}
 【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
 【志业阶梯】${E.ladderBlock(S)}
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
@@ -500,7 +500,8 @@ ${SCHEMA}`;
 function bootPrompt(o) {
   return `${worldRules()}
 
-现在开局。主角：${o.name}，${o.gender}，22岁，刚从学校出来，落在${o.city}。
+现在开局。主角：${o.name}，${o.gender}，${S.player.age}岁，刚从学校出来，落在${o.city}。
+背景：${E.bgLine(S.player)}。开场和以后的剧情都要对得上这个背景（学历、学校、专业决定他找到什么样的第一份活，性子决定他怎么说话办事）。
 出身：${o.origin}——${E.ORIGINS[o.origin].desc}
 城市：${E.CITIES[o.city].desc}
 他想干成的事：${o.ideal}（赛道：${o.track}）${(E.TRACKS[o.track] || {}).rule ? `\n这条路的规矩：${E.TRACKS[o.track].rule}` : ''}
@@ -777,6 +778,12 @@ function renderStart() {
   <h2>开局</h2>
   <div class="frow"><label>名字</label><input id="sName" maxlength="6" placeholder="随你"/></div>
   <div class="frow"><label>性别</label><div class="segs" id="sGender">${seg(['男', '女'], '男')}</div></div>
+  <div class="frow"><label>学历</label><div class="segs" id="sEdu">${seg(Object.keys(E.EDUS), '本科')}</div></div>
+  <div class="frow"><label>学校</label><div class="segs" id="sSchool">${seg(Object.keys(E.SCHOOLS), '普通')}</div></div>
+  <div class="frow"><label>专业</label><div class="segs wrap" id="sMajor">${seg(Object.keys(E.MAJORS), '文科')}</div></div>
+  <div class="frow"><label>性格</label><div class="segs wrap" id="sPersona">${seg(Object.keys(E.PERSONAS), '稳重')}</div></div>
+  <div class="frow"><label>长相</label><div class="segs" id="sLooks">${seg(Object.keys(E.LOOKS), '周正')}</div></div>
+  <div class="hint" id="bgHint"></div>
   <div class="frow"><label>出身</label><div class="segs" id="sOrigin">${seg(Object.keys(E.ORIGINS), '普通家庭')}</div></div>
   <div class="hint" id="oHint">${E.ORIGINS['普通家庭'].desc}</div>
   <div class="frow"><label>城市</label><div class="segs" id="sCity">${seg(Object.keys(E.CITIES), '新一线')}</div></div>
@@ -790,6 +797,15 @@ function renderStart() {
   bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
   bindSeg('sTrack', v => $('sIdeal').placeholder = E.TRACKS[v].ph);
   bindSeg('sGender');
+  const bgUpd = () => {
+    const o = { edu: segVal('sEdu'), school: segVal('sSchool'), major: segVal('sMajor'), persona: segVal('sPersona') };
+    const f = E.bgEffect(o);
+    const d = Math.round((f.pay - 1) * 100);
+    const add = Object.entries(f.add).filter(([, v]) => v).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(' ');
+    $('bgHint').textContent = `${f.age}岁出校门｜起薪${d ? (d > 0 ? '高' : '低') + Math.abs(d) + '%' : '照常'}${add ? '｜' + add : ''}。${E.PERSONAS[o.persona].desc}。`;
+  };
+  ['sEdu', 'sSchool', 'sMajor', 'sPersona', 'sLooks'].forEach(id => bindSeg(id, bgUpd));
+  bgUpd();
   bindSeg('sFree', v => $('fHint').textContent = FREE_NOTE[v] || '');
   $('startGo').onclick = startNew;
 }
@@ -810,6 +826,7 @@ async function startNew() {
   const o = {
     name: $('sName').value.trim() || '林一',
     gender: segVal('sGender'), origin: segVal('sOrigin'), city: segVal('sCity'),
+    edu: segVal('sEdu'), school: segVal('sSchool'), major: segVal('sMajor'), persona: segVal('sPersona'), looks: segVal('sLooks'),
     track, ideal: $('sIdeal').value.trim() || E.TRACKS[track].ph,
     freedom: segVal('sFree'),
     startYear: new Date().getFullYear(), rngSeed: Date.now(), payRoll: Math.random()
@@ -945,7 +962,7 @@ function renderPanel() {
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
-    <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div>
+    <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
