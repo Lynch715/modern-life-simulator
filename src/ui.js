@@ -258,6 +258,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这次和主角之间发生的一句话"}],
 "newNpcs":[{"name":"","age":0,"job":"","tie":"跟主角什么关系","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"谁","text":"手机上收到的一条消息，像真的微信"}],
+"moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
 "newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
@@ -402,7 +403,8 @@ ${evText}
 ${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
-- 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。其中至少一条要来自【认识的人】里已经有的某个人——可以是废话、可以是没头没尾、可以是跟这一段无关的日常（约饭、转发、抱怨、问一句在不在），像真人一样。
+- 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。
+- moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事。其中至少一条要来自【认识的人】里已经有的某个人——可以是废话、可以是没头没尾、可以是跟这一段无关的日常（约饭、转发、抱怨、问一句在不在），像真人一样。
 - 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
 - 新出现的人写 newNpcs（最多2人），已有的人有变化写 npcUpdates。
 - 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
@@ -430,7 +432,7 @@ ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.ca
 【时间】${E.shortDate(from)} 到 ${E.shortDate(to)}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
 
 要求：
-- **只写这一两天，就写他去做「${S.lastAction}」这件事**。250-380 字。
+${E.fdm(S).fiat ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${S.lastAction}」这件事**。250-380 字。
 - 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
 - 写具体：去了哪儿、见了谁、花了多少钱、对方原话大概是什么、最后手里多了什么少了什么。
 - 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
@@ -786,6 +788,15 @@ function renderPanel() {
   const box = $('panelBody');
   const p = S.player, L = S.ledger;
   if (curTab === 'phone') {
+    const unread = S.msgs.filter(m => !m.read).length;
+    const unmom = E.unreadMoments(S);
+    const head = `<h3>手机</h3>
+      <div class="segs phoneseg">
+        <button class="seg${phoneTab === 'msg' ? ' on' : ''}" onclick="setPhoneTab('msg')">通讯录${unread ? `<i class="dot"></i>` : ''}</button>
+        <button class="seg${phoneTab === 'mom' ? ' on' : ''}" onclick="setPhoneTab('mom')">朋友圈${unmom ? `<i class="dot"></i>` : ''}</button>
+      </div>`;
+    if (phoneTab === 'mom') { box.innerHTML = head + renderMoments(); return; }
+
     // 有消息的排前面，其余按最近来往排
     const threads = {};
     for (const m of S.msgs) {
@@ -800,20 +811,20 @@ function renderPanel() {
       return { name: n.name, npc: n, last: t ? t.last : null, unread: t ? t.unread : 0, at: t ? t.at : -1 };
     }).concat(Object.values(threads).map(t => ({ name: t.from, npc: null, last: t.last, unread: t.unread, at: t.at })));
     rows.sort((a, b) => (b.at - a.at) || ((b.npc ? b.npc.rel : 0) - (a.npc ? a.npc.rel : 0)));
-    const unread = rows.reduce((a, r) => a + r.unread, 0);
 
-    box.innerHTML = `<h3>手机</h3>
-      ${unread ? `<div class="tip" style="margin:-4px 0 10px">${unread} 条没看的</div>` : ''}
-      <div class="msgs">${rows.map(r => {
+    box.innerHTML = head + `<div class="msgs">${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
+        const f = faceOf(r.name);
         return `<div class="thread" onclick="openThread('${esc(r.name)}')">
-          <div class="mfrom">${esc(r.name)}${r.npc ? `<em>${relWord(r.npc.rel, r.npc.tie)}${r.npc.tie ? '·' + esc(r.npc.tie) : ''}</em>` : '<em>只能看</em>'}
-            <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
-          <div class="mtext one">${r.last ? esc(r.last.text) : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
-          ${r.npc && gap >= 20 ? `<div class="tip"><u>${gap}天没联系了</u></div>` : ''}
-        </div>`;
-      }).join('') || '<div class="card tip">手机上还是空的</div>'}</div>
-      <div class="tip">点开谁都能直接说话。手机里冒出来的消息不一定有人等你回，但你回了对方会当真。</div>`;
+          <div class="face sm" style="--h:${f.hue}">${esc(f.ch)}</div>
+          <div class="thbody">
+            <div class="mfrom">${esc(r.name)}${r.npc ? `<em>${relWord(r.npc.rel, r.npc.tie)}${r.npc.tie ? '·' + esc(r.npc.tie) : ''}</em>` : '<em>只能看</em>'}
+              <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
+            <div class="mtext one">${r.last ? esc(r.last.text) : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
+            ${r.npc && gap >= 20 ? `<div class="tip"><u>${gap}天没联系了</u></div>` : ''}
+          </div></div>`;
+      }).join('') || '<div class="card tip">通讯录还是空的</div>'}</div>
+      <div class="tip">点开谁都能直接说话。有人给你发消息时这儿会有红点。</div>`;
   } else if (curTab === 'ideal') {
     box.innerHTML = renderLadder();
   } else if (curTab === 'home') {
@@ -1273,6 +1284,96 @@ function endConvo(goOn) {
 }
 
 
+
+
+/* ================= 朋友圈 ================= */
+let phoneTab = 'msg';
+function setPhoneTab(t) { phoneTab = t; renderPanel(); }
+function faceOf(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return { ch: name.slice(0, 1), hue: h % 360 };
+}
+function renderMoments() {
+  const ms = (S.moments || []).slice().reverse();
+  for (const m of (S.moments || [])) m.read = true;
+  saveGame();
+  return `<div class="mombox">
+    <div class="mompost"><input id="momIn" placeholder="说点什么…" maxlength="60"/><button class="act-go" onclick="postMoment()">发</button></div>
+    ${ms.length ? ms.map(m => {
+      const f = faceOf(m.who);
+      const mine = m.who === S.player.name;
+      return `<div class="mom">
+        <div class="face" style="--h:${f.hue}">${esc(f.ch)}</div>
+        <div class="mombody">
+          <div class="momwho">${esc(m.who)}${mine ? '<em>我</em>' : ''}</div>
+          <div class="momtext">${esc(m.text)}</div>
+          <div class="momfoot"><span>${esc(m.date)}</span>
+            <button class="${m.liked ? 'on' : ''}" onclick="doLike('${m.id}')">${m.liked ? '已赞' : '赞'} ${m.likes}</button>
+            ${mine ? '' : `<button onclick="doComment('${m.id}')">留言</button>`}</div>
+          ${m.cs.length ? `<div class="momcs">${m.cs.map(c => `<div><b>${esc(c.who)}</b>：${esc(c.text)}</div>`).join('')}</div>` : ''}
+        </div></div>`;
+    }).join('') : '<div class="card tip">还没人发东西</div>'}
+  </div>`;
+}
+function doLike(id) {
+  E.likeMoment(S, id);
+  saveGame(); renderPanel();
+}
+async function doComment(id) {
+  const m = (S.moments || []).find(x => x.id === id);
+  if (!m || busy) return;
+  const txt = prompt(`给${m.who}留一句：\n「${m.text}」`, '');
+  if (!txt) return;
+  E.commentMoment(S, id, S.player.name, txt);
+  saveGame(); renderPanel();
+  const n = S.npcs.find(x => x.name === m.who);
+  if (!n) { toast('他不一定看得见'); return; }
+  setBusy(true, '对面在看……');
+  try {
+    const d = await llmJSON(`${convoHead(n)}
+
+${n.name}在朋友圈发了一条：「${m.text}」
+${S.player.name}在底下留言：「${txt}」
+${m.cs.length > 1 ? `这条底下还有别人的留言：${m.cs.slice(0, -1).map(c => c.who + '说' + c.text).join('；')}` : ''}
+
+写${n.name}回他这一句。要求：一句话，十五个字以内，像真人在朋友圈底下回复——可以敷衍、可以玩笑、可以只回两个字。不许长篇大论，不许旁白。
+
+只输出一个合法 JSON：{"reply":"","rel":-2到4的整数}`, null, { maxTokens: 400, temperature: 1.05 });
+    E.commentMoment(S, id, n.name, d.reply || '嗯');
+    const add = E.num(d.rel) || 1;
+    n.rel = Math.max(0, Math.min(100, Math.round((n.rel + add) * 100) / 100));
+    n.lastSeen = S.stats.days;
+    saveGame(); renderPanel();
+  } catch (e) { toast(e.message || '没回上'); }
+  setBusy(false);
+}
+async function postMoment() {
+  const v = ($('momIn').value || '').trim();
+  if (!v || busy) return;
+  $('momIn').value = '';
+  E.addMoment(S, S.player.name, v, 'me');
+  saveGame(); renderPanel();
+  const cand = S.npcs.filter(n => n.rel >= 25).slice(0, 8);
+  if (!cand.length) return;
+  setBusy(true, '发出去了……');
+  try {
+    const d = await llmJSON(`${worldRules()}
+
+${S.player.name}在朋友圈发了一条：「${v}」
+
+【能看见的人】
+${cand.map(n => `${n.name}（${n.tie}${n.job ? '，' + n.job : ''}，跟他关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）`).join('\n')}
+
+挑其中 1-3 个人在底下留言。要求：每条十五字以内，像真人在朋友圈底下说话——可以是玩笑、可以是敷衍的表情、可以答非所问、可以顺嘴提一件别的事。关系远的人可以不吭声。不许所有人都夸他。
+
+只输出一个合法 JSON：{"cs":[{"who":"谁","text":"留言"}]}`, null, { maxTokens: 500, temperature: 1.08 });
+    const mm = S.moments[S.moments.length - 1];
+    for (const c of (d.cs || []).slice(0, 3)) if (c && c.who && c.text) E.commentMoment(S, mm.id, c.who, c.text);
+    saveGame(); renderPanel();
+  } catch (e) { toast(e.message || '没人理你'); }
+  setBusy(false);
+}
 
 /* ================= 家 ================= */
 function renderHome() {

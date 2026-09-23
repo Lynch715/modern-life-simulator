@@ -90,6 +90,7 @@ const SEG = n => ({
   npcUpdates: [{ name: '赵鹏', rel: 3, mem: '他问你借房租的时间' }],
   newNpcs: n === 3 ? [{ name: '林工', age: 34, job: '带你的设计师', tie: '师傅', care: '交稿时间', note: '话少，改图很狠', rel: 15 }] : [],
   messages: [{ from: '赵鹏', text: '哥们 谢了' }],
+  moments: n === 1 ? [{ who: '孙姐', text: '空调修了三天了 还是三十度 谁受得了' }] : [],
   appointments: n === 1 ? [{ title: '跟房东约好补押金', inDays: 5, kind: '约' }] : [],
   options: ['去找林工问问能不能接私活', '周末回一趟老家', '把押金补上', '晚上留下来练手'],
   gameOver: false
@@ -110,6 +111,10 @@ const SEG = n => ({
     else if (post.includes('这场是怎么打下来的')) { body = post.includes('面试') ? KEY_JOB : post.includes('把话挑明') ? LOVE : KEY_END; }
     else if (post.includes('写这一局的结尾')) { body = END; }
     else if (post.includes('写一篇 320-450 字的年终小结')) { body = YEAR; }
+    else if (post.includes('在朋友圈发了一条') && post.includes('挑其中')) {
+      body = { cs: [{ who: '赵鹏', text: '哥们 慢点搬' }, { who: '孙姐', text: '明天别迟到啊' }] };
+    }
+    else if (post.includes('在朋友圈发了一条')) { body = { reply: '可不是嘛', rel: 2 }; }
     else if (post.includes('你现在扮演的是')) {
       convoCalls++;
       if (post.includes('引擎判定（不可更改）')) {
@@ -178,6 +183,32 @@ const SEG = n => ({
     await pg.screenshot({ path: `test/shot-tab-${t}.png` });
     await pg.click('#panelClose');
   }
+
+  // 朋友圈：看、赞、留言、自己发
+  await pg.click('.tab[data-t="phone"]');
+  await pg.waitForTimeout(150);
+  await pg.click('.phoneseg .seg:has-text("朋友圈")');
+  await pg.waitForTimeout(200);
+  const moms = await pg.evaluate(() => (S.moments || []).map(m => m.who + '：' + m.text));
+  console.log('朋友圈里有：', JSON.stringify(moms));
+  if (moms.length) {
+    await pg.click('.momfoot button:has-text("赞")');
+    await pg.waitForTimeout(150);
+    pg.once('dialog', d => d.accept('这天儿是够呛'));
+    await pg.click('.momfoot button:has-text("留言")');
+    await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+    const one = await pg.evaluate(() => { const m = S.moments.find(x => x.cs.length); return m ? { who: m.who, 赞: m.likes, 留言: m.cs.map(c => c.who + ':' + c.text) } : null; });
+    console.log('互动之后：', JSON.stringify(one));
+  }
+  await pg.fill('#momIn', '搬完了 累死');
+  await pg.click('.mompost button');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  const mine = await pg.evaluate(() => { const m = S.moments[S.moments.length - 1]; return { who: m.who, text: m.text, 底下: m.cs.map(c => c.who + ':' + c.text) }; });
+  console.log('自己发的那条：', JSON.stringify(mine));
+  await pg.screenshot({ path: 'test/moments.png' });
+  await pg.click('.phoneseg .seg:has-text("通讯录")');
+  await pg.waitForTimeout(150);
+  await pg.click('#panelClose');
 
   // 私聊：打开消息里的会话，聊两轮，其中一轮触发判定
   await pg.click('.tab[data-t="phone"]');
@@ -472,7 +503,7 @@ const SEG = n => ({
 
   // 心想事成：看送进模型的 prompt 里到底写了什么
   let lastPrompt = '';
-  pg.on('request', r => { if (/chat\/completions/.test(r.url())) { const d = r.postData(); if (d && d.includes('本段时间')) lastPrompt = d; } });
+  pg.on('request', r => { if (/chat\/completions/.test(r.url())) { const d = r.postData(); if (d && d.includes('本段引擎判定')) lastPrompt = d; } });
   await pg.evaluate(() => { S.over = false; S.freedom = '心想事成'; saveGame(); renderOptions(S.lastOptions.length ? S.lastOptions : ['随便走走']); });
   await pg.fill('#freeAct', '路上捡到一个皮夹，里面有二十万现金');
   await pg.click('#goBtn');

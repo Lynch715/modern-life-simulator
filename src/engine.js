@@ -165,7 +165,7 @@ function newState(o) {
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
     job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
-    debts: [], rifts: [], ailLog: {},
+    debts: [], rifts: [], ailLog: {}, moments: [], momentId: 0,
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
     home: { kind: '租', since: '', place: '' },
     family: { partner: null, kids: [], past: [] },
@@ -384,8 +384,7 @@ function peerTick(S, rng) {
   pr.level = clamp(num(pr.level) + num(up) + rnd(rng, -2, 3), 0, 100);
   pr.last = mv;
   ev.push({ t: '人情', s: `${pr.name}${mv}` });
-  S.msgs.push({ from: pr.name, text: pick(rng, says), date: shortDate(S.date), kind: 'peer', read: false });
-  S.msgs = S.msgs.slice(-80);
+  addMoment(S, pr.name, pick(rng, says), 'peer');
 
   // 这件事要不要牵到主角身上
   const gap = num(pr.level) - selfLevel(S);
@@ -658,6 +657,10 @@ function applyTurn(S, d) {
     if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
   }
   for (const e of (d.riftEased || [])) easeRift(S, typeof e === 'string' ? e : e.who, 35);
+
+  for (const mo of (d.moments || []).slice(0, 2)) {
+    if (mo && mo.who && mo.text) addMoment(S, mo.who, mo.text, 'npc');
+  }
 
   for (const m of (d.messages || []).slice(0, 4)) {
     if (!m || !m.text) continue;
@@ -1115,6 +1118,39 @@ function yearDiff(S) {
   };
   return { now, up };
 }
+
+/* ================= 朋友圈 ================= */
+function addMoment(S, who, text, kind) {
+  S.moments = S.moments || [];
+  const t = String(text || '').slice(0, 140);
+  if (!t) return null;
+  const m = {
+    id: 'm' + (S.momentId = num(S.momentId) + 1),
+    who: String(who || '某人').slice(0, 12),
+    text: t, kind: kind || 'npc',
+    date: shortDate(S.date), day: S.stats.days,
+    likes: rnd(Math.random, 0, 6), liked: false, cs: [], read: false
+  };
+  S.moments.push(m);
+  S.moments = S.moments.slice(-60);
+  return m;
+}
+function likeMoment(S, id) {
+  const m = (S.moments || []).find(x => x.id === id);
+  if (!m || m.liked) return null;
+  m.liked = true; m.likes++;
+  const n = S.npcs.find(x => x.name === m.who);
+  if (n) n.rel = clamp(r2(n.rel + 1), 0, 100);
+  return m;
+}
+function commentMoment(S, id, who, text) {
+  const m = (S.moments || []).find(x => x.id === id);
+  if (!m) return null;
+  m.cs.push({ who: String(who).slice(0, 12), text: String(text).slice(0, 80) });
+  m.cs = m.cs.slice(-6);
+  return m;
+}
+function unreadMoments(S) { return (S.moments || []).filter(m => !m.read).length; }
 
 /* ================= 梁子（结下的与找上门的） ================= */
 const RIFT_KINDS = {
@@ -1654,6 +1690,7 @@ const API = {
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
+  addMoment, likeMoment, commentMoment, unreadMoments,
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
   housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,

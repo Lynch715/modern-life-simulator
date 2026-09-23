@@ -184,7 +184,28 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #chatFoot{flex:none;display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--line);background:var(--bar);
   padding-bottom:max(9px,calc(env(safe-area-inset-bottom) - 6px))}
 #chatFoot input{flex:1;min-width:0}
-.thread{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer}
+.phoneseg{margin:-2px 0 12px}
+.phoneseg .seg{flex:1;text-align:center;padding:7px 0}
+.phoneseg .dot{margin-left:5px;vertical-align:1px}
+.face{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
+  font-size:15px;color:#fff;background:hsl(var(--h),32%,42%)}
+.face.sm{width:30px;height:30px;font-size:14px;border-radius:8px}
+.thread{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+.thbody{flex:1;min-width:0}
+.mompost{display:flex;gap:7px;margin-bottom:12px}
+.mompost input{flex:1;min-width:0}
+.mom{display:flex;gap:10px;padding:11px 0;border-bottom:1px dashed var(--dash)}
+.mom:last-child{border:none}
+.mombody{flex:1;min-width:0}
+.momwho{font-size:13.5px;color:var(--gold)}
+.momwho em{font-style:normal;font-size:10.5px;color:var(--dim2);border:1px solid var(--line);border-radius:8px;padding:0 5px;margin-left:6px}
+.momtext{font-size:14px;line-height:1.65;margin:4px 0 6px}
+.momfoot{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--dim2)}
+.momfoot span{flex:1}
+.momfoot button{font-size:11.5px;color:var(--dim);border:1px solid var(--line);border-radius:12px;padding:2px 9px}
+.momfoot button.on{color:var(--gold);border-color:var(--goldLine)}
+.momcs{margin-top:7px;background:var(--card2);border-radius:8px;padding:7px 9px;font-size:12.5px;line-height:1.75}
+.momcs b{font-weight:400;color:var(--gold)}
 .thread:active{background:var(--ta)}
 .mfrom em{font-style:normal;color:var(--dim2);margin-left:6px}
 .mtext.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
