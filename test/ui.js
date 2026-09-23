@@ -12,7 +12,7 @@ const sse = obj => {
 const BOOT = {
   narrative: '七月一日，城西老小区六楼，没有电梯。你把两个行李箱拖上去的时候，T恤已经能拧出水。\n次卧十平米，窗户对着别人家的空调外机。房东说这价格在这一片算良心，你信了，因为你也没得选。\n下午三点，你去那家小设计公司报到。前台指了指角落一张桌子，说以后你坐这儿。',
   summary: '搬进合租次卧，第一天上班',
-  job: '一家小设计公司的实习',
+  employer: '明河设计', title: '实习',
   place: '城西老小区的合租次卧',
   scene: { location: '城西老小区的合租次卧', unresolved: ['押一付三还差两千', '实习期三个月没合同', '家里问什么时候回去考编'] },
   npcs: [
@@ -164,7 +164,7 @@ const SEG = n => ({
   console.log('投入之后：', await pg.textContent('#topDate'));
 
   // 五个 tab 都打开看看
-  for (const t of ['today', 'msg', 'ideal', 'book', 'me']) {
+  for (const t of ['phone', 'ideal', 'home', 'book', 'me']) {
     await pg.click(`.tab[data-t="${t}"]`);
     await pg.waitForTimeout(150);
     const txt = (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').slice(0, 80);
@@ -174,7 +174,7 @@ const SEG = n => ({
   }
 
   // 私聊：打开消息里的会话，聊两轮，其中一轮触发判定
-  await pg.click('.tab[data-t="msg"]');
+  await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
   await pg.click('.thread:has-text("赵鹏")');
   await pg.waitForSelector('#chat.on');
@@ -197,15 +197,17 @@ const SEG = n => ({
   const relAfter = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); const n = s.npcs.find(x => x.name === '赵鹏'); return { rel: n.rel, mem: n.mem, lastSeen: n.lastSeen, day: s.stats.days }; });
   console.log('聊完之后的赵鹏：', JSON.stringify(relAfter));
 
-  // 人物详情
-  await pg.click('.tab[data-t="msg"]');
+  // 人物名片：从聊天界面顶上点名字进去
+  await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
-  await pg.click('.li:has-text("赵鹏")');
+  await pg.click('.thread:has-text("赵鹏")');
+  await pg.waitForSelector('#chat.on');
+  await pg.click('#chatName');
   await pg.waitForSelector('#npcMask.on');
   console.log('人物卡：', (await pg.textContent('#npcBox')).replace(/\s+/g, ' ').slice(0, 70));
   await pg.screenshot({ path: 'test/shot-4-npc.png' });
   await pg.click('#npcMask .ghost');
-  await pg.click('#panelClose');
+  await pg.click('#chatBack');
 
   // 理想阶梯 + 关键局
   await pg.click('.tab[data-t="ideal"]');
@@ -251,7 +253,7 @@ const SEG = n => ({
   await pg.evaluate(() => { S.ideal.progress = 200; saveGame(); rebuildTop(); renderOptions(S.lastOptions); });
   await pg.click('.tab[data-t="me"]');
   await pg.waitForTimeout(150);
-  console.log('饭碗卡：', (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/饭碗.{0,70}/)[0]);
+  console.log('事业卡：', ((await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/事业.{0,70}/) || ['(没找到)'])[0]);
   await pg.screenshot({ path: 'test/shot-7-job.png' });
   await pg.click('button:has-text("谈加薪")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
@@ -412,18 +414,20 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   console.log('买房后：', await pg.evaluate(() => `${S.home.kind}｜月供${S.ledger.loan}｜房租${S.ledger.rent}｜净值${ENGINE.homeWorth(S)}｜存款${S.player.money}`));
 
-  await pg.evaluate(() => {   // 走到这儿已经过了不少日子，关系自己凉下去了，重新拉一把
+  // 挑明：手机 → 聊天 → 名片 → 把话挑明
+  await pg.evaluate(() => {
     const n = S.npcs.find(x => x.name === '孙姐') || S.npcs[0];
     n.rel = 78; n.tie = '朋友'; n.lastSeen = S.stats.days;
     saveGame();
   });
-  await pg.click('.tab[data-t="home"]');
+  const who = await pg.evaluate(() => (S.npcs.find(x => x.name === '孙姐') || S.npcs[0]).name);
+  await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
-  if (!(await pg.$('button:has-text("挑明")'))) {
-    console.log('没有挑明按钮｜枕边那段：', (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/枕边.{0,90}/)[0]);
-    console.log('通讯录：', await pg.evaluate(() => S.npcs.map(n => `${n.name}:${Math.round(n.rel)}/${n.tie}`).join(' ')));
-  }
-  await pg.click('button:has-text("挑明")');
+  await pg.click(`.thread:has-text("${who}")`);
+  await pg.waitForSelector('#chat.on');
+  await pg.click('#chatName');
+  await pg.waitForSelector('#npcMask.on');
+  await pg.click('#npcBox button:has-text("把话挑明")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
   await pg.evaluate(() => { S.key.interest = 75; S.key.guard = 28; });
   await pg.click('.kmove[data-m="共情"]');
@@ -487,7 +491,8 @@ const SEG = n => ({
   await pg.evaluate(() => { S.freedom = '写实人生'; saveGame(); });
 
   // 改作息
-  await pg.click('.tab[data-t="today"]');
+  await pg.click('.tab[data-t="me"]');
+  await pg.waitForTimeout(150);
   await pg.selectOption('#sc_work_深夜', '理想');
   await pg.waitForTimeout(120);
   const sc = await pg.evaluate(() => JSON.parse(localStorage.getItem('mls_save')).schedule.work['深夜']);
