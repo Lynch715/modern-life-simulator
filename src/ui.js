@@ -573,7 +573,7 @@ function renderOptions(opts) {
   });
   const row = document.createElement('div');
   row.className = 'act-row';
-  row.innerHTML = `<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="40"/><button class="act-go" id="goBtn">去做</button><button class="act-focus" id="focusBtn" title="闷头做一件事">投入</button>`;
+  row.innerHTML = `<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="40"/><button class="act-go" id="goBtn">去做</button>`;
   box.appendChild(row);
   $('goBtn').onclick = () => {
     const v = $('freeAct').value.trim();
@@ -581,12 +581,12 @@ function renderOptions(opts) {
     doAction(v);
   };
   $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter') $('goBtn').click(); });
-  $('focusBtn').onclick = openFocus;
   const sk = document.createElement('div');
-  sk.className = 'act-row2';
-  sk.innerHTML = `<button class="skip" id="skipBtn">往下过日子　<i>跑到有事发生为止</i></button>`;
+  sk.className = 'act-row3';
+  sk.innerHTML = `<button class="skip" id="focusBtn">闷头做一阵</button><button class="skip" id="skipBtn">往下过日子</button>`;
   box.appendChild(sk);
   $('skipBtn').onclick = skipAhead;
+  $('focusBtn').onclick = openFocus;
 }
 
 /* ================= 一段推进 ================= */

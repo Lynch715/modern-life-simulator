@@ -71,22 +71,23 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 :root[data-font="l"]{--fs:17.5px}
 
 /* 顶栏 */
-#top{padding:calc(10px + env(safe-area-inset-top)) 14px 8px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--top1),var(--top2));flex:none}
+#top{padding:calc(9px + env(safe-area-inset-top)) 14px 7px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--top1),var(--top2));flex:none}
 #topRow1{display:flex;align-items:center;gap:10px}
 #topDate{font-size:13px;color:var(--dim);flex:1}
 .kv{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
 .kv.bad{color:var(--bad)}
 #topBtn{width:26px;height:26px;opacity:.7}
-#topRow2{display:flex;align-items:center;gap:8px;margin-top:7px}
+#topRow2{display:flex;align-items:center;gap:8px;margin-top:6px}
 .bar{flex:1;height:5px;border-radius:4px;background:var(--track);overflow:hidden}
 .bar-in{height:100%;background:var(--gold);transition:width .4s}
 .bar-in.good{background:var(--good)} .bar-in.bad{background:var(--bad)}
 #enNum{font-size:11px;color:var(--dim2);width:22px;text-align:right;font-variant-numeric:tabular-nums}
-#topSub{font-size:11px;color:var(--dim2);margin-top:5px;min-height:14px}
+#topSub{font-size:11px;color:var(--dim2);margin-top:4px;line-height:1.2}
+#topSub:empty{display:none}
 
 /* 叙事流 */
-#story{flex:1;overflow-y:auto;padding:16px 16px 4px;scroll-behavior:smooth}
-.chapter{margin-bottom:26px;animation:fade .5s ease}
+#story{flex:1;min-height:38vh;overflow-y:auto;padding:14px 16px 4px;scroll-behavior:smooth}
+.chapter{margin-bottom:22px;animation:fade .5s ease}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .chaphead{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
 .chapmark{font-size:14px;color:var(--gold);letter-spacing:.5px}
@@ -104,17 +105,18 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .ended{padding:14px;text-align:center;color:var(--gold);font-size:14px}
 
 /* 行动区 */
-#acts{flex:none;padding:8px 13px 6px;border-top:1px solid var(--line);background:var(--bar);max-height:50vh;overflow-y:auto}
-.act-btn{display:block;width:100%;text-align:left;padding:8px 12px;margin-bottom:5px;border-radius:9px;
-  background:var(--btn);border:1px solid var(--line);font-size:13.5px;transition:.15s}
+#acts{flex:none;padding:7px 13px 5px;border-top:1px solid var(--line);background:var(--bar);max-height:38vh;overflow-y:auto}
+.act-btn{display:block;width:100%;text-align:left;padding:6px 12px;margin-bottom:4px;border-radius:9px;
+  background:var(--btn);border:1px solid var(--line);font-size:13px;line-height:1.5;transition:.15s}
 .act-btn:active{background:var(--sel)}
 .act-btn:disabled{opacity:.4}
 .act-row{display:flex;gap:7px;margin-top:2px}
-.act-row input{flex:1;font-size:14px}
-.act-go{padding:8px 13px;border-radius:8px;background:var(--gold);color:var(--onGold);font-size:13.5px;font-weight:600;flex:none}
+.act-row input{flex:1;font-size:13.5px;padding:7px 10px}
+.act-go{padding:7px 13px;border-radius:8px;background:var(--gold);color:var(--onGold);font-size:13.5px;font-weight:600;flex:none}
 .act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:var(--btn2);color:var(--dim);font-size:13.5px;flex:none}
 .act-row input{min-width:0}
-.skip{width:100%;padding:9px 12px;border:1px dashed var(--line);border-radius:9px;font-size:13.5px;color:var(--dim);background:transparent}
+.act-row3{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:5px}
+.skip{width:100%;padding:8px 6px;border:1px dashed var(--line);border-radius:9px;font-size:13px;color:var(--dim);background:transparent;white-space:nowrap}
 .skip i{font-style:normal;font-size:11.5px;color:var(--dim2)}
 .skip:active{background:var(--btn2)}
 .ghost{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:var(--btn2);width:100%}
@@ -248,7 +250,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .btns button{flex:1;padding:10px;border-radius:9px;font-size:14px}
 .primary{background:var(--gold);color:var(--onGold);font-weight:600}
 #busy{position:absolute;left:0;right:0;bottom:0;top:0;display:none;align-items:flex-end;justify-content:center;
-  pointer-events:none;z-index:30;padding-bottom:calc(46vh + 20px)}
+  pointer-events:none;z-index:30;padding-bottom:calc(40vh + 20px)}
 #busy.on{display:flex}
 #busyTxt{background:var(--chip);border:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:7px 14px;border-radius:20px}
 #newver{position:absolute;left:12px;right:12px;bottom:calc(52px + max(2px,calc(env(safe-area-inset-bottom) - 12px)));z-index:55;
@@ -2619,7 +2621,7 @@ function renderOptions(opts) {
   });
   const row = document.createElement('div');
   row.className = 'act-row';
-  row.innerHTML = `<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="40"/><button class="act-go" id="goBtn">去做</button><button class="act-focus" id="focusBtn" title="闷头做一件事">投入</button>`;
+  row.innerHTML = `<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="40"/><button class="act-go" id="goBtn">去做</button>`;
   box.appendChild(row);
   $('goBtn').onclick = () => {
     const v = $('freeAct').value.trim();
@@ -2627,12 +2629,12 @@ function renderOptions(opts) {
     doAction(v);
   };
   $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter') $('goBtn').click(); });
-  $('focusBtn').onclick = openFocus;
   const sk = document.createElement('div');
-  sk.className = 'act-row2';
-  sk.innerHTML = `<button class="skip" id="skipBtn">往下过日子　<i>跑到有事发生为止</i></button>`;
+  sk.className = 'act-row3';
+  sk.innerHTML = `<button class="skip" id="focusBtn">闷头做一阵</button><button class="skip" id="skipBtn">往下过日子</button>`;
   box.appendChild(sk);
   $('skipBtn').onclick = skipAhead;
+  $('focusBtn').onclick = openFocus;
 }
 
 /* ================= 一段推进 ================= */
