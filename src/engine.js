@@ -26,11 +26,11 @@ const CITIES = {
 };
 
 const FREEDOM = {
-  '心想事成': { check: 15, cost: 0.4, badMul: 0.45, growth: 1.35,
+  '心想事成': { check: 15, cost: 0.4, badMul: 0.45, growth: 1.35, keyEase: 12, bizEase: 1.25,
     tone: '【本局口径】心想事成：主角运气极好，玩家自己写的行动只要不荒诞就当作做成了，失败也写成有惊无险。代价从轻，别让人难受。' },
-  '都市传奇': { check: 6, cost: 0.7, badMul: 0.75, growth: 1.15,
+  '都市传奇': { check: 6, cost: 0.7, badMul: 0.75, growth: 1.15, keyEase: 5, bizEase: 1.1,
     tone: '【本局口径】都市传奇：比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。' },
-  '写实人生': { check: 0, cost: 1, badMul: 1, growth: 1,
+  '写实人生': { check: 0, cost: 1, badMul: 1, growth: 1, keyEase: 0, bizEase: 1,
     tone: '【本局口径】写实人生：概率贴着现实来。跳槽大多只涨一点，创业大概率黄，贵人不常有，好事不扎堆。别写爽文。' }
 };
 
@@ -160,6 +160,7 @@ function newState(o) {
     },
     job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
     debts: [], rifts: [], ailLog: {},
+    biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
     schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
     ideal: { progress: 0, stages: [] },
     key: null,
@@ -213,7 +214,7 @@ function dayTick(S, rng) {
     }
     if (it.slot === '深夜' && !a.sleep) { en -= 7; S.flags.nightCnt++; }
   }
-  jobTick(S, plan);
+  if (S.biz && !S.biz.dead) bizTend(S, plan); else jobTick(S, plan);
 
   if (S.focus) {
     const f = S.focus;
@@ -263,6 +264,16 @@ function dayTick(S, rng) {
 function moneyTick(S, rng) {
   const L = S.ledger, p = S.player, d = S.date, ev = [];
   let stop = null;
+  if (d.d === L.rentDay && S.biz && !S.biz.dead) {
+    const b = bizMonth(S, rng);
+    if (b) {
+      ev.push({ t: '钱', s: `${S.biz.name}这个月进${b.rev}、出${b.cost}，${b.net >= 0 ? '剩' + b.net : '亏了' + (-b.net)}` });
+      if (b.gone.length) ev.push({ t: '人情', s: `${b.gone.join('、')}不干了` });
+      if (b.danger) stop = { kind: '生意', detail: `${S.biz.name}连亏${b.lossMonths}个月，再这样撑不下去` };
+      else if (b.gone.length) stop = { kind: '生意', detail: `${b.gone.join('、')}从${S.biz.name}走了` };
+      else if (S.biz.months <= 1) stop = { kind: '生意', detail: `${S.biz.name}的第一个月：进${b.rev}，出${b.cost}` };
+    }
+  }
   if (d.d === L.rentDay) {
     const out = L.rent + L.living + L.remit;
     p.money -= out;
@@ -357,7 +368,8 @@ function evtChance(S) {
   return p;
 }
 function pickTag(S, rng) {
-  const w = { '工作': 3, '钱': 2, '身体': 1, '人情': 3, '机会': 2, '家里': 1.5 };
+  const bad = num(fdm(S).badMul);
+  const w = { '工作': 3, '钱': 2 * bad, '身体': 1 * bad, '人情': 3, '机会': 2 / Math.max(0.5, bad), '家里': 1.5 };
   if (S.broke) w['钱'] += 3;
   if (S.player.energy < 35) w['身体'] += 2;
   if (S.focus) w['工作'] += 1;
@@ -388,6 +400,12 @@ function advance(S, opt) {
       events.push({ t: '家里', s: `你${S.player.age}岁了` });
     }
 
+    // 一年到头，别的什么都往后排
+    if (S.date.m === 12 && S.date.d === 31) {
+      stop = { kind: '年终', detail: `${S.date.y}年过完了` };
+      break;
+    }
+
     const day = dayTick(S, rng);
     events.push(...day.ev);
     if (day.stop) { stop = day.stop; break; }
@@ -399,6 +417,10 @@ function advance(S, opt) {
     const dt = debtTick(S);
     events.push(...dt.ev);
     if (dt.stop) { stop = dt.stop; break; }
+
+    const wd = windTick(S, rng);
+    events.push(...wd.ev);
+    if (wd.stop && S.flags.cool <= 0) { stop = wd.stop; break; }
 
     const rt = riftTick(S, rng);
     events.push(...rt.ev);
@@ -600,6 +622,223 @@ function applyConvo(S, name, res) {
 
 
 
+
+/* ================= 自立门户 ================= */
+const BIZ_KINDS = {
+  '小店':   { setupX: 8,  rentX: 1.6, baseX: 1.15, attr: '谋划', cap: 3, desc: '铺面、货、一个帮手，开门就要钱' },
+  '工作室': { setupX: 4,  rentX: 0.8, baseX: 0.95, attr: '专业', cap: 4, desc: '几个人一间屋，靠手艺接活' },
+  '小公司': { setupX: 14, rentX: 2.4, baseX: 1.65, attr: '谋划', cap: 5, desc: '要养人、要签合同、要交社保' }
+};
+const XING = '王李张刘陈杨黄周吴徐孙马朱胡林郭何高罗郑梁谢宋唐许韩冯邓曹彭'.split('');
+const MING = ['杰','磊','敏','静','强','洋','艳','勇','军','丽','涛','明','超','秀','霞','平','刚','桂','文','辉','力','薇','娟','浩','鹏','宇','晨','菲','然','宁','川','舟','野','可','真','越','岚','昭','池','屿'];
+function madeName(rng, used) {
+  for (let i = 0; i < 40; i++) {
+    const n = pick(rng, XING) + pick(rng, MING) + (rng() < 0.35 ? pick(rng, MING) : '');
+    if (!used.includes(n)) return n;
+  }
+  return pick(rng, XING) + pick(rng, MING);
+}
+function bizBase(S) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const K = BIZ_KINDS[S.biz ? S.biz.kind : '工作室'];
+  return Math.round(city.pay * K.baseX);
+}
+function bizSetup(S, kind) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  return Math.round(city.rent * BIZ_KINDS[kind].setupX);
+}
+function openBiz(S, o, rng) {
+  rng = rng || Math.random;
+  const kind = BIZ_KINDS[o.kind] ? o.kind : '工作室';
+  const K = BIZ_KINDS[kind];
+  const need = bizSetup(S, kind);
+  if (S.player.money < need) return { ok: false, why: `启动得要 ${need} 元，你手头只有 ${S.player.money}` };
+  const ck = rollCheck(S, K.attr, 46 + (kind === '小公司' ? 12 : kind === '小店' ? 4 : 0), rng);
+  const city = CITIES[S.city] || CITIES['新一线'];
+  S.player.money -= need;
+  S.biz = {
+    name: String(o.name || '没名字的店').slice(0, 14), kind,
+    since: shortDate(S.date), sinceY: S.date.y,
+    rent: Math.round(city.rent * K.rentX), staff: [],
+    rep: ck.success ? 42 : 30, tend: 0, months: 0,
+    rev: 0, cost: 0, net: 0, lossMonths: 0, best: 0, total: 0, dead: false, setup: need
+  };
+  if (S.job && !S.job.out) quitJob(S);
+  S.player.job = `自己的${kind}「${S.biz.name}」`;
+  return { ok: true, need, ck, rep: S.biz.rep };
+}
+function bizCandidates(S, rng) {
+  const used = S.npcs.map(n => n.name).concat((S.biz.staff || []).map(s => s.name));
+  const city = CITIES[S.city] || CITIES['新一线'];
+  return [0, 1, 2].map(() => {
+    const skill = rnd(rng, 22, 78);
+    return {
+      name: madeName(rng, used),
+      role: pick(rng, ['帮手', '师傅', '跑单的', '做事的', '管账的']),
+      skill,
+      pay: Math.round(city.pay * (0.45 + skill / 140) / 100) * 100,
+      loyal: rnd(rng, 45, 70)
+    };
+  });
+}
+function hireBiz(S, c) {
+  const B = S.biz;
+  if (!B || B.dead) return null;
+  if (B.staff.length >= BIZ_KINDS[B.kind].cap) return { ok: false, why: '地方就这么大，塞不下人了' };
+  B.staff.push(Object.assign({ months: 0 }, c));
+  return { ok: true, who: c.name };
+}
+function fireBiz(S, i) {
+  const B = S.biz;
+  const s = B && B.staff[i];
+  if (!s) return null;
+  const pay = s.pay;          // 遣散
+  S.player.money -= pay;
+  B.staff.splice(i, 1);
+  B.rep = clamp(B.rep - 3, 0, 100);
+  return { who: s.name, pay };
+}
+function raiseBiz(S, i, up) {
+  const s = S.biz && S.biz.staff[i];
+  if (!s) return null;
+  s.pay = Math.max(0, Math.round(s.pay + num(up)));
+  s.loyal = clamp(s.loyal + (num(up) > 0 ? 14 : -18), 0, 100);
+  return s;
+}
+// 有生意的时候，日程里的「主业」就是照看自己的摊子
+function bizTend(S, plan) {
+  const B = S.biz;
+  if (!B || B.dead) return;
+  let w = 0;
+  for (const it of plan) if (it.act === '主业') w += (it.slot === '晚上' || it.slot === '深夜') ? 1.3 : 1;
+  if (w) B.tend = r2(B.tend + w);
+}
+function bizMonth(S, rng) {
+  const B = S.biz;
+  if (!B || B.dead) return null;
+  B.months++;
+  const K = BIZ_KINDS[B.kind];
+  const skill = B.staff.reduce((a, s) => a + s.skill, 0);
+  const tendK = clamp(0.55 + B.tend / 60, 0.55, 1.35);          // 自己盯得越紧越好
+  const mine = S.player.attrs['专业'] * 1.1;                     // 自己的本事也算一份
+  const rev = Math.round(bizBase(S) * (0.45 + B.rep / 110) * (1 + (skill + mine) / 230) * tendK * windMul(S) * num(fdm(S).bizEase) * (0.85 + rng() * 0.3));
+  const pay = B.staff.reduce((a, s) => a + s.pay, 0);
+  const cost = B.rent + pay;
+  const net = rev - cost;
+  S.player.money += net;
+  B.rev = rev; B.cost = cost; B.net = net; B.lastTend = r2(B.tend); B.total += net; B.best = Math.max(B.best, net);
+  B.tend = 0;
+
+  // 口碑：人手够不够、自己在不在
+  const load = rev / Math.max(1, (B.staff.length + 1) * bizBase(S) * 0.75);
+  if (load > 1.2) B.rep = clamp(B.rep - 3, 0, 100);              // 接得下但做不好，口碑就掉
+  else if (tendK > 0.9) B.rep = clamp(B.rep + 3 + (S.player.attrs['专业'] > 50 ? 1 : 0) + (skill > 100 ? 1 : 0), 0, 100);
+  else B.rep = clamp(B.rep + 0.5, 0, 100);
+
+  // 人心
+  const gone = [];
+  for (const s of B.staff) {
+    s.months++;
+    const fair = s.pay >= Math.round((CITIES[S.city] || CITIES['新一线']).pay * (0.45 + s.skill / 140)) ? 6 : -9;
+    s.loyal = clamp(s.loyal + fair + (tendK > 1 ? 2 : -3) + (net < 0 ? -4 : 1), 0, 100);
+    s.skill = clamp(s.skill + (tendK > 1 ? 0.6 : 0.2), 0, 100);
+    if (s.loyal < 22 && rng() < 0.45) gone.push(s.name);
+  }
+  if (gone.length) { B.staff = B.staff.filter(s => gone.indexOf(s.name) < 0); B.rep = clamp(B.rep - 2, 0, 100); }
+
+  B.lossMonths = net < 0 ? B.lossMonths + 1 : 0;
+  const out = { rev, cost, net, rep: Math.round(B.rep), gone, lossMonths: B.lossMonths };
+  // 开头亏几个月是常事，钱还够就不算危；钱不够了才叫危
+  if (B.lossMonths >= 5 || (B.lossMonths >= 3 && S.player.money < cost * 3) || S.player.money < -Math.abs(cost)) out.danger = true;
+  return out;
+}
+function closeBiz(S) {
+  const B = S.biz;
+  if (!B || B.dead) return null;
+  const back = Math.round(B.setup * 0.3);
+  const sever = B.staff.reduce((a, s) => a + s.pay, 0);
+  S.player.money += back - sever;
+  const out = { name: B.name, months: B.months, total: B.total, back, sever, staff: B.staff.map(s => s.name) };
+  for (const s of B.staff) if (rng0() < 0.3) addRift(S, s.name, '店关了，欠他一个交代', '私怨', 18);
+  B.dead = true; B.closedAt = shortDate(S.date);
+  S.bizPast = (S.bizPast || []).concat([out]).slice(-3);
+  S.biz = null;
+  S.player.job = '待业';
+  S.job.out = true; S.ledger.salary = 0;
+  return out;
+}
+function rng0() { return Math.random(); }
+
+/* ================= 行业风向与时代 ================= */
+const WIND = { '热': 1.26, '平': 1.0, '冷': 0.76 };
+function windMul(S) { return WIND[(S.wind && S.wind.mood) || '平'] || 1; }
+const ERA = {
+  '创作': ['平台改了分成规矩', '一批人靠短内容火了', '出版社在砍选题', '有人拿AI写的东西冒名投稿'],
+  '创业': ['钱不好拿了', '一个赛道突然被追着投', '监管出了新口径', '大厂下场做同样的事'],
+  '手艺': ['房租又涨了一茬', '街上新开了三家同行', '一条街被划进改造范围', '有博主把这行拍火了'],
+  '职场': ['行业在裁员', '公司换了新老板', '内部开始查考勤', '同行在高价挖人'],
+  '科研': ['经费批得慢了', '一篇同方向的文章先发了', '评审标准变了', '有企业来谈合作'],
+  '表演': ['小剧场一个接一个关', '有个综艺在海选', '票务平台改了抽成', '一个前辈退圈了'],
+  '教书': ['政策又调了', '家长群里在传新说法', '有机构跑路了', '学校在招编外'],
+  '公益': ['资助方换了方向', '一条相关新闻上了热搜', '登记手续变严', '有人捐了一笔'],
+  '把家过好': ['房价动了', '菜价涨得离谱', '老家那边在拆迁', '医保报销比例改了']
+};
+function windTick(S, rng) {
+  const ev = [];
+  let stop = null;
+  S.wind = S.wind || { mood: '平', left: rnd(rng, 90, 210) };
+  S.wind.left--;
+  if (S.wind.left <= 0) {
+    const r = rng();
+    const mood = r < 0.28 ? '热' : r < 0.68 ? '平' : '冷';
+    const changed = mood !== S.wind.mood;
+    S.wind = { mood, left: rnd(rng, 120, 260) };
+    if (changed) {
+      ev.push({ t: '机会', s: `${S.player.track}这行眼下${mood === '热' ? '正热' : mood === '冷' ? '在过冬' : '不温不火'}` });
+      stop = { kind: '风向', detail: `${S.player.track}这行${mood === '热' ? '忽然热起来了' : mood === '冷' ? '开始过冬了' : '慢慢平下来了'}` };
+    }
+  }
+  // 时代的事，隔一阵来一件
+  S.eraLeft = num(S.eraLeft) || rnd(rng, 70, 140);
+  S.eraLeft--;
+  if (S.eraLeft <= 0) {
+    S.eraLeft = rnd(rng, 90, 170);
+    const pool = ERA[S.player.track] || ERA['职场'];
+    const one = pick(rng, pool);
+    S.era = (S.era || []).concat([{ text: one, date: shortDate(S.date) }]).slice(-4);
+    ev.push({ t: '机会', s: one });
+    stop = { kind: '时代', detail: one };
+  }
+  return { ev, stop };
+}
+
+/* ================= 一年过去了 ================= */
+function yearSnap(S) {
+  const p = S.player;
+  return {
+    y: S.date.y, money: p.money, salary: S.ledger.salary,
+    attrs: Object.assign({}, p.attrs), 信誉: p.信誉, 人品: p.人品,
+    energy: p.energy, job: p.job, age: p.age,
+    miles: S.ideal.stages.reduce((a, st) => a + st.milestones.filter(m => m.done).length, 0),
+    npcs: S.npcs.length, close: S.npcs.filter(n => n.rel >= 55).length,
+    chronic: (S.chronic || []).map(c => c.name),
+    rifts: (S.rifts || []).filter(r => !r.done).length,
+    biz: S.biz ? { name: S.biz.name, net: S.biz.net, rep: Math.round(S.biz.rep), staff: S.biz.staff.length } : null,
+    ideal: Math.round(S.ideal.progress)
+  };
+}
+function yearDiff(S) {
+  const now = yearSnap(S);
+  const last = (S.years || []).length ? S.years[S.years.length - 1].snap : null;
+  if (!last) return { now, up: null };
+  const up = {
+    money: now.money - last.money, salary: now.salary - last.salary,
+    attrs: ATTRS.reduce((o, k) => (o[k] = now.attrs[k] - last.attrs[k], o), {}),
+    miles: now.miles - last.miles, close: now.close - last.close, ideal: now.ideal - last.ideal
+  };
+  return { now, up };
+}
+
 /* ================= 梁子（结下的与找上门的） ================= */
 const RIFT_KINDS = {
   '债主':   { rate: 1.15, word: '钱没还' },
@@ -636,7 +875,7 @@ function riftTick(S, rng) {
   let stop = null;
   for (const r of (S.rifts || [])) {
     if (r.done) continue;
-    let rate = RIFT_KINDS[r.kind].rate * 0.55;
+    let rate = RIFT_KINDS[r.kind].rate * 0.55 * num(fdm(S).badMul);
     if (r.kind === '债主' && !(S.debts || []).some(d => d.who === r.who && d.left > 0)) rate = -0.8;  // 钱还上了自己会凉
     r.heat = clamp(r.heat + rate, 0, 100);
     if (r.heat <= 6) { r.done = true; r.endedAt = shortDate(S.date); ev.push({ t: '人情', s: `跟${r.who}那点事算过去了` }); }
@@ -904,7 +1143,7 @@ const MOVES = {
 function startKey(S, o) {
   const t = OPP_TYPES[o.type] ? o.type : pick(o.rng || Math.random, Object.keys(OPP_TYPES));
   const T = OPP_TYPES[t];
-  const hard = clamp(num(o.hard) || 50, 20, 95);
+  const hard = clamp((num(o.hard) || 50) - num(fdm(S).keyEase), 18, 95);
   S.key = {
     scene: o.scene || '谈判',
     stake: String(o.stake || '').slice(0, 40),
@@ -1087,6 +1326,8 @@ const API = {
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, growAttr,
   simRatio, stuckLevel, pickNudge,
+  BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
+  WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
   LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,
   METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,

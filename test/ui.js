@@ -63,6 +63,11 @@ const KEY_END = {
   gameOver: false
 };
 
+const YEAR = {
+  narrative: '年底最后一天在公司加班，楼下便利店的关东煮涨了五毛。\n七月搬进来的时候箱子还没拆完，现在次卧里堆了三摞废稿。赵鹏年中说要回老家，到现在也没走。',
+  summary: '第一年，写废了三摞稿子',
+  options: ['把废稿整理一遍', '年后跟周越再联系', '给家里打个电话', '先把身体养养']
+};
 const SEG = n => ({
   narrative: `第${n}段：办公室的空调坏了一整周，孙姐说修不了，让大家自己带小风扇。你带了，第二天风扇被人拿走了。\n周三下班，赵鹏在楼道里抽烟，问你这个月房租能不能晚两天。你说行。说完才想起自己卡里剩不到八百。`,
   summary: `第${n}段发生的事`,
@@ -90,6 +95,7 @@ const SEG = n => ({
     let body;
     if (post.includes('给出这场的对手和开场')) { body = KEY_OPEN; }
     else if (post.includes('这场是怎么打下来的')) { body = post.includes('面试') ? KEY_JOB : KEY_END; }
+    else if (post.includes('写一篇 320-450 字的年终小结')) { body = YEAR; }
     else if (post.includes('你现在扮演的是')) {
       convoCalls++;
       if (post.includes('引擎判定（不可更改）')) {
@@ -309,6 +315,65 @@ const SEG = n => ({
   console.log('我·梁子：', (me.match(/梁子.{0,60}/) || [''])[0]);
   await pg.screenshot({ path: 'test/shot-10-rift.png' });
   await pg.click('#panelClose');
+
+  // 生意：开店 → 招人 → 月结 → 关店
+  await pg.evaluate(() => { S.player.money = 90000; S.player.attrs['谋划'] = 55; S.player.attrs['专业'] = 50; saveGame(); rebuildTop(); });
+  await pg.click('.tab[data-t="book"]');
+  await pg.waitForTimeout(150);
+  pg.once('dialog', d => d.accept('巷口那家'));
+  await pg.click('button:has-text("就开这个")');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  console.log('开张：', await pg.evaluate(() => S.biz ? `${S.biz.name}／${S.biz.kind}　口碑${Math.round(S.biz.rep)}　场地${S.biz.rent}／月　存款${S.player.money}` : '没开成'));
+  await pg.click('.tab[data-t="book"]');
+  await pg.waitForTimeout(150);
+  await pg.click('button:has-text("招人")');
+  await pg.waitForSelector('#npcMask.on');
+  await pg.click('#npcBox button:has-text("要他")');
+  await pg.waitForTimeout(150);
+  const biz = await pg.evaluate(() => {
+    S.biz.tend = 24;
+    const r = ENGINE.bizMonth(S, Math.random);
+    saveGame(); renderPanel();
+    return { 人手: S.biz.staff.map(s => s.name + '/' + s.role + '/' + s.pay), 月结: `进${r.rev} 出${r.cost} 净${r.net} 口碑${r.rep}` };
+  });
+  console.log('生意：', JSON.stringify(biz));
+  await pg.screenshot({ path: 'test/shot-11-biz.png' });
+  await pg.click('#panelClose');
+
+  // 年终
+  await pg.evaluate(() => { S.date = { y: 2026, m: 12, d: 30 }; saveGame(); });
+  await pg.click('#acts .act-btn');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
+  const yr = await pg.evaluate(() => ({
+    年: (S.years || []).map(y => y.y + '：' + y.summary),
+    章头: document.querySelectorAll('.chapmark')[document.querySelectorAll('.chapmark').length - 1].textContent,
+    副: document.querySelectorAll('.chaptime')[document.querySelectorAll('.chaptime').length - 1].textContent
+  }));
+  console.log('年终：', JSON.stringify(yr));
+  await pg.screenshot({ path: 'test/shot-12-year.png' });
+
+  // 导出的全本长什么样
+  const book = await pg.evaluate(async () => {
+    let txt = '';
+    const realBlob = window.Blob;
+    window.Blob = function (a) { txt = a.join(''); return new realBlob(a, { type: 'text/plain' }); };
+    const a = document.createElement('a'); const oc = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { };
+    await exportBook();
+    HTMLAnchorElement.prototype.click = oc; window.Blob = realBlob;
+    return txt.slice(0, 220);
+  });
+  console.log('全本开头：\n' + book.split('\n').map(l => '   ' + l).join('\n'));
+
+  // 三档口径的差别
+  const fdm = await pg.evaluate(() => ['心想事成', '都市传奇', '写实人生'].map(f => {
+    S.freedom = f;
+    const S2 = JSON.parse(JSON.stringify(S));
+    ENGINE.startKey(S2, { scene: '谈判', name: 'x', type: '务实', hard: 60 });
+    return `${f}：判定+${ENGINE.FREEDOM[f].check}　门槛60→${S2.key.hard}　生意×${ENGINE.FREEDOM[f].bizEase}　坏事×${ENGINE.FREEDOM[f].badMul}`;
+  }));
+  console.log('三档：', fdm.join(' ｜ '));
+  await pg.evaluate(() => { S.freedom = '写实人生'; saveGame(); });
 
   // 改作息
   await pg.click('.tab[data-t="today"]');

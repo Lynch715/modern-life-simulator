@@ -274,6 +274,7 @@ function stateBlocks() {
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}，${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
 ${(S.rifts || []).filter(r => !r.done).length ? `【结下的梁子】${S.rifts.filter(r => !r.done).map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
+${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
 【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
 【名声】行业口碑${p.信誉}，做人${p.人品}
 【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
@@ -299,6 +300,10 @@ const STOP_WRITE = {
   '久': d => `这一段日子很太平。写出日子的质地（重复的通勤、便利店、群里没人说话），结尾给一点隐隐的不对劲或一个很小的苗头，别写成心灵鸡汤。`,
   '条件': d => `这一段结束在主角等的那件事上：${d}。`,
   '考核': d => `这一段结束在季度考核上：${d}。写清楚是谁跟他说的、在哪儿说的、原话大概什么样。结果不许改。`,
+  '生意': d => `这一段结束在自己那摊生意上：${d}。写具体的经营场面——来了几个客人、谁催货、账上什么数、人手够不够，不要写心情。`,
+  '风向': d => `这一段结束在行业风向变了这件事上：${d}。写他是从哪儿察觉的（群里、同行、客户、招聘网站），先别写他决定怎么办。`,
+  '时代': d => `这一段里外面出了一件事：${d}。让它以很日常的方式撞到主角身上——一条推送、一个电话、饭桌上别人在聊。别写成新闻播报。`,
+  '年终': d => `${d}`,
   '裂痕': d => `这一段结束在一个跟主角有梁子的人身上：${d}。他可以是直接堵上门、打电话、找到单位去、或者把事捅到别人那儿——挑一个最难堪的方式。写到他把话撂下为止，别替主角解决。`,
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
@@ -526,20 +531,26 @@ async function runSegment() {
 
   S.seg++;
   S.stats.segs++;
-  const head = adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
+  const head = adv.stop.kind === '年终' ? `${adv.to.y}年` : adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
   setBusy(true, adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……');
-  beginChapter(head, `${adv.days}天`, S.lastAction || '', judge);
+  beginChapter(head, adv.stop.kind === '年终' ? '年终' : `${adv.days}天`, S.lastAction || '', adv.stop.kind === '年终' ? null : judge);
   renderOptions([]);
   S.pending = { action: S.lastAction, stop: adv.stop };
   saveGame();
 
+  const isYear = adv.stop.kind === '年终';
   try {
-    const prompt = segPrompt({ adv, judge });
+    const prompt = isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge });
     const d = await llmJSON(prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
     });
     updateChapterNarrative(d.narrative);
+    if (isYear) {
+      const snap = E.yearSnap(S);
+      S.years = (S.years || []).concat([{ y: snap.y, snap, text: d.narrative, summary: d.summary || '' }]).slice(-12);
+      S.history.push({ seg: S.seg, date: `${snap.y}年`, summary: `【年终】${d.summary || ''}` });
+    }
     E.applyTurn(S, d);
     const claim = E.judgeClaim(S, d.milestoneClaim);
     if (claim && !claim.ok) S.claimNote = `你申报过「${claim.title}」，但${claim.short}，还不够格`;
@@ -715,15 +726,23 @@ function renderPanel() {
       <div><b>房租（${L.rentDay}号）</b><span>${L.rent}</span></div>
       <div><b>生活</b><span>${L.living}</span></div>
       ${L.remit ? `<div><b>寄回家</b><span>${L.remit}</span></div>` : ''}
-      <div class="sum"><b>一个月剩</b><span class="${inc - out < 0 ? 'bad' : 'good'}">${inc - out}</span></div>
+      ${S.biz && !S.biz.dead ? `<div><b>${esc(S.biz.name)}（上月）</b><span class="${S.biz.net < 0 ? 'bad' : 'good'}">${S.biz.net}</span></div>` : ''}
+      <div class="sum"><b>一个月剩</b><span class="${inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0) < 0 ? 'bad' : 'good'}">${inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0)}</span></div>
     </div></div>
+    ${renderBiz()}
     <h4>欠的钱</h4>
     <div class="card">${(S.debts || []).length
       ? S.debts.map((d, i) => `<div class="li"><b>${esc(d.who)}</b> <span class="rel${d.late ? ' bad' : ''}">${d.left}元${d.late ? '·过期了' : ''}</span>
           <div class="tip">${d.due.m}月${d.due.d}日之前要还　<button class="ghost sm" onclick="doPay(${i})">还一笔</button></div></div>`).join('')
       : '<div class="tip">没欠谁的</div>'}
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>
-    <div class="card tip">${S.broke ? '账上已经是负的了，做什么都差一口气。' : `按这个过法，${inc - out > 0 ? `一个月能剩 ${inc - out}` : '每个月都在倒贴'}。`}</div>`;
+    <div class="card tip">${(() => {
+      const net = inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0);
+      if (S.broke) return '账上已经是负的了，做什么都差一口气。';
+      if (net > 0) return `按这个过法，一个月能剩 ${net}${S.biz && !S.biz.dead ? '（生意按上个月算）' : ''}。`;
+      const hold = net < 0 ? Math.floor(p.money / -net) : 99;
+      return `每个月倒贴 ${-net}，手上的钱还能撑 ${hold} 个月。`;
+    })()}</div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
     <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div>
@@ -758,6 +777,8 @@ function renderPanel() {
           <div class="tip">${esc(r.kind)}｜${esc(r.reason)}｜从${esc(r.since)}起${r.came ? `｜找过你${r.came}回` : ''}</div></div>`).join('')
       : '<div class="tip">眼下没跟谁结梁子</div>'}
       <div class="tip">钱还上、话说开、事办了，梁子自己会凉；不管它就一天天热起来，热到头人家就找上门了。</div></div>
+    ${(S.years || []).length ? `<h4>这些年</h4><div class="card">${S.years.slice().reverse().map(y => `<div class="li"><b>${y.y}年</b><span class="rel">${esc(y.summary)}</span>
+      <div class="tip">存款${y.snap.money}｜台阶${y.snap.miles}级｜交心的人${y.snap.close}个${y.snap.biz ? `｜${esc(y.snap.biz.name)}` : ''}</div></div>`).join('')}</div>` : ''}
     <h4>这一路</h4><div class="card">${S.history.slice(-14).reverse().map(h => `<div class="li"><span>${esc(h.date)}</span> ${esc(h.summary)}</div>`).join('') || '<div class="tip">还没开始</div>'}</div>
     <div class="btns"><button class="ghost" onclick="exportBook()">导出全本</button><button class="ghost" onclick="openSettings()">设置</button></div>`;
   }
@@ -1123,6 +1144,134 @@ function endConvo(goOn) {
   if (goOn && said.length) { S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment(); }
 }
 
+
+/* ================= 生意 ================= */
+function renderBiz() {
+  const B = S.biz;
+  if (!B) {
+    const kinds = Object.keys(E.BIZ_KINDS);
+    return `<h4>自立门户</h4><div class="card">
+      <div class="tip">自己开一摊子：作息里的「主业」从此是照看自己的生意，工资没了，赚多少看本事、口碑和你盯得紧不紧。开之前先攒够启动的钱。</div>
+      ${kinds.map(k => {
+        const K = E.BIZ_KINDS[k], need = E.bizSetup(S, k);
+        const can = S.player.money >= need;
+        return `<div class="li"><b>${k}</b><span class="rel${can ? '' : ' bad'}">${need}元</span>
+          <div class="tip">${esc(K.desc)}｜看${K.attr}｜最多${K.cap}个人手</div>
+          <button class="ghost sm" style="margin-top:6px" ${can ? '' : 'disabled'} onclick="askOpenBiz('${k}')">${can ? '就开这个' : '钱不够'}</button></div>`;
+      }).join('')}</div>`;
+  }
+  const K = E.BIZ_KINDS[B.kind];
+  return `<h4>${esc(B.name)}</h4>
+  <div class="card">
+    <div class="lines">
+      <div><b>开了多久</b><span>${B.months}个月（${esc(B.since)}起）</span></div>
+      <div><b>上个月</b><span class="${B.net >= 0 ? 'good' : 'bad'}">进${B.rev}　出${B.cost}　${B.net >= 0 ? '剩' + B.net : '亏' + (-B.net)}</span></div>
+      <div><b>累计</b><span class="${B.total >= 0 ? 'good' : 'bad'}">${B.total}</span></div>
+      <div><b>场地</b><span>${B.rent}/月</span></div>
+    </div>
+    <div class="cardhd" style="margin-top:10px">口碑</div>
+    <div class="bar"><div class="bar-in${B.rep > 55 ? ' good' : B.rep < 25 ? ' bad' : ''}" style="width:${Math.round(B.rep)}%"></div></div>
+    <div class="tip">${Math.round(B.rep)}　${B.lossMonths ? `已经连亏${B.lossMonths}个月。` : ''}上个月你盯了${Math.round(E.num(B.lastTend))}分，这个月到现在${Math.round(B.tend)}分（作息里排「主业」才算，盯得越紧生意越好）。</div>
+  </div>
+  <h4>人手（${B.staff.length}/${K.cap}）</h4>
+  <div class="card">
+    ${B.staff.length ? B.staff.map((st, i) => `<div class="li"><b>${esc(st.name)}</b><span class="rel${st.loyal < 30 ? ' bad' : ''}">${st.loyal < 30 ? '人心浮动' : st.loyal > 70 ? '跟得住' : '还行'}</span>
+      <div class="tip">${esc(st.role)}｜能力${Math.round(st.skill)}｜${st.pay}元/月｜干了${st.months}个月
+        <button class="ghost sm" onclick="doRaise(${i})">加钱</button>
+        <button class="ghost sm" onclick="doFire(${i})">辞了</button></div></div>`).join('')
+      : '<div class="tip">就你一个人</div>'}
+    <div class="btns"><button class="ghost" onclick="openHire()">招人</button><button class="ghost" onclick="doCloseBiz()">关了这摊</button></div>
+  </div>`;
+}
+function askOpenBiz(kind) {
+  const need = E.bizSetup(S, kind);
+  const name = prompt(`给这个${kind}起个名字（启动要 ${need} 元，从存款里出）`, '');
+  if (!name) return;
+  const r = E.openBiz(S, { kind, name }, Math.random);
+  if (!r.ok) { toast(r.why); return; }
+  closePanel();
+  S.lastAction = `把${kind}「${name}」开起来了${r.ck.success ? '' : '（开头就不太顺）'}`;
+  saveGame();
+  toast(`花了${r.need}，口碑起手${r.rep}`);
+  runSegment();
+}
+function openHire() {
+  const B = S.biz;
+  if (!B) return;
+  if (B.staff.length >= E.BIZ_KINDS[B.kind].cap) { toast('塞不下人了'); return; }
+  const cand = E.bizCandidates(S, Math.random);
+  $('npcBox').innerHTML = `<h2>招人</h2><div class="tip" style="margin-top:-10px">工资低于他值的价，早晚要走。</div>
+    <div class="card" style="margin-top:14px">${cand.map((c, i) => `<div class="li">
+      <b>${esc(c.name)}</b><span class="rel">${c.pay}元/月</span>
+      <div class="tip">${esc(c.role)}｜能力${c.skill}
+        <button class="ghost sm" onclick='doHire(${JSON.stringify(c).replace(/'/g, "&#39;")})'>要他</button></div></div>`).join('')}</div>
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">再看看</button></div>`;
+  mask('npcMask', true);
+}
+function doHire(c) {
+  const r = E.hireBiz(S, c);
+  mask('npcMask', false);
+  if (!r || !r.ok) { toast((r && r.why) || '招不进来'); return; }
+  toast(`${r.who}来了`);
+  saveGame(); renderPanel();
+}
+function doFire(i) {
+  const s = S.biz.staff[i];
+  if (!s) return;
+  if (!confirm(`辞了${s.name}？要给一个月工资 ${s.pay} 元。`)) return;
+  const r = E.fireBiz(S, i);
+  toast(`${r.who}走了，给了${r.pay}`);
+  saveGame(); rebuildTop(); renderPanel();
+}
+function doRaise(i) {
+  const s = S.biz.staff[i];
+  if (!s) return;
+  const v = prompt(`给${s.name}加多少？（现在 ${s.pay}，填负数就是降）`, '500');
+  if (v === null) return;
+  E.raiseBiz(S, i, Number(v));
+  saveGame(); renderPanel();
+}
+function doCloseBiz() {
+  const B = S.biz;
+  if (!B) return;
+  if (!confirm(`关掉「${B.name}」？设备折价能回一点，员工要给遣散。`)) return;
+  const r = E.closeBiz(S);
+  closePanel();
+  S.lastAction = `把「${r.name}」关了`;
+  saveGame(); rebuildTop();
+  toast(`开了${r.months}个月，一共${r.total >= 0 ? '赚' : '亏'}${Math.abs(r.total)}`);
+  runSegment();
+}
+
+/* ================= 年终 ================= */
+function yearPrompt(dd) {
+  const { now, up } = dd;
+  const money = up ? `${up.money >= 0 ? '多了' : '少了'}${Math.abs(up.money)}元` : `${now.money}元`;
+  const attrs = up ? E.ATTRS.filter(k => up.attrs[k] > 0).map(k => `${k}+${up.attrs[k]}`).join('、') || '没怎么长' : '刚起步';
+  return `${worldRules()}
+
+${stateBlocks()}
+
+${now.y}年过完了。这是引擎记下的一年（数字不许改）：
+- 年龄：${now.age}岁　营生：${now.job}
+- 钱：${money}，年底存款${now.money}元${now.salary ? `，月薪${now.salary}` : '，没有工资进账'}
+- 本事：${attrs}　行业口碑${now.信誉}　做人${now.人品}
+- 理想：这一年在这件事上的功夫${up ? (up.ideal >= 0 ? '+' + up.ideal : up.ideal) : now.ideal}，迈过的台阶一共${now.miles}级${up && up.miles ? `（今年迈了${up.miles}级）` : '（今年一级没迈）'}
+- 人：认识${now.npcs}个，真交心的${now.close}个${up && up.close ? `（今年多了${up.close}个）` : ''}${now.rifts ? `，还有${now.rifts}笔没了的梁子` : ''}
+- 身体：精力${now.energy}${now.chronic.length ? `，落下的毛病：${now.chronic.join('、')}` : '，还没落下什么毛病'}
+${now.biz ? `- 自己的摊子：${now.biz.name}，上个月净${now.biz.net}，口碑${now.biz.rep}，${now.biz.staff}个人手` : ''}
+${(S.era || []).length ? `- 这一年外面发生的：${S.era.map(e => e.text).join('；')}` : ''}
+
+写一篇 320-450 字的年终小结。要求：
+- 口气是他自己在年底回头看这一年，不是旁白，也不是总结报告。
+- 必须落在具体的事上：哪个月在干什么、谁走了谁来了、哪一笔钱花得肉疼、身体是怎么垮下去或者撑住的。
+- 数字可以提，但别罗列，别写成流水账。
+- 不许升华，不许"这一年我懂得了"，不许展望明年。结尾停在一个具体的场面上就行。
+
+只输出一个合法 JSON：
+{"narrative":"年终小结","summary":"一句话概括这一年（20字内）","options":["明年开头能做的四件事，每条12字内"]}`;
+}
+
 /* ---- 饭碗与借钱 ---- */
 function doQuit() {
   if (!confirm('辞了？下个月起没有工资，房租照交。')) return;
@@ -1243,7 +1392,15 @@ async function exportBook() {
   try { rows = await bookAll(S.runId); } catch (_) { }
   const html = rows.length ? rows.map(r => r.html).join('') : S.chapters.join('');
   const div = document.createElement('div'); div.innerHTML = html;
-  const out = [`# ${S.player.name}　${S.startDate.y}年—${S.date.y}年`, `> ${S.player.ideal}`, ''];
+  const done = [];
+  for (const st of S.ideal.stages) for (const m of st.milestones) if (m.done) done.push(`${m.doneDate || ''} ${m.title}`);
+  const out = [`# ${S.player.name}　${S.startDate.y}年—${S.date.y}年`, '', `> ${S.player.ideal}`, '',
+    `${S.player.age}岁｜${S.city}｜${S.player.job}｜存款 ${S.player.money}`,
+    done.length ? `\n**迈过的台阶**：${done.join('；')}` : '', ''];
+  for (const y of (S.years || [])) {
+    out.push(`## ${y.y}年 · 年终`, '', y.text, '');
+  }
+  if ((S.years || []).length) out.push('---', '');
   div.querySelectorAll('.chapter').forEach(c => {
     const hd = c.querySelector('.chapmark'), tm = c.querySelector('.chaptime'), ac = c.querySelector('.action-echo');
     out.push('## ' + (hd ? hd.textContent.trim() : '') + (tm ? '　' + tm.textContent.trim() : ''));
