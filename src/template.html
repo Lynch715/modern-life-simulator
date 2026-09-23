@@ -58,8 +58,10 @@
 html{-webkit-text-size-adjust:100%}
 html,body{margin:0;height:100%;background:var(--page);color:var(--ink);
   font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
-body{display:flex;justify-content:center;align-items:stretch}
-#app{width:100%;max-width:520px;height:100dvh;display:flex;flex-direction:column;background:var(--bg);
+html,body{overflow:hidden;overscroll-behavior:none}
+/* 把整页钉死：iOS 上页面本身不该能被拖动，只让里面的剧情、面板、聊天自己滚 */
+body{display:flex;justify-content:center;align-items:stretch;position:fixed;inset:0;width:100%}
+#app{width:100%;max-width:520px;height:100%;display:flex;flex-direction:column;background:var(--bg);
   border-left:1px solid var(--line);border-right:1px solid var(--line);position:relative;overflow:hidden;overflow:clip}
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 input,select{font:inherit;color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
@@ -86,7 +88,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #topSub:empty{display:none}
 
 /* 叙事流 */
-#story{flex:1;min-height:38vh;overflow-y:auto;padding:14px 16px 4px;scroll-behavior:smooth}
+#story{flex:1;min-height:38vh;overflow-y:auto;overscroll-behavior:contain;padding:14px 16px 4px;scroll-behavior:smooth}
 .chapter{margin-bottom:22px;animation:fade .5s ease}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .chaphead{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
@@ -119,7 +121,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .ended{padding:14px;text-align:center;color:var(--gold);font-size:14px}
 
 /* 行动区 */
-#acts{flex:none;padding:7px 13px 5px;border-top:1px solid var(--line);background:var(--bar);max-height:38vh;overflow-y:auto}
+#acts{flex:none;padding:7px 13px 5px;border-top:1px solid var(--line);background:var(--bar);max-height:38vh;overflow-y:auto;overscroll-behavior:contain}
 .act-btn{display:block;width:100%;text-align:left;padding:6px 12px;margin-bottom:4px;border-radius:9px;
   background:var(--btn);border:1px solid var(--line);font-size:13px;line-height:1.5;transition:.15s}
 .act-btn:active{background:var(--sel)}
@@ -150,7 +152,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #panel.on{transform:none}
 #panelHd{flex:none;display:flex;justify-content:flex-end;padding:calc(10px + env(safe-area-inset-top)) 14px 0}
 #panelClose{font-size:22px;color:var(--dim);line-height:1;padding:4px 8px}
-#panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px}
+#panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px;overscroll-behavior:contain}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
 .cardhd{font-size:12px;color:var(--dim);margin-bottom:8px}
 .big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -207,7 +209,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #chatName{font-size:15px;cursor:pointer}
 .tapcard{font-style:normal;font-size:10.5px;color:var(--dim2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle}
 #chatSub{font-size:11px;color:var(--dim2);margin-top:2px}
-#chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px}
+#chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px;overscroll-behavior:contain}
 .bub{max-width:76%;padding:9px 12px;border-radius:13px;margin-bottom:10px;font-size:14.5px;line-height:1.65;position:relative;white-space:pre-wrap}
 .bub.ta{background:var(--ta);border:1px solid var(--line);border-top-left-radius:4px}
 .bub.me{background:var(--me);border:1px solid var(--goldLine);margin-left:auto;border-top-right-radius:4px}
@@ -257,7 +259,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .kbar:last-child{margin-bottom:0}
 .kbar span{width:52px;font-size:11.5px;color:var(--dim)}
 .kbar em{width:22px;text-align:right;font-style:normal;font-size:11px;color:var(--dim2);font-variant-numeric:tabular-nums}
-#keyLog{flex:1;overflow-y:auto;padding:12px 14px}
+#keyLog{flex:1;overflow-y:auto;padding:12px 14px;overscroll-behavior:contain}
 .krd{border-left:2px solid var(--line);padding:2px 0 8px 10px;margin-bottom:10px}
 .krd b{font-size:13.5px;font-weight:600}
 .krd span{font-size:11.5px;margin-left:8px}
@@ -289,7 +291,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   display:none;align-items:center;justify-content:center;
   padding:calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom))}
 .mask.on{display:flex}
-.box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px}
+.box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px;overscroll-behavior:contain}
 .box h2{margin:0 0 16px;font-size:18px;font-weight:600}
 .frow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .frow.col{flex-direction:column;align-items:stretch;gap:6px}

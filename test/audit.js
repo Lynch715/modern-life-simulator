@@ -543,8 +543,10 @@ const SEG = n => ({
   await pg.click('#npcBox button:has-text("把话挑明")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
   await pg.evaluate(() => { S.key.interest = 75; S.key.guard = 28; });
-  await pg.click('.kmove[data-m="共情"]');
-  await pg.waitForTimeout(80);
+  for (let i = 0; i < 8 && await pg.evaluate(() => S.key && !S.key.over); i++) {   // 掷骰有随机，一招不一定谈完
+    const btn = await pg.$('.kmove:not([disabled])'); if (!btn) break;
+    await btn.click(); await pg.waitForTimeout(80);
+  }
   await pg.click('#keyEnd');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   console.log('挑明：', await pg.evaluate(() => { const P = ENGINE.partnerOf(S); return P ? `${P.name}／${P.stage}／热乎${Math.round(P.warm)}` : '没成'; }));

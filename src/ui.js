@@ -2114,6 +2114,25 @@ function boot() {
   $('chatDone').onclick = () => endConvo(true);
   // 输入框拿到焦点时浏览器会把整个壳子顶上去，这里按回去
   $('app').addEventListener('scroll', () => { const a = $('app'); a.scrollTop = 0; a.scrollLeft = 0; }, { passive: true });
+  // iOS 老版本不认 overscroll-behavior：手指落在不能滚的地方就不让它拖；落在能滚的框里，滚到头也不把整页带起来
+  let tY = 0;
+  document.addEventListener('touchstart', e => { tY = e.touches[0].clientY; }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length > 1) return;
+    const dy = e.touches[0].clientY - tY;
+    let el = e.target;
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) {
+        const atTop = el.scrollTop <= 0, atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+        if ((dy > 0 && atTop) || (dy < 0 && atEnd)) e.preventDefault();
+        return;
+      }
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') return;
+      el = el.parentElement;
+    }
+    e.preventDefault();
+  }, { passive: false });
   window.addEventListener('pagehide', saveGame);
   window.addEventListener('beforeunload', saveGame);
   if (!loadGame()) { renderStart(); mask('startMask', true); }
