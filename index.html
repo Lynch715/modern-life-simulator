@@ -1,0 +1,2635 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#101218"/>
+<title>现代生活模拟器</title>
+<link rel="icon" href="favicon.ico" sizes="any"/>
+<link rel="icon" type="image/png" sizes="32x32" href="icon/icon-32.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="icon/icon-180.png"/>
+<link rel="manifest" href="site.webmanifest"/>
+<meta name="apple-mobile-web-app-title" content="现代生活"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="description" content="接入你自己的大模型，在一座虚构的城市里从22岁开始，把想干成的事一点点干起来。"/>
+<style>
+:root{
+  --bg:#0f1116; --bg2:#161922; --line:#242936; --ink:#e7e4de; --dim:#8d94a6; --dim2:#616a7e;
+  --gold:#d6a25e; --good:#6fb894; --bad:#d4736b; --sel:#2b3242;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#07080b;color:var(--ink);
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
+body{display:flex;justify-content:center;align-items:stretch}
+#app{width:100%;max-width:520px;height:100dvh;display:flex;flex-direction:column;background:var(--bg);
+  border-left:1px solid var(--line);border-right:1px solid var(--line);position:relative;overflow:hidden;overflow:clip}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input,select{font:inherit;color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+input:focus,select:focus{border-color:var(--gold)}
+h3{margin:2px 0 10px;font-size:17px;font-weight:600}
+h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
+
+/* 顶栏 */
+#top{padding:10px 14px 8px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#151822,#0f1116);flex:none}
+#topRow1{display:flex;align-items:center;gap:10px}
+#topDate{font-size:13px;color:var(--dim);flex:1}
+.kv{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.kv.bad{color:var(--bad)}
+#topBtn{width:26px;height:26px;opacity:.7}
+#topRow2{display:flex;align-items:center;gap:8px;margin-top:7px}
+.bar{flex:1;height:5px;border-radius:4px;background:#222634;overflow:hidden}
+.bar-in{height:100%;background:var(--gold);transition:width .4s}
+.bar-in.good{background:var(--good)} .bar-in.bad{background:var(--bad)}
+#enNum{font-size:11px;color:var(--dim2);width:22px;text-align:right;font-variant-numeric:tabular-nums}
+#topSub{font-size:11px;color:var(--dim2);margin-top:5px;min-height:14px}
+
+/* 叙事流 */
+#story{flex:1;overflow-y:auto;padding:16px 16px 4px;scroll-behavior:smooth}
+.chapter{margin-bottom:26px;animation:fade .5s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.chaphead{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.chapmark{font-size:14px;color:var(--gold);letter-spacing:.5px}
+.chaptime{font-size:11px;color:var(--dim2)}
+.action-echo{margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--gold);background:#171b25;
+  font-size:13px;color:var(--dim);border-radius:0 6px 6px 0}
+.dicebar{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.die{font-size:11px;padding:3px 8px;border-radius:20px;background:#1b2030;color:var(--dim);border:1px solid var(--line)}
+.die.good{color:var(--good);border-color:#2c4b3f} .die.bad{color:var(--bad);border-color:#4b2f2d}
+.die.great{color:var(--gold);border-color:#4d3b22}
+.ntext{margin-top:12px;font-size:15.5px;line-height:1.95;font-family:"Songti SC","Noto Serif SC",Georgia,serif;letter-spacing:.2px}
+.ntext p{margin:0 0 14px;text-indent:2em}
+.ntext p.typing{color:var(--dim2)}
+.ended{padding:14px;text-align:center;color:var(--gold);font-size:14px}
+
+/* 行动区 */
+#acts{flex:none;padding:9px 13px 7px;border-top:1px solid var(--line);background:#12151d;max-height:40vh;overflow-y:auto}
+.act-btn{display:block;width:100%;text-align:left;padding:9px 12px;margin-bottom:6px;border-radius:9px;
+  background:#1a1f2b;border:1px solid var(--line);font-size:13.5px;transition:.15s}
+.act-btn:active{background:var(--sel)}
+.act-btn:disabled{opacity:.4}
+.act-row{display:flex;gap:7px;margin-top:2px}
+.act-row input{flex:1;font-size:14px}
+.act-go{padding:8px 13px;border-radius:8px;background:var(--gold);color:#17191f;font-size:13.5px;font-weight:600;flex:none}
+.act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:#161a23;color:var(--dim);font-size:13.5px;flex:none}
+.act-row input{min-width:0}
+.ghost{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:#161a23;width:100%}
+.ghost.sm{width:auto;padding:7px 10px}
+
+/* 底部 tab */
+#tabs{flex:none;display:flex;border-top:1px solid var(--line);background:#0d0f14;padding-bottom:env(safe-area-inset-bottom)}
+.tab{flex:1;padding:8px 0 9px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:10.5px}
+.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tab.on{color:var(--gold)}
+
+/* 面板 */
+#panel{position:absolute;left:0;right:0;top:0;bottom:0;background:var(--bg);z-index:20;
+  transform:translateY(100%);transition:transform .25s ease;display:flex;flex-direction:column}
+#panel.on{transform:none}
+#panelHd{flex:none;display:flex;justify-content:flex-end;padding:10px 14px 0}
+#panelClose{font-size:22px;color:var(--dim);line-height:1;padding:4px 8px}
+#panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.cardhd{font-size:12px;color:var(--dim);margin-bottom:8px}
+.big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.big.bad{color:var(--bad)}
+.tip{font-size:12px;color:var(--dim2);line-height:1.7;margin-top:4px}
+.lines>div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #20242f;font-size:13.5px}
+.lines>div:last-child{border:none}
+.lines b{font-weight:400;color:var(--dim)}
+.lines span{font-variant-numeric:tabular-nums}
+.lines .sum{margin-top:4px;border-top:1px solid var(--line);padding-top:8px}
+.lines .good{color:var(--good)} .lines .bad{color:var(--bad)}
+.li{padding:7px 0;border-bottom:1px dashed #20242f;font-size:13.5px}
+.li:last-child{border:none}
+.li span{color:var(--dim2);font-size:12px}
+.rel{float:right;color:var(--gold)!important}
+.rel.bad{color:var(--bad)!important}
+.msgs .msg{background:#171b25;border-radius:10px;padding:9px 12px;margin-bottom:8px}
+.mfrom{font-size:12px;color:var(--gold);display:flex;justify-content:space-between}
+.mfrom span{color:var(--dim2)}
+.mtext{font-size:14px;margin-top:4px;line-height:1.6}
+.sched{margin-bottom:10px}
+.schedhd{font-size:12px;color:var(--dim);margin-bottom:6px}
+.schedrow{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.schedrow span{width:34px;font-size:13px;color:var(--dim)}
+.schedrow select{flex:1;padding:7px 9px;font-size:13.5px}
+
+/* 聊天 */
+#chat{position:absolute;inset:0;background:var(--bg);z-index:25;display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .22s ease}
+#chat.on{transform:none}
+#chatHd{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:#141822}
+#chatHd>div{flex:1}
+#chatBack{font-size:24px;color:var(--dim);line-height:1;padding:0 6px}
+#chatDone{font-size:12.5px;color:var(--gold);border:1px solid #4d3b22;border-radius:14px;padding:5px 10px}
+#chatName{font-size:15px}
+#chatSub{font-size:11px;color:var(--dim2);margin-top:2px}
+#chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px}
+.bub{max-width:76%;padding:9px 12px;border-radius:13px;margin-bottom:10px;font-size:14.5px;line-height:1.65;position:relative;white-space:pre-wrap}
+.bub.ta{background:#1d2230;border:1px solid var(--line);border-top-left-radius:4px}
+.bub.me{background:#3b3320;border:1px solid #4d3b22;margin-left:auto;border-top-right-radius:4px}
+.bub.typing{color:var(--dim2)}
+.bub i{display:block;font-style:normal;font-size:11px;color:var(--dim2);margin-top:4px}
+.sysline{text-align:center;font-size:11.5px;color:var(--dim2);margin:8px 0 14px;font-variant-numeric:tabular-nums}
+#chatFoot{flex:none;display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--line);background:#12151d;padding-bottom:calc(9px + env(safe-area-inset-bottom))}
+#chatFoot input{flex:1;min-width:0}
+.thread{background:#171b25;border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer}
+.thread:active{background:#1d2230}
+.mfrom em{font-style:normal;color:var(--dim2);margin-left:6px}
+.mtext.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);vertical-align:middle}
+.li u{text-decoration:none;color:var(--bad)}
+
+/* 关键局 */
+#key{position:absolute;inset:0;background:var(--bg);z-index:26;display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .25s ease}
+#key.on{transform:none}
+#keyHd{flex:none;padding:12px 14px 10px;border-bottom:1px solid var(--line);background:#141822}
+#keyTitle{font-size:16px;color:var(--gold)}
+#keySub{font-size:12px;color:var(--dim2);margin-top:3px;line-height:1.5}
+#keyBars{flex:none;padding:10px 14px;border-bottom:1px solid var(--line);background:#12151d}
+.kbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.kbar:last-child{margin-bottom:0}
+.kbar span{width:52px;font-size:11.5px;color:var(--dim)}
+.kbar em{width:22px;text-align:right;font-style:normal;font-size:11px;color:var(--dim2);font-variant-numeric:tabular-nums}
+#keyLog{flex:1;overflow-y:auto;padding:12px 14px}
+.krd{border-left:2px solid var(--line);padding:2px 0 8px 10px;margin-bottom:10px}
+.krd b{font-size:13.5px;font-weight:600}
+.krd span{font-size:11.5px;margin-left:8px}
+.krd span.good{color:var(--good)} .krd span.bad{color:var(--bad)}
+.krd i{font-style:normal;font-size:11.5px;color:var(--gold);margin-left:8px}
+#keyMoves{flex:none;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:9px 13px;border-top:1px solid var(--line);background:#12151d;
+  padding-bottom:calc(9px + env(safe-area-inset-bottom))}
+.kmove{text-align:left;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:#1a1f2b}
+.kmove:active{background:var(--sel)}
+.kmove.dead{opacity:.35}
+.kmove b{display:block;font-size:13.5px}
+.kmove i{display:block;font-style:normal;font-size:10.5px;color:var(--dim2);margin-top:2px;line-height:1.35}
+.kmove u{display:block;text-decoration:none;font-size:10px;color:var(--dim2);margin-top:3px}
+#keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:14px}
+.mile{padding:9px 0;border-bottom:1px dashed #20242f}
+.mile:last-child{border:none}
+.mile.done .mtitle{color:var(--dim2)}
+.mile.cur{background:#1b1f2a;margin:0 -8px;padding:10px 8px;border-radius:8px;border:none}
+.mtitle{font-size:14px;display:flex;justify-content:space-between}
+.mtitle span{font-size:11px;color:var(--dim2)}
+.tip.dim{opacity:.7}
+.primary.sm{width:100%;padding:9px;border-radius:8px;font-size:13.5px}
+
+/* 弹层 */
+.mask{position:absolute;inset:0;background:rgba(6,7,10,.86);backdrop-filter:blur(3px);z-index:40;
+  display:none;align-items:center;justify-content:center;padding:18px}
+.mask.on{display:flex}
+.box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px}
+.box h2{margin:0 0 16px;font-size:18px;font-weight:600}
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.frow.col{flex-direction:column;align-items:stretch;gap:6px}
+.frow label{width:58px;font-size:13px;color:var(--dim);flex:none}
+.frow input{flex:1}
+.segs{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+.segs.wrap{gap:5px}
+.seg{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:#141821}
+.seg.on{border-color:var(--gold);color:var(--gold);background:#1e1a14}
+.hint{font-size:12px;color:var(--dim2);line-height:1.7;margin:-2px 0 14px}
+.btns{display:flex;gap:8px;margin-top:16px}
+.btns button{flex:1;padding:10px;border-radius:9px;font-size:14px}
+.primary{background:var(--gold);color:#17191f;font-weight:600}
+#busy{position:absolute;left:0;right:0;bottom:0;top:0;display:none;align-items:flex-end;justify-content:center;
+  pointer-events:none;z-index:30;padding-bottom:calc(40vh + 20px)}
+#busy.on{display:flex}
+#busyTxt{background:#1b2030;border:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:7px 14px;border-radius:20px}
+#newver{position:absolute;left:12px;right:12px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:55;
+  display:none;align-items:center;gap:8px;background:#22283a;border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+#newver.on{display:flex}
+#newver span{flex:1;font-size:13px}
+#newver button{font-size:12.5px;padding:6px 11px;border-radius:8px;border:1px solid var(--line)}
+#newverGo{background:var(--gold);color:#17191f;font-weight:600;border-color:transparent}
+#toast{position:absolute;left:50%;top:70px;transform:translate(-50%,-14px);background:#22283a;border:1px solid var(--line);
+  color:var(--ink);font-size:13px;padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+.range{width:100%;accent-color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div id="topRow1">
+      <span id="topDate">—</span>
+      <span class="kv" id="topMoney">¥0</span>
+      <button id="topBtn" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </div>
+    <div id="topRow2"><div class="bar"><div class="bar-in" id="enBar" style="width:78%"></div></div><span id="enNum">78</span></div>
+    <div id="topSub"></div>
+  </header>
+
+  <main id="story"></main>
+  <div id="acts"></div>
+
+  <footer id="tabs">
+    <button class="tab" data-t="today"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>今天</button>
+    <button class="tab" data-t="msg"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3 1.2-4.2A8 8 0 1 1 21 12z"/></svg>消息</button>
+    <button class="tab" data-t="ideal"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 3.5L16 11H5"/></svg>理想</button>
+    <button class="tab" data-t="book"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 8h7M8 12h7"/></svg>账本</button>
+    <button class="tab" data-t="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-4 3.2-6.5 7-6.5s7 2.5 7 6.5"/></svg>我</button>
+  </footer>
+
+  <section id="panel">
+    <div id="panelHd"><button id="panelClose">×</button></div>
+    <div id="panelBody"></div>
+  </section>
+
+  <div id="newver"><span>有新版本</span><button id="newverGo">刷新</button><button id="newverNo">回头再说</button></div>
+  <div id="busy"><span id="busyTxt"></span></div>
+  <div id="toast"></div>
+
+  <section id="chat">
+    <div id="chatHd">
+      <button id="chatBack">‹</button>
+      <div><div id="chatName">—</div><div id="chatSub"></div></div>
+      <button id="chatDone">聊完了</button>
+    </div>
+    <div id="chatBody"></div>
+    <div id="chatFoot"><input id="chatIn" placeholder="说点什么" maxlength="60"/><button class="act-go" id="chatSend">发</button></div>
+  </section>
+
+  <section id="key">
+    <div id="keyHd"><div><div id="keyTitle">—</div><div id="keySub"></div></div></div>
+    <div id="keyBars"></div>
+    <div id="keyLog"></div>
+    <div id="keyMoves"></div>
+    <button id="keyEnd" class="primary" style="display:none"></button>
+  </section>
+
+  <div class="mask" id="npcMask"><div class="box" id="npcBox"></div></div>
+
+  <div class="mask" id="startMask"><div class="box" id="startBox"></div></div>
+
+  <div class="mask" id="setMask"><div class="box">
+    <h2>设置</h2>
+    <div class="frow"><label>接口</label><input id="cfgBase" placeholder="https://api.deepseek.com"/></div>
+    <div class="frow"><label>密钥</label><input id="cfgKey" type="password" placeholder="sk-..."/></div>
+    <div class="frow"><label>模型</label><input id="cfgModel" placeholder="deepseek-chat"/></div>
+    <div class="hint">任何 OpenAI 兼容接口都行。密钥只存在这台设备的浏览器里。</div>
+    <div id="setFreeWrap"><div class="frow"><label>口径</label><div class="segs" id="setFree"></div></div>
+    <div class="hint">随时可改，改完下一段就按新口径走。</div></div>
+    <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
+    <div class="btns"><button class="ghost" id="instOpen">装到桌面</button><button class="ghost" id="setRestart">重开一局</button></div>
+  </div></div>
+
+  <div class="mask" id="instMask"><div class="box">
+    <h2>装到桌面</h2>
+    <div id="instBody"></div>
+    <div class="btns"><button class="ghost" id="instLater">以后再说</button><button class="primary" id="instGo">装上</button></div>
+  </div></div>
+
+  <div class="mask" id="focusMask"><div class="box">
+    <h2>闷头做一件事</h2>
+    <div class="frow col"><label>做什么</label><input id="fcWhat" maxlength="24" placeholder="把小说的前三章写完 / 备考 / 装修店面"/></div>
+    <div class="frow"><label>投入</label><input class="range" id="fcDays" type="range" min="3" max="60" value="10"/><span id="fcDaysN" style="width:34px;text-align:right">10</span>天</div>
+    <div class="hint">这些天里你基本只顾这一件事，精力会掉，中间可能被人或事打断。到点了引擎判一次成败。</div>
+    <div class="btns"><button class="ghost" id="fcClose">算了</button><button class="primary" id="fcGo">开始</button></div>
+  </div></div>
+</div>
+
+<script>
+/* ===== 现代生活模拟器 · 引擎（无 DOM，可在 node 里直接跑） ===== */
+(function(root){
+'use strict';
+
+const SAVE_VERSION = 1;
+
+/* ---------- 基础 ---------- */
+const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const r2 = v => Math.round(v * 100) / 100;
+
+/* ---------- 出身 / 城市 / 自由度 / 赛道 ---------- */
+const ORIGINS = {
+  '家里托底': { money: 30000, remit: 0, subsidy: 1200, rentCut: 0.5, retreat: true,
+    desc: '爸妈在老家有房有退休金，房租他们帮着出一半，每月还给你打点钱。你可以不慌，但也总有人问你什么时候回去考个编。' },
+  '普通家庭': { money: 8000, remit: 0, subsidy: 0, rentCut: 1, retreat: true,
+    desc: '家里供你念完了书，往后就得靠你自己。手头这点钱，够撑两个月。' },
+  '一人进城': { money: 2000, remit: 900, subsidy: 0, rentCut: 1, retreat: false,
+    desc: '你是家里第一个出来的，每月还得往回寄一点。没有退路，也没人兜底。' }
+};
+
+const CITIES = {
+  '一线': { rent: 2600, living: 2400, pay: 6300, dense: 1.25, desc: '机会多，人也多，房租能吃掉你小半个月工资。' },
+  '新一线': { rent: 1700, living: 1800, pay: 4800, dense: 1.0, desc: '不上不下的地方，日子能过，风口小一些。' },
+  '老家县城': { rent: 700, living: 1200, pay: 3000, dense: 0.62, desc: '花销低，熟人多，想干点新鲜事没什么人接得住。' }
+};
+
+const FREEDOM = {
+  '心想事成': { check: 15, cost: 0.4, badMul: 0.45, growth: 1.35,
+    tone: '【本局口径】心想事成：主角运气极好，玩家自己写的行动只要不荒诞就当作做成了，失败也写成有惊无险。代价从轻，别让人难受。' },
+  '都市传奇': { check: 6, cost: 0.7, badMul: 0.75, growth: 1.15,
+    tone: '【本局口径】都市传奇：比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。' },
+  '写实人生': { check: 0, cost: 1, badMul: 1, growth: 1,
+    tone: '【本局口径】写实人生：概率贴着现实来。跳槽大多只涨一点，创业大概率黄，贵人不常有，好事不扎堆。别写爽文。' }
+};
+
+const TRACKS = {
+  '创作':   { skill: '笔力', ph: '写出一本有人愿意掏钱买的书' },
+  '创业':   { skill: '经营', ph: '做出一个能养活自己和几个人的东西' },
+  '手艺':   { skill: '手艺', ph: '开一家自己的店，做的东西有人专程来吃' },
+  '职场':   { skill: '业务', ph: '做到能自己拍板的位置' },
+  '科研':   { skill: '研究', ph: '把一个问题真正解决掉，署自己的名' },
+  '表演':   { skill: '台风', ph: '站上一个像样的舞台，底下坐满人' },
+  '教书':   { skill: '教学', ph: '教出一批真正被我改变过的人' },
+  '公益':   { skill: '组织', ph: '把一件没人管的事管起来' },
+  '把家过好': { skill: '持家', ph: '有个踏实的小家，谁都不必再漂着' }
+};
+
+/* ---------- 日程 ---------- */
+const SLOTS = ['早', '白天', '晚上', '深夜'];
+const ACTS = {
+  '主业': { en: -9,  gain: { '专业': 0.03 }, work: 1 },
+  '理想': { en: -8,  gain: { '专业': 0.028 }, ideal: 1 },
+  '人情': { en: -5,  gain: { '表达': 0.028 }, social: 1 },
+  '身心': { en: 6,   gain: { '体能': 0.03, '情绪': 0.014 } },
+  '学习': { en: -7,  gain: { '谋划': 0.028, '专业': 0.018 } },
+  '闲着': { en: 4,   gain: {} },
+  '睡觉': { en: 0,   gain: {}, sleep: 1 }
+};
+const SLEEP_EN = { '早': 5, '白天': 6, '晚上': 7, '深夜': 14 };
+const ATTRS = ['专业', '表达', '谋划', '情绪', '体能'];
+
+const DEF_SCHEDULE = {
+  work: { '早': '睡觉', '白天': '主业', '晚上': '理想', '深夜': '睡觉' },
+  rest: { '早': '睡觉', '白天': '身心', '晚上': '人情', '深夜': '睡觉' }
+};
+
+/* ---------- 日期 ---------- */
+const WD = ['日', '一', '二', '三', '四', '五', '六'];
+function dOf(s) { return new Date(s.y, s.m - 1, s.d); }
+function fromDate(dt) { return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() }; }
+function addDays(s, n) { const dt = dOf(s); dt.setDate(dt.getDate() + n); return fromDate(dt); }
+function wdOf(s) { return WD[dOf(s).getDay()]; }
+function isRest(s) { const w = dOf(s).getDay(); return w === 0 || w === 6; }
+function dateStr(s) { return `${s.y}年${s.m}月${s.d}日 星期${wdOf(s)}`; }
+function shortDate(s) { return `${s.m}月${s.d}日`; }
+function daysBetween(a, b) { return Math.round((dOf(b) - dOf(a)) / 86400000); }
+// 节日：只挑对生活真有影响的几个
+function festivalOf(s) {
+  if (s.m === 1 && s.d === 1) return '元旦';
+  if (s.m === 2 && s.d === 14) return '情人节';
+  if (s.m === 5 && s.d === 1) return '劳动节';
+  if (s.m === 10 && s.d === 1) return '国庆';
+  if (s.m === 12 && s.d === 31) return '除夕前后';  // 农历不算，粗略给个年关
+  return null;
+}
+
+/* ---------- 骰 ---------- */
+const mkRng = seed => {
+  let x = seed >>> 0 || 88172645;
+  return () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; };
+};
+const d20 = rng => 1 + Math.floor(rng() * 20);
+const rollMod = r => Math.round((r - 10.5) * 4);
+const rnd = (rng, a, b) => a + Math.floor(rng() * (b - a + 1));
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+function fateInfo(r) {
+  if (r <= 3) return { label: '大凶', cls: 'bad', desc: '这几天走背字，事情横生变故' };
+  if (r <= 8) return { label: '不顺', cls: 'bad', desc: '不太顺当，有小挫折或小代价，收获打折' };
+  if (r <= 14) return { label: '平常', cls: '', desc: '按常理发展，不好不坏' };
+  if (r <= 18) return { label: '顺遂', cls: 'good', desc: '事情顺利，略有收获' };
+  return { label: '大吉', cls: 'great', desc: '意外之喜：贵人、机会、横财、被人看见，须与眼下的事相合' };
+}
+
+function fdm(S) { return FREEDOM[S.freedom] || FREEDOM['写实人生']; }
+
+function attrVal(S, name) {
+  const p = S.player;
+  let v = num(p.attrs[name]);
+  if (p.energy < 30) v -= Math.round((30 - p.energy) * 0.5);
+  if (S.broke) v -= 6;
+  v += fdm(S).check;
+  return Math.round(v);
+}
+
+function rollCheck(S, attr, need, rng) {
+  const val = attrVal(S, attr);
+  const roll = d20(rng);
+  const total = val + rollMod(roll);
+  const dc = Math.max(20, num(need));
+  const crit = roll === 20 ? '大成功' : (roll === 1 ? '大失败' : '');
+  const success = roll === 20 ? true : (roll === 1 ? false : total >= dc);
+  return { attr, val, roll, mod: rollMod(roll), need: dc, total, success, crit };
+}
+
+/* ---------- 开局 ---------- */
+function newState(o) {
+  const city = CITIES[o.city] || CITIES['新一线'];
+  const org = ORIGINS[o.origin] || ORIGINS['普通家庭'];
+  const track = TRACKS[o.track] || TRACKS['职场'];
+  const startY = o.startYear || new Date().getFullYear();
+  const start = { y: startY, m: 7, d: 1 };
+  const pay = Math.round(city.pay * (0.82 + (o.payRoll || 0.3) * 0.26));
+  const attrs = { '专业': 22, '表达': 20, '谋划': 20, '情绪': 24, '体能': 30 };
+  return {
+    v: SAVE_VERSION,
+    runId: 'r' + startY + '-' + Math.floor((o.rngSeed || 1) % 100000),
+    seg: 0,
+    date: start, startDate: start,
+    freedom: o.freedom || '都市传奇',
+    origin: o.origin, city: o.city,
+    player: {
+      name: o.name || '无名', gender: o.gender || '男', age: 22,
+      track: o.track, skillName: track.skill,
+      ideal: o.ideal || track.ph,
+      job: o.job || '一份刚找到的活',
+      attrs: Object.assign({}, attrs),
+      attrF: Object.assign({}, attrs),
+      energy: 78,
+      money: org.money,
+      信誉: 8, 人品: 50,
+      资历天: 0
+    },
+    ledger: {
+      rent: Math.round(city.rent * org.rentCut), living: city.living,
+      remit: org.remit, subsidy: org.subsidy, salary: pay,
+      rentDay: 1, salaryDay: 10, loan: 0, base: pay
+    },
+    job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
+    debts: [],
+    schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
+    ideal: { progress: 0, stages: [] },
+    key: null,
+    npcs: [], peers: [], msgs: [], appts: [], unresolved: [],
+    status: [], chronic: [],
+    focus: null, stopWhen: null,
+    place: '', scene: null,
+    recent: [], history: [], volumes: [], chapters: [],
+    pending: null, lastOptions: [], lastAction: null, lastJudge: null,
+    stats: { segs: 0, days: 0, stops: {}, checks: 0, wins: 0, keys: 0, keyWins: 0 },
+    flags: { nightCnt: 0, cool: 0, firstPay: false, firstRent: false, lastPeer: 0, lastEvt: -99, monthNet: 0 },
+    broke: false, brokeMonths: 0, over: false, ending: null,
+    booted: false
+  };
+}
+
+/* ---------- 一天 ---------- */
+function todayPlan(S) {
+  const t = isRest(S.date) ? S.schedule.rest : S.schedule.work;
+  return SLOTS.map(sl => ({ slot: sl, act: t[sl] || '闲着' }));
+}
+
+function growAttr(S, name, amt) {
+  const p = S.player;
+  const cur = num(p.attrF[name]);
+  const room = Math.max(0.08, 1 - cur / 100);
+  const gain = amt * room * fdm(S).growth * (p.energy >= 40 ? 1 : 0.6);
+  p.attrF[name] = r2(cur + gain);
+  p.attrs[name] = Math.round(p.attrF[name]);
+}
+
+// 跑一天。返回这天攒下的小事（不一定停）
+function dayTick(S, rng) {
+  const ev = [];
+  const p = S.player;
+  const plan = todayPlan(S);
+  let en = -6, slept = 0;   // 活着本身的消耗
+
+  for (const it of plan) {
+    const a = ACTS[it.act] || ACTS['闲着'];
+    if (a.sleep) { slept++; en += Math.round((SLEEP_EN[it.slot] || 8) * (slept >= 3 ? 0.4 : 1)); }
+    else {
+      en += a.en;
+      for (const k in a.gain) growAttr(S, k, a.gain[k]);
+      if (a.work) p.资历天 = (p.资历天 || 0) + 1;
+      if (a.ideal) S.ideal.progress = r2(S.ideal.progress + 0.6 + p.attrs['专业'] / 150);
+      if (a.social) S.flags.socialToday = 1;
+    }
+    if (it.slot === '深夜' && !a.sleep) { en -= 7; S.flags.nightCnt++; }
+  }
+  jobTick(S, plan);
+
+  if (S.focus) {   // 投入期间压榨自己
+    const f = S.focus;
+    const eff = 1 + (p.attrs[f.attr] || 20) / 80 + (p.energy > 60 ? 0.2 : -0.2);
+    f.progress = r2(f.progress + eff);
+    f.left--;
+    en -= 3;
+  }
+  for (const st of S.status) { en -= 3; st.days--; }
+  const healed = S.status.filter(s => s.days <= 0);
+  if (healed.length) { S.status = S.status.filter(s => s.days > 0); for (const h of healed) ev.push({ t: '身体', s: `${h.name}好了` }); }
+
+  p.energy = clamp(Math.round(p.energy + en), 0, 100);
+
+  // 关系自己凉：越久没来往掉得越快，家里人和天天见面的慢一些
+  for (const n of S.npcs) {
+    if (n.rel == null) continue;
+    const gap = S.stats.days - (n.lastSeen || 0);
+    if (S.flags.socialToday && n.close) { n.rel = r2(Math.min(100, n.rel + 0.35)); continue; }
+    if (gap < 7) continue;
+    let rate = gap > 60 ? 0.11 : gap > 25 ? 0.07 : 0.035;
+    if (n.close) rate *= 0.5;
+    n.rel = r2(Math.max(0, n.rel - rate));
+  }
+  S.flags.socialToday = 0;
+
+  // 熬夜和低精力要还
+  if (p.energy < 25 && rng() < 0.09 && !S.status.some(s => s.name === '感冒')) {
+    S.status.push({ name: '感冒', desc: '扛不住了，嗓子先坏的', days: rnd(rng, 3, 6) });
+    return { ev, stop: { kind: '身体', detail: '撑不住病倒了' } };
+  }
+  if (S.flags.nightCnt >= 12 && !S.status.some(s => s.name === '失眠')) {
+    S.flags.nightCnt = 0;
+    S.status.push({ name: '失眠', desc: '作息彻底乱了，躺下就是睁着眼', days: rnd(rng, 8, 16) });
+    return { ev, stop: { kind: '身体', detail: '连着熬，睡不着了' } };
+  }
+
+  return { ev, stop: null };
+}
+
+/* ---------- 月度收支（挂在日历上） ---------- */
+function moneyTick(S, rng) {
+  const L = S.ledger, p = S.player, d = S.date, ev = [];
+  let stop = null;
+  if (d.d === L.rentDay) {
+    const out = L.rent + L.living + L.remit;
+    p.money -= out;
+    S.flags.monthNet -= out;
+    ev.push({ t: '钱', s: `房租${L.rent}、生活${L.living}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
+    if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
+  }
+  if (d.d === L.salaryDay && !S.job.out) {
+    const inc = L.salary + L.subsidy;
+    p.money += inc;
+    S.flags.monthNet += inc;
+    ev.push({ t: '钱', s: `发了${L.salary}${L.subsidy ? `，家里又打来${L.subsidy}` : ''}` });
+    if (!S.flags.firstPay) { S.flags.firstPay = true; stop = { kind: '钱', detail: '第一笔自己挣的工资到账' }; }
+  }
+  if (d.d === L.salaryDay && S.job.out) {
+    if (L.subsidy) { p.money += L.subsidy; S.flags.monthNet += L.subsidy; ev.push({ t: '钱', s: `没有工资，家里打来${L.subsidy}` }); }
+    else ev.push({ t: '钱', s: '这个月没有工资' });
+  }
+  if (d.d === 28) {   // 月末看账
+    const net = S.flags.monthNet;
+    const floor = L.rent + L.living;
+    S.flags.monthNet = 0;
+    if (p.money < 0) {
+      S.broke = true; S.brokeMonths++;
+      stop = { kind: '钱', detail: `账上是负的（${p.money}），得想办法` };
+    } else if (p.money < floor) {
+      stop = { kind: '钱', detail: `剩下的钱撑不到下个月（${p.money}）` };
+    } else if (net < 0) {
+      stop = { kind: '钱', detail: `这个月倒贴了${-net}` };
+    } else { S.broke = false; }
+  }
+  return { ev, stop };
+}
+
+/* ---------- 同辈对照组 ---------- */
+const PEER_MOVES = [
+  ['升了职', ['转正了，组长', '今天起换了个title，活还是那些活']],
+  ['跳了家公司', ['下周入职新的地方，江湖再见', '换东家了，涨了一点']],
+  ['辞职去做自己的东西了', ['辞了。想清楚了，不干了', '最后一天，工位收拾干净了']],
+  ['拿到一笔钱', ['谈下来了，下周打款', '见了三个人，有一个给钱了']],
+  ['搬去了别的城市', ['搬走啦，有空来玩', '换个城市重来一次']],
+  ['结婚了', ['领证了', '下个月办酒，记得来']],
+  ['分手了', ['分了。别问', '一个人住了']],
+  ['买了房', ['签了，三十年', '钥匙拿到手了，空的，什么都没有']],
+  ['创业黄了', ['关了。欠的慢慢还', '散伙了，挺好的']],
+  ['回老家考编了', ['回去了，考编', '不折腾了']],
+  ['出了点成绩被人认识了', ['被人转了一圈，有点懵', '有人找我约稿了']],
+  ['生病歇了一阵', ['住了几天院，没大事', '歇了半个月，现在能下床了']]
+];
+function peerTick(S, rng) {
+  const ev = [];
+  if (!S.peers.length) return { ev, stop: null };
+  S.flags.lastPeer++;
+  if (S.flags.lastPeer < rnd(rng, 14, 32)) return { ev, stop: null };
+  S.flags.lastPeer = 0;
+  const pr = pick(rng, S.peers);
+  const [mv, says] = pick(rng, PEER_MOVES);
+  pr.track = (pr.track || []).concat([mv]).slice(-4);
+  ev.push({ t: '人情', s: `${pr.name}${mv}` });
+  S.msgs.push({ from: pr.name, text: pick(rng, says), date: shortDate(S.date), kind: 'peer', read: false });
+  S.msgs = S.msgs.slice(-80);
+  // 大动静才值得停下来
+  if (/升了职|拿到一笔钱|出了点成绩|买了房|结婚/.test(mv) && rng() < 0.45)
+    return { ev, stop: { kind: '人情', detail: `${pr.name}${mv}，消息传到你这儿` } };
+  return { ev, stop: null };
+}
+
+/* ---------- 认识的人主动找你 ---------- */
+function npcTick(S, rng) {
+  if (!S.npcs.length) return { ev: [], stop: null };
+  if (rng() > 0.03) return { ev: [], stop: null };
+  const cand = S.npcs.filter(n => {
+    const gap = S.stats.days - (n.lastSeen || 0);
+    return n.rel >= 25 && gap >= 18;
+  });
+  if (!cand.length) return { ev: [], stop: null };
+  cand.sort((a, b) => (a.lastSeen || 0) - (b.lastSeen || 0));
+  const n = cand[Math.min(cand.length - 1, Math.floor(rng() * 2))];
+  const gap = S.stats.days - (n.lastSeen || 0);
+  return { ev: [], stop: { kind: '找上门', detail: `${n.name}（${n.tie}）${gap}天没联系了，忽然来找你`, npc: n.name } };
+}
+
+/* ---------- 随机事件（只给种类，内容交给 LLM） ---------- */
+const EVT_TAGS = ['工作', '钱', '身体', '人情', '机会', '家里'];
+function evtChance(S) {
+  let p = 0.052;
+  const pl = S.player;
+  if (pl.energy < 35) p += 0.025;
+  if (S.unresolved.length >= 3) p += 0.02;
+  if (S.broke) p += 0.03;
+  p *= (CITIES[S.city] || CITIES['新一线']).dense;
+  return p;
+}
+function pickTag(S, rng) {
+  const w = { '工作': 3, '钱': 2, '身体': 1, '人情': 3, '机会': 2, '家里': 1.5 };
+  if (S.broke) w['钱'] += 3;
+  if (S.player.energy < 35) w['身体'] += 2;
+  if (S.focus) w['工作'] += 1;
+  let tot = 0; for (const k in w) tot += w[k];
+  let r = rng() * tot;
+  for (const k in w) { r -= w[k]; if (r <= 0) return k; }
+  return '人情';
+}
+
+/* ---------- 推进器：一天天跑，跑到该停为止 ---------- */
+function advance(S, opt) {
+  opt = opt || {};
+  const rng = opt.rng || Math.random;
+  const maxDays = opt.maxDays || 35;
+  const from = S.date;
+  const events = [];
+  let stop = null, days = 0;
+
+  while (days < maxDays) {
+    S.date = addDays(S.date, 1);
+    days++;
+    S.stats.days++;
+    if (S.flags.cool > 0) S.flags.cool--;
+
+    // 生日：开局那个月日
+    if (S.date.m === S.startDate.m && S.date.d === S.startDate.d && S.date.y > S.startDate.y) {
+      S.player.age = 22 + (S.date.y - S.startDate.y);
+      events.push({ t: '家里', s: `你${S.player.age}岁了` });
+    }
+
+    const day = dayTick(S, rng);
+    events.push(...day.ev);
+    if (day.stop) { stop = day.stop; break; }
+
+    const mon = moneyTick(S, rng);
+    events.push(...mon.ev);
+    if (mon.stop) { stop = mon.stop; break; }
+
+    const dt = debtTick(S);
+    events.push(...dt.ev);
+    if (dt.stop) { stop = dt.stop; break; }
+
+    // 季度考核
+    if (S.date.d === 26 && [3, 6, 9, 12].includes(S.date.m) && !S.job.out) {
+      const rv = review(S, rng);
+      if (rv) {
+        events.push({ t: '工作', s: rv.text });
+        S.lastReview = rv;
+        stop = { kind: '考核', detail: `${rv.kind}：${rv.text}`, review: rv };
+        break;
+      }
+    }
+
+    const fes = festivalOf(S.date);
+    if (fes) events.push({ t: '家里', s: fes + '到了' });
+
+    // 投入做完了
+    if (S.focus && S.focus.left <= 0) {
+      stop = { kind: '投入', detail: `${S.focus.what}这一摊子，到点了` };
+      break;
+    }
+
+    // 约好的事
+    const ap = S.appts.find(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done);
+    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title }; break; }
+
+    // 自设的停下条件
+    if (S.stopWhen && S.stopWhen.type === 'money' && S.player.money >= S.stopWhen.n) {
+      stop = { kind: '条件', detail: `存款到了${S.stopWhen.n}` }; S.stopWhen = null; break;
+    }
+
+    const nt = npcTick(S, rng);
+    if (nt.stop && S.flags.cool <= 0) { stop = nt.stop; break; }
+
+    const pe = peerTick(S, rng);
+    events.push(...pe.ev);
+    if (pe.stop && S.flags.cool <= 0) { stop = pe.stop; break; }
+
+    // 天命：偶尔掷一把，大吉大凶才停
+    if (S.flags.cool <= 0 && rng() < 0.022) {
+      const f = d20(rng);
+      if (f <= 3 || f >= 18) { stop = { kind: '运', detail: fateInfo(f).label, fate: f }; break; }
+    }
+
+    // 随机事件
+    if (S.flags.cool <= 0 && rng() < evtChance(S)) {
+      stop = { kind: '事', detail: pickTag(S, rng) };
+      break;
+    }
+  }
+
+  if (!stop) stop = { kind: '久', detail: '这么些天过去，日子太静了' };
+  S.flags.cool = 2;
+  S.stats.stops[stop.kind] = (S.stats.stops[stop.kind] || 0) + 1;
+  if (S.focus && S.focus.left <= 0) { /* 交给 UI 结算 */ }
+
+  return { from, to: S.date, days, events, stop };
+}
+
+/* ---------- 投入结算 ---------- */
+function settleFocus(S, rng) {
+  const f = S.focus;
+  if (!f) return null;
+  const need = f.need || (60 + f.days * 1.2);
+  const ck = rollCheck(S, f.attr, need - Math.min(40, f.progress * 0.8), rng || Math.random);
+  S.focus = null;
+  S.player.energy = clamp(S.player.energy - Math.round(f.days * 0.5 * fdm(S).cost), 0, 100);
+  if (f.ideal) S.ideal.progress = r2(S.ideal.progress + f.progress * 0.5);
+  return Object.assign({ what: f.what, days: f.days, progress: Math.round(f.progress) }, ck);
+}
+
+/* ---------- 吃 LLM 返回的 JSON ---------- */
+function applyTurn(S, d) {
+  d = d || {};
+  const p = S.player;
+  const pc = d.playerChanges || {};
+  if (pc.attributes) for (const k of ATTRS) if (num(pc.attributes[k])) {
+    p.attrF[k] = r2(clamp(num(p.attrF[k]) + num(pc.attributes[k]), 0, 100));
+    p.attrs[k] = Math.round(p.attrF[k]);
+  }
+  if (num(pc.energy)) p.energy = clamp(p.energy + num(pc.energy), 0, 100);
+  if (num(pc.money)) p.money += num(pc.money);
+  if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + num(pc.信誉), 0, 100);
+  if (num(pc.人品)) p.人品 = clamp(p.人品 + num(pc.人品), 0, 100);
+  if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + num(pc.idealProgress));
+  if (pc.job) p.job = String(pc.job).slice(0, 30);
+  if (num(pc.salary)) S.ledger.salary = Math.max(0, num(pc.salary));
+  if (d.newJob && d.newJob.employer) takeJob(S, d.newJob);
+
+  for (const st of (pc.statusAdd || [])) {
+    if (!st || !st.name) continue;
+    const name = String(st.name).slice(0, 8);
+    if (S.status.some(x => x.name === name)) continue;
+    S.status.push({ name, desc: String(st.desc || '').slice(0, 40), days: Math.max(1, num(st.days) || 5) });
+  }
+  for (const nm of (pc.statusRemove || [])) S.status = S.status.filter(x => x.name !== nm);
+  for (const c of (pc.chronicAdd || [])) if (c && c.name && !S.chronic.some(x => x.name === c.name))
+    S.chronic.push({ name: String(c.name).slice(0, 10), desc: String(c.desc || '').slice(0, 50) });
+
+  for (const n of (d.newNpcs || []).slice(0, 3)) {
+    if (!n || !n.name) continue;
+    if (S.npcs.some(x => x.name === n.name)) continue;
+    S.npcs.push({
+      name: String(n.name).slice(0, 12), age: num(n.age) || 0,
+      job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
+      tie: String(n.tie || '认识的人').slice(0, 12),
+      care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
+      close: !!n.close, mem: [], lastSeen: S.stats.days
+    });
+  }
+  for (const u of (d.npcUpdates || [])) {
+    const n = S.npcs.find(x => x.name === u.name);
+    if (!n) continue;
+    if (num(u.rel)) n.rel = clamp(r2(n.rel + num(u.rel)), 0, 100);
+    if (u.tie) n.tie = String(u.tie).slice(0, 12);
+    if (u.note) n.note = String(u.note).slice(0, 50);
+    if (u.mem) {
+      const line = String(u.mem).slice(0, 40);
+      n.mem = n.mem || [];
+      if (n.mem[n.mem.length - 1] !== line) n.mem = n.mem.concat([line]).slice(-6);
+      n.lastSeen = S.stats.days;
+    }
+  }
+  for (const m of (d.messages || []).slice(0, 4)) {
+    if (!m || !m.text) continue;
+    const who = String(m.from || '某人').slice(0, 12);
+    S.msgs.push({ from: who, text: String(m.text).slice(0, 120), date: shortDate(S.date), kind: 'chat', read: false });
+    const nn = S.npcs.find(x => x.name === who);
+    if (nn) nn.lastSeen = S.stats.days;
+  }
+  S.msgs = S.msgs.slice(-80);
+
+  for (const a of (d.appointments || []).slice(0, 3)) {
+    if (!a || !a.title) continue;
+    const inD = clamp(num(a.inDays) || 3, 1, 120);
+    const dt = addDays(S.date, inD);
+    S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title: String(a.title).slice(0, 30), kind: String(a.kind || '').slice(0, 8), done: false });
+  }
+  S.appts = S.appts.filter(a => !a.done).slice(-12);
+
+  if (d.scene) {
+    S.place = String(d.scene.location || S.place).slice(0, 24);
+    if (Array.isArray(d.scene.unresolved)) S.unresolved = d.scene.unresolved.map(x => String(x).slice(0, 40)).slice(0, 5);
+  }
+  for (const r of (d.resolvedInfo || [])) S.unresolved = S.unresolved.filter(u => u !== r);
+
+  if (d.summary) {
+    S.history.push({ seg: S.seg, date: shortDate(S.date), summary: String(d.summary).slice(0, 40) });
+    S.history = S.history.slice(-120);
+  }
+  if (d.narrative) {
+    S.recent.push({ seg: S.seg, action: S.lastAction || '', narrative: d.narrative });
+    S.recent = S.recent.slice(-8);
+  }
+  if (d.gameOver) { S.over = true; S.ending = d.ending || '此局终了'; }
+  return S;
+}
+
+/* ---------- 一场聊天的结算 ---------- */
+function applyConvo(S, name, res) {
+  const n = S.npcs.find(x => x.name === name);
+  if (!n) return;
+  if (num(res.rel)) n.rel = clamp(r2(n.rel + num(res.rel)), 0, 100);
+  n.lastSeen = S.stats.days;
+  if (res.mem) {
+    const line = String(res.mem).slice(0, 40);
+    n.mem = n.mem || [];
+    if (n.mem[n.mem.length - 1] !== line) n.mem = n.mem.concat([line]).slice(-6);
+  }
+  if (res.note) n.note = String(res.note).slice(0, 50);
+}
+
+
+
+/* ================= 单位与饭碗 ================= */
+const LEVELS = [
+  { t: '实习', pay: 1.00 }, { t: '转正', pay: 1.28 }, { t: '熟手', pay: 1.65 },
+  { t: '骨干', pay: 2.15 }, { t: '主管', pay: 2.95 }, { t: '负责人', pay: 4.10 }
+];
+function jobLv(S) { return LEVELS[clamp(num(S.job.lv), 0, LEVELS.length - 1)]; }
+function nextReview(S) {
+  const d = S.date;
+  const qm = [3, 6, 9, 12].find(m => m > d.m || (m === d.m && d.d < 26));
+  const y = qm ? d.y : d.y + 1;
+  const m = qm || 3;
+  return daysBetween(d, { y, m, d: 26 });
+}
+// 平时干的活攒成绩效
+function jobTick(S, plan) {
+  const J = S.job;
+  if (!J || J.out) return;
+  const p = S.player;
+  let work = 0;
+  for (const it of plan) if (it.act === '主业') work += (it.slot === '晚上' || it.slot === '深夜') ? 1.4 : 1;
+  if (!work) return;
+  J.perf = r2(J.perf + work * (0.5 + p.attrs['专业'] / 220) * (p.energy < 35 ? 0.6 : 1));
+  J.days = (J.days || 0) + 1;
+}
+// 季度考核：升、涨、平、谈话、走人
+function review(S, rng) {
+  const J = S.job, p = S.player;
+  if (!J || J.out) return null;
+  const lv = clamp(num(J.lv), 0, LEVELS.length - 1);
+  const score = num(J.perf) + p.attrs['专业'] * 0.8 + p.信誉 * 0.4 + rnd(rng, 0, 20) + (J.mood || 0);
+  const need = 52 + lv * 16;
+  const f = fdm(S);
+  J.perf = 0; J.quarters = (J.quarters || 0) + 1;
+  const out = { score: Math.round(score), need, kind: '', text: '' };
+
+  if (J.probation && J.quarters >= 1) {
+    J.probation = false;
+    if (score < need * 0.55 && f.cost >= 0.7) {
+      J.out = true; J.title = '待业'; S.ledger.salary = 0;
+      out.kind = '没转正'; out.text = '试用期没过，让你走人';
+      return out;
+    }
+    J.lv = Math.max(1, lv);
+    S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay);
+    J.title = LEVELS[J.lv].t;
+    if (J.employer) S.player.job = `${J.employer}的${J.title}`;
+    out.kind = '转正'; out.text = `转正了，月薪${S.ledger.salary}`;
+    return out;
+  }
+  if (score >= need * 1.35 && lv < LEVELS.length - 1) {
+    J.lv = lv + 1;
+    S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay * (0.95 + rng() * 0.15));
+    J.title = LEVELS[J.lv].t;
+    if (J.employer) S.player.job = `${J.employer}的${J.title}`;
+    out.kind = '升职'; out.text = `提了${LEVELS[J.lv].t}，月薪${S.ledger.salary}`;
+  } else if (score >= need) {
+    const up = Math.round(S.ledger.salary * (0.04 + rng() * 0.06));
+    S.ledger.salary += up;
+    out.kind = '涨薪'; out.text = `涨了${up}，月薪${S.ledger.salary}`;
+  } else if (score >= need * 0.6) {
+    out.kind = '原地'; out.text = '考核平平，什么都没动';
+  } else if (score >= need * 0.4 || f.cost < 0.7) {
+    J.mood = -8;
+    out.kind = '约谈'; out.text = '被叫去谈话，说下个季度再看看';
+  } else {
+    J.out = true; J.title = '待业'; S.ledger.salary = 0;
+    out.kind = '裁员'; out.text = '这个季度轮到你，让你走人';
+  }
+  return out;
+}
+function quitJob(S) {
+  const J = S.job;
+  if (!J || J.out) return null;
+  J.out = true; J.was = J.employer; J.title = '待业'; J.perf = 0; J.mood = 0;
+  S.ledger.salary = 0;
+  S.player.信誉 = clamp(S.player.信誉 - 1, 0, 100);
+  return { kind: '辞职', text: `从${J.was || '原来那家'}出来了，下个月起没有工资` };
+}
+// 新饭碗（LLM 报的）
+function takeJob(S, o) {
+  const J = S.job;
+  J.out = false;
+  J.employer = String(o.employer || J.employer || '新东家').slice(0, 16);
+  J.title = String(o.title || '正式').slice(0, 10);
+  J.lv = clamp(num(o.lv) || Math.max(1, num(J.lv)), 0, LEVELS.length - 1);
+  J.probation = !!o.probation;
+  J.perf = 0; J.mood = 0; J.quarters = 0;
+  S.ledger.base = Math.max(1000, num(o.salary) ? Math.round(num(o.salary) / LEVELS[J.lv].pay) : S.ledger.base);
+  S.ledger.salary = num(o.salary) ? Math.round(num(o.salary)) : Math.round(S.ledger.base * LEVELS[J.lv].pay);
+  S.player.job = `${J.employer}的${J.title}`;
+  return { kind: '新工作', text: `${J.employer}，${J.title}，月薪${S.ledger.salary}` };
+}
+
+/* ---------- 欠的钱 ---------- */
+function addDebt(S, who, amount, days) {
+  S.debts = S.debts || [];
+  const due = addDays(S.date, Math.max(15, num(days) || 60));
+  S.debts.push({ who: String(who || '某人').slice(0, 12), amount: Math.round(num(amount)), left: Math.round(num(amount)), due, late: false });
+  S.player.money += Math.round(num(amount));
+}
+function debtTick(S) {
+  const ev = [];
+  let stop = null;
+  for (const d of (S.debts || [])) {
+    if (d.left <= 0) continue;
+    if (daysBetween(S.date, d.due) > 0) continue;
+    if (!d.late) {
+      d.late = true;
+      const n = S.npcs.find(x => x.name === d.who);
+      if (n) n.rel = clamp(n.rel - 12, 0, 100);
+      ev.push({ t: '钱', s: `欠${d.who}的${d.left}到期了` });
+      stop = { kind: '钱', detail: `欠${d.who}的${d.left}元到期了，还不上` };
+    }
+  }
+  S.debts = (S.debts || []).filter(d => d.left > 0);
+  return { ev, stop };
+}
+function payDebt(S, i, amount) {
+  const d = (S.debts || [])[i];
+  if (!d) return null;
+  const pay = Math.min(Math.round(num(amount)), d.left, S.player.money);
+  if (pay <= 0) return null;
+  d.left -= pay;
+  S.player.money -= pay;
+  if (d.left <= 0) {
+    const n = S.npcs.find(x => x.name === d.who);
+    if (n) n.rel = clamp(n.rel + 6, 0, 100);
+    d.late = false;
+  }
+  return { who: d.who, pay, left: d.left };
+}
+
+/* ================= 理想阶梯 ================= */
+const METRICS = {
+  'money': { label: '存款', get: S => S.player.money, unit: '元' },
+  '专业': { label: '看家本事', get: S => S.player.attrs['专业'], unit: '' },
+  '表达': { label: '表达', get: S => S.player.attrs['表达'], unit: '' },
+  '谋划': { label: '谋划', get: S => S.player.attrs['谋划'], unit: '' },
+  '信誉': { label: '行业口碑', get: S => S.player.信誉, unit: '' },
+  '人脉': { label: '真认你的人', get: S => S.npcs.filter(n => n.rel >= 55).length, unit: '个' },
+  '投入': { label: '在这件事上攒的功夫', get: S => Math.round(S.ideal.progress), unit: '' }
+};
+const SCENES = ['面试', '提案', '谈判', '路演', '答辩', '演出', '摊牌', '调解', '借钱', '拉人入伙'];
+
+function normLadder(raw) {
+  const stages = [];
+  let id = 0;
+  for (const st of (raw || []).slice(0, 3)) {
+    const ms = [];
+    for (const m of (st.milestones || []).slice(0, 4)) {
+      if (!m || !m.title) continue;
+      const key = METRICS[m.metric] ? m.metric : '投入';
+      ms.push({
+        id: ++id,
+        title: String(m.title).slice(0, 24),
+        desc: String(m.desc || '').slice(0, 40),
+        metric: key,
+        need: Math.max(1, num(m.need)),
+        scene: SCENES.includes(m.scene) ? m.scene : '谈判',
+        gate: String(m.gate || '').slice(0, 24),
+        done: false, doneDate: null
+      });
+    }
+    if (ms.length) stages.push({ name: String(st.name || '').slice(0, 16), milestones: ms });
+  }
+  return stages;
+}
+function curMile(S) {
+  const L = S.ideal;
+  for (let i = 0; i < L.stages.length; i++) {
+    const ms = L.stages[i].milestones;
+    for (let j = 0; j < ms.length; j++) if (!ms[j].done) return { stage: i, idx: j, m: ms[j], stageName: L.stages[i].name };
+  }
+  return null;
+}
+function mileStat(S, m) {
+  const M = METRICS[m.metric] || METRICS['投入'];
+  const cur = M.get(S);
+  return { label: M.label, unit: M.unit, cur, need: m.need, ok: cur >= m.need, pct: Math.min(100, Math.round(cur / m.need * 100)) };
+}
+function ladderBlock(S) {
+  const c = curMile(S);
+  if (!c) return '（还没立下阶梯）';
+  const st = mileStat(S, c.m);
+  const done = [];
+  for (const s of S.ideal.stages) for (const m of s.milestones) if (m.done) done.push(m.title);
+  return `第${c.stage + 1}段【${c.stageName}】，眼下这一步：${c.m.title}${c.m.desc ? `（${c.m.desc}）` : ''}
+　硬指标：${st.label} ${st.cur}${st.unit} / ${st.need}${st.unit}${st.ok ? '　已经够了' : `　还差${st.need - st.cur}${st.unit}`}
+　门槛：${c.m.gate || c.m.scene}（要打一场${c.m.scene}才算数）
+${done.length ? `已经迈过的：${done.join('、')}` : '还没迈过任何一步'}`;
+}
+// LLM 只能申报，引擎说了算
+function judgeClaim(S, claims) {
+  const c = curMile(S);
+  if (!c || !(claims || []).length) return null;
+  const st = mileStat(S, c.m);
+  if (!st.ok) return { ok: false, title: c.m.title, short: `${st.label}还差${st.need - st.cur}${st.unit}` };
+  return { ok: true, title: c.m.title, scene: c.m.scene, gate: c.m.gate };
+}
+
+/* ================= 关键局 ================= */
+const OPP_TYPES = {
+  '务实': { guard: 62, patience: 70, interest: 22, desc: '只认硬东西，废话听不进去',
+    mul: { '摆事实': 1.55, '讲故事': 0.55, '共情': 0.7, '施压': 0.9, '让步': 1.1, '亮底牌': 1.2 } },
+  '好面子': { guard: 40, patience: 62, interest: 34, desc: '爱听好听的，也爱被人捧',
+    mul: { '摆事实': 0.75, '讲故事': 1.35, '共情': 1.15, '施压': 0.7, '让步': 0.9, '亮底牌': 1.1 } },
+  '老江湖': { guard: 72, patience: 80, interest: 20, desc: '什么场面没见过，套路对他没用',
+    mul: { '摆事实': 1.15, '讲故事': 0.5, '共情': 0.35, '施压': 0.5, '让步': 1.25, '亮底牌': 1.5 } },
+  '和稀泥': { guard: 48, patience: 92, interest: 28, desc: '不表态、不得罪人、能拖就拖',
+    mul: { '摆事实': 0.9, '讲故事': 0.9, '共情': 1.1, '施压': 1.6, '让步': 1.0, '亮底牌': 1.15 } },
+  '急性子': { guard: 44, patience: 48, interest: 34, desc: '没耐心，要你三句话说清楚',
+    mul: { '摆事实': 1.3, '讲故事': 0.85, '共情': 0.8, '施压': 1.15, '让步': 1.05, '亮底牌': 1.35 } }
+};
+const MOVES = {
+  '摆事实': { attr: '专业', cost: 6,  tip: '把做过的、算过的摊出来' },
+  '讲故事': { attr: '表达', cost: 7,  tip: '讲你要做的事，讲得让人想看下去' },
+  '共情':   { attr: '情绪', cost: 5,  tip: '先站到对方那边去' },
+  '施压':   { attr: '谋划', cost: 11, tip: '抬价、给期限、点破他的处境' },
+  '让步':   { attr: '谋划', cost: 4,  tip: '让出一块，换他往前走一步' },
+  '亮底牌': { attr: '专业', cost: 12, tip: '一局只能用一次' },
+  '稳一稳': { attr: '情绪', cost: 0,  tip: '喘口气，把底气找回来' },
+  '改期':   { attr: '表达', cost: 0,  tip: '今天不谈了，留个话头' }
+};
+
+function startKey(S, o) {
+  const t = OPP_TYPES[o.type] ? o.type : pick(o.rng || Math.random, Object.keys(OPP_TYPES));
+  const T = OPP_TYPES[t];
+  const hard = clamp(num(o.hard) || 50, 20, 95);
+  S.key = {
+    scene: o.scene || '谈判',
+    stake: String(o.stake || '').slice(0, 40),
+    mileId: o.mileId || null,
+    kind: o.kind || 'mile',
+    opp: { name: String(o.name || '对方').slice(0, 12), type: t, note: String(o.note || T.desc).slice(0, 40) },
+    hard,
+    guard: clamp(T.guard + (hard - 50) * 0.35, 10, 95),
+    patience: clamp(T.patience - (hard - 50) * 0.2, 20, 100),
+    interest: clamp(T.interest - (hard - 50) * 0.25, 5, 70),
+    nerve: clamp(62 + S.player.attrs['情绪'] * 0.35 - (S.player.energy < 40 ? 15 : 0) - S.status.length * 4, 20, 100),
+    round: 0, log: [], used: {}, lastMove: null, usedCard: false, over: false, result: null, cost: 0
+  };
+  return S.key;
+}
+
+function keyRound(S, move, rng) {
+  rng = rng || Math.random;
+  const K = S.key;
+  if (!K || K.over) return null;
+  const mv = MOVES[move];
+  if (!mv) return null;
+  if (move === '亮底牌' && K.usedCard) return { bad: '底牌已经亮过了' };
+  K.round++;
+  const T = OPP_TYPES[K.opp.type];
+  let mul = (T.mul && T.mul[move]) || 1;
+  // 同一套路使第二遍就不灵了
+  K.used = K.used || {};
+  const seen = K.used[move] || 0;
+  mul *= seen === 0 ? 1 : seen === 1 ? 0.7 : 0.45;
+  if (K.lastMove === move) mul *= 0.7;
+  K.used[move] = seen + 1;
+  K.lastMove = move;
+  const roll = d20(rng);
+  const val = attrVal(S, mv.attr);
+  // 属性和门槛同尺度，骰子给浮动；压过多少折成 -12 到 +12 的力道
+  let pw = clamp((val + rollMod(roll) - K.hard) / 4, -14, 14);
+  pw = pw >= 0 ? pw * mul : pw / Math.max(0.5, mul);
+  const d = { guard: 0, interest: 0, patience: 0, nerve: -mv.cost };
+  let note = '';
+
+  if (move === '摆事实') { d.guard = -(5 + pw * 0.9); d.interest = 3 + pw * 0.5; d.patience = -2; }
+  else if (move === '讲故事') { d.interest = 6 + pw * 1.0; d.guard = -(1 + pw * 0.3); d.patience = -4; }
+  else if (move === '共情') {
+    d.patience = 6 + pw * 0.6; d.guard = -(3.5 + pw * 0.7); d.interest = 1;
+    if (mul < 0.5 && pw < 0) { d.guard = 6; d.patience = 0; note = '这话他听过太多遍了'; }
+  }
+  else if (move === '施压') {
+    if (pw >= 0) { d.interest = 9 + pw; d.guard = -(7 + pw * 0.8); d.patience = -7; note = '压住了'; }
+    else { d.patience = pw * 1.6; d.guard = 9; d.interest = -4; note = '把人惹毛了'; }
+  }
+  else if (move === '让步') { d.guard = -(10 + pw * 0.4); d.interest = 7; d.patience = 5; K.cost += 1; note = '这一步是拿东西换的'; }
+  else if (move === '亮底牌') { K.usedCard = true; d.interest = 16 + pw * 1.2; d.guard = -(13 + pw); d.patience = 3; }
+  else if (move === '稳一稳') { d.nerve = 16; d.patience = -6; }
+  else if (move === '改期') { K.over = true; K.result = '留口子'; d.guard = 8; }
+
+  K.guard = clamp(K.guard + d.guard, 0, 100);
+  K.interest = clamp(K.interest + d.interest, 0, 100);
+  K.patience = clamp(K.patience + d.patience, 0, 100);
+  K.nerve = clamp(K.nerve + d.nerve, 0, 100);
+
+  // 对方回敬
+  let oppMove = '压价';
+  if (!K.over) {
+    const or = d20(rng);
+    const opw = Math.max(0, (K.hard + rollMod(or)) / 8);
+    if (K.guard > 58) oppMove = '推'; else if (K.interest > 55) oppMove = '追问'; else if (K.patience < 40) oppMove = '看表'; else oppMove = '压价';
+    if (oppMove === '推') K.nerve = clamp(K.nerve - (3 + opw * 0.5), 0, 100);
+    else if (oppMove === '追问') { K.nerve = clamp(K.nerve - (1.5 + opw * 0.25), 0, 100); K.guard = clamp(K.guard - 2, 0, 100); }
+    else if (oppMove === '看表') { K.patience = clamp(K.patience - 4, 0, 100); K.nerve = clamp(K.nerve - 2.5, 0, 100); }
+    else { K.nerve = clamp(K.nerve - 2.5, 0, 100); K.interest = clamp(K.interest - 1.5, 0, 100); }
+  }
+
+  const rec = { round: K.round, move, roll, val, pw: Math.round(pw * 10) / 10, note, oppMove,
+    st: { guard: Math.round(K.guard), interest: Math.round(K.interest), patience: Math.round(K.patience), nerve: Math.round(K.nerve) } };
+  K.log.push(rec);
+
+  if (!K.over) {
+    if (K.interest >= 70 && K.guard <= 35) { K.over = true; K.result = '谈成'; }
+    else if (K.patience <= 0) { K.over = true; K.result = '谈崩'; K.why = '对方不想再听了'; }
+    else if (K.nerve <= 0) { K.over = true; K.result = '留口子'; K.why = '你自己先撑不住了'; }
+    else if (K.round >= 8) {
+      const score = K.interest - K.guard;
+      K.over = true;
+      K.result = score >= 15 ? '谈成' : score >= -12 ? '留口子' : '谈崩';
+    }
+  }
+  rec.result = K.result;
+  return rec;
+}
+
+// 打完了记账：里程碑、代价、名声
+function settleKey(S) {
+  const K = S.key;
+  if (!K) return null;
+  const out = { result: K.result, scene: K.scene, opp: K.opp.name, rounds: K.round, cost: K.cost, mile: null, price: [] };
+  const f = fdm(S);
+  if (K.kind === 'raise') {
+    if (K.result === '谈成') {
+      const up = Math.round(S.ledger.salary * (0.09 + Math.random() * 0.09));
+      S.ledger.salary += up;
+      S.ledger.base = Math.round(S.ledger.salary / LEVELS[clamp(num(S.job.lv), 0, 5)].pay);
+      out.raise = up;
+    } else if (K.result === '谈崩') { S.job.mood = (S.job.mood || 0) - 10; out.price.push('老板那边记了一笔'); }
+    S.job.askedRaise = shortDate(S.date);
+    S.player.energy = clamp(S.player.energy - 6, 0, 100);
+    S.stats.keys = (S.stats.keys || 0) + 1;
+    if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
+    S.key = null;
+    return out;
+  }
+  if (K.result === '谈成') {
+    S.player.信誉 = clamp(S.player.信誉 + 4, 0, 100);
+    if (K.mileId) {
+      for (const st of S.ideal.stages) for (const m of st.milestones) if (m.id === K.mileId && !m.done) {
+        m.done = true; m.doneDate = shortDate(S.date);
+        out.mile = m.title;
+        // 上一个台阶，是要拿东西换的
+        const en = Math.round(12 * f.cost);
+        S.player.energy = clamp(S.player.energy - en, 0, 100);
+        out.price.push(`精力-${en}`);
+        const far = S.npcs.filter(n => !n.close).sort((a, b) => (a.lastSeen || 0) - (b.lastSeen || 0))[0];
+        if (far && f.cost >= 0.7) { far.rel = clamp(far.rel - 8, 0, 100); out.price.push(`${far.name}那边疏了`); }
+      }
+    }
+  } else if (K.result === '谈崩') {
+    S.player.信誉 = clamp(S.player.信誉 - 2, 0, 100);
+    S.player.energy = clamp(S.player.energy - Math.round(10 * f.cost), 0, 100);
+    out.price.push('灰头土脸');
+  }
+  if (K.cost > 0) {
+    const money = Math.round(K.cost * 800 * f.cost);
+    S.player.money -= money;
+    out.price.push(`让出去的折成钱约${money}`);
+  }
+  S.stats.keys = (S.stats.keys || 0) + 1;
+  if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
+  S.key = null;
+  return out;
+}
+
+/* ---------- 雷同检测（照搬武侠版的思路） ---------- */
+function bigrams(s) {
+  s = String(s || '').replace(/\s+/g, '');
+  const out = [];
+  for (let i = 0; i < s.length - 1; i++) out.push(s.slice(i, i + 2));
+  return out;
+}
+function simRatio(a, b) {
+  const A = bigrams(a), B = new Set(bigrams(b));
+  if (!A.length || !B.size) return 0;
+  let hit = 0;
+  for (const g of A) if (B.has(g)) hit++;
+  return hit / A.length;
+}
+function stuckLevel(S) {
+  const r = S.recent;
+  if (r.length < 2) return 0;
+  const last = r[r.length - 1].narrative;
+  let worst = 0;
+  for (let i = Math.max(0, r.length - 4); i < r.length - 1; i++)
+    worst = Math.max(worst, simRatio(last, r[i].narrative));
+  return Math.round(worst * 100);
+}
+const NUDGES = [
+  '换个地方：把这一段写到一个还没出现过的场所里去',
+  '让一个人主动找上门，带着一件跟上一段无关的事',
+  '让主角原本打算做的事落空，被别的事插队',
+  '把时间推快一些，跳过日常，直接写到下一件有分量的事',
+  '让主角知道一件他此前不知道的事，且这件事对他有影响'
+];
+function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
+
+/* ---------- 导出 ---------- */
+const API = {
+  SAVE_VERSION, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, EVT_TAGS,
+  num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, fdm,
+  dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
+  newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
+  rollCheck, attrVal, applyTurn, growAttr,
+  simRatio, stuckLevel, pickNudge,
+  LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,
+  METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
+  startKey, keyRound, settleKey
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = API;
+root.ENGINE = API;
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+<script>
+/* ===== 现代生活模拟器 · 界面与叙事层 ===== */
+const E = ENGINE;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
+const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
+
+let S = null;
+let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-chat', think: false };
+try { const c = JSON.parse(localStorage.getItem(LS_CFG) || 'null'); if (c) cfg = Object.assign(cfg, c); } catch (_) { }
+let busy = false, lastFinish = null, curChapter = null;
+
+/* ================= 提示与开关 ================= */
+let toastT = null;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600);
+}
+function setBusy(b, txt) {
+  busy = b;
+  $('busy').classList.toggle('on', !!b);
+  $('busyTxt').textContent = txt || '';
+  document.querySelectorAll('.act-btn,#goBtn,#focusBtn').forEach(x => x.disabled = !!b);
+}
+function mask(id, on) { $(id).classList.toggle('on', on); }
+
+/* ================= 全本存 IndexedDB ================= */
+let idbP = null;
+function idb() {
+  if (idbP) return idbP;
+  idbP = new Promise((res, rej) => {
+    if (typeof indexedDB === 'undefined') return rej(new Error('no idb'));
+    const rq = indexedDB.open(IDB_NAME, 1);
+    rq.onupgradeneeded = () => {
+      const db = rq.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        const st = db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+        st.createIndex('run', 'run', { unique: false });
+      }
+    };
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  }).catch(e => { idbP = null; throw e; });
+  return idbP;
+}
+async function bookPut(rec) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(rec);
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+  });
+}
+async function bookAll(run) {
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const rq = tx.objectStore(IDB_STORE).index('run').getAll(run);
+    rq.onsuccess = () => res((rq.result || []).sort((a, b) => a.seq - b.seq));
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function bookClear(run) {
+  const db = await idb(), rows = await bookAll(run);
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const st = tx.objectStore(IDB_STORE);
+    for (const r of rows) st.delete(r.id);
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+  });
+}
+
+/* ================= 接口 ================= */
+async function callLLM(prompt, onPartial, opt) {
+  opt = opt || {};
+  lastFinish = null;
+  if (!cfg.key) { openSettings(); throw new Error('请先在设置里填密钥'); }
+  const url = cfg.base.replace(/\/+$/, '') + '/chat/completions';
+  const body = {
+    model: cfg.model || 'deepseek-chat',
+    messages: [{ role: 'system', content: STYLE_SYSTEM }, { role: 'user', content: prompt }],
+    temperature: opt.temperature != null ? opt.temperature : 1.02,
+    max_tokens: opt.maxTokens || 8000,
+    stream: true,
+    response_format: { type: 'json_object' }
+  };
+  const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const ms = opt.timeout || 180000;
+  let timer = ac ? setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms) : null;
+  const bump = () => { if (!ac) return; clearTimeout(timer); timer = setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms); };
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.key },
+      body: JSON.stringify(body), signal: ac ? ac.signal : undefined
+    });
+  } catch (e) {
+    if (timer) clearTimeout(timer);
+    throw new Error('接口调用失败（' + (e && e.name === 'AbortError' ? `等了${Math.round(ms / 1000)}秒没响应` : (e && e.message) || '网络不通') + '）');
+  }
+  if (!resp.ok) {
+    let msg = 'HTTP ' + resp.status;
+    try { const e = await resp.json(); msg += '：' + ((e.error && e.error.message) || JSON.stringify(e)); } catch (_) { }
+    throw new Error('接口调用失败（' + msg + '）');
+  }
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let raw = '', buf = '';
+  while (true) {
+    let done, value;
+    try { ({ done, value } = await reader.read()); }
+    catch (e) {
+      if (timer) clearTimeout(timer);
+      if (e && e.name === 'AbortError') throw new Error('接口调用失败（传到一半断了）');
+      throw e;
+    }
+    if (done) break;
+    bump();
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const ln of lines) {
+      const t = ln.trim();
+      if (!t.startsWith('data:')) continue;
+      const data = t.slice(5).trim();
+      if (data === '[DONE]') continue;
+      try {
+        const j = JSON.parse(data);
+        const ch = j.choices && j.choices[0];
+        if (!ch) continue;
+        if (ch.finish_reason) lastFinish = ch.finish_reason;
+        const piece = (ch.delta && (ch.delta.content || '')) || '';
+        if (piece) { raw += piece; if (onPartial) onPartial(raw); }
+      } catch (_) { }
+    }
+  }
+  if (timer) clearTimeout(timer);
+  if (!raw.trim()) throw new Error('接口调用失败（没返回内容）');
+  return raw;
+}
+
+function parseJSONLoose(raw) {
+  let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const a = t.indexOf('{'); if (a >= 0) t = t.slice(a);
+  const b = t.lastIndexOf('}');
+  try { return JSON.parse(b > 0 ? t.slice(0, b + 1) : t); }
+  catch (_) { return JSON.parse(repairJSON(t)); }
+}
+function repairJSON(t) {
+  let inStr = false, esc2 = false; const stack = [];
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (esc2) { esc2 = false; continue; }
+    if (inStr) { if (c === '\\') esc2 = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '{' || c === '[') stack.push(c);
+    else if (c === '}' || c === ']') stack.pop();
+  }
+  let out = t;
+  if (esc2) out = out.slice(0, -1);
+  if (inStr) out += '"';
+  out = out.replace(/[,:\s]+$/, '');
+  if (/"\s*:?\s*$/.test(out) && !inStr) { const lc = out.lastIndexOf(','); if (lc > 0) out = out.slice(0, lc); }
+  for (let i = stack.length - 1; i >= 0; i--) out += (stack[i] === '{' ? '}' : ']');
+  return out;
+}
+function extractPartialField(raw, key) {
+  const m = raw.match(new RegExp('"' + key + '"\\s*:\\s*"'));
+  if (!m) return null;
+  let i = m.index + m[0].length, out = '';
+  while (i < raw.length) {
+    const c = raw[i];
+    if (c === '\\') {
+      const n = raw[i + 1];
+      if (n === undefined) break;
+      if (n === 'n') out += '\n'; else if (n === '"') out += '"'; else if (n === '\\') out += '\\';
+      else if (n === 'u') { const h = raw.slice(i + 2, i + 6); if (h.length === 4) { out += String.fromCharCode(parseInt(h, 16) || 63); i += 4; } }
+      else out += n;
+      i += 2; continue;
+    }
+    if (c === '"') break;
+    out += c; i++;
+  }
+  return out;
+}
+async function llmJSON(prompt, onPartial, opt) {
+  let raw;
+  try { raw = await callLLM(prompt, onPartial, opt); return parseJSONLoose(raw); }
+  catch (e) {
+    if (e.message && (e.message.startsWith('接口调用失败') || e.message.startsWith('请先在设置'))) throw e;
+    const truncated = lastFinish === 'length';
+    toast(truncated ? '回复太长被截断，重试一次' : '回复格式有误，重试一次');
+    const extra = truncated
+      ? '\n\n（上次输出太长被截断。这次把叙事压到 300 字内，newNpcs 最多 1 人，务必输出完整合法的单个 JSON）'
+      : '\n\n（上次输出的 JSON 不合法，请输出严格合法的单个 JSON 对象）';
+    raw = await callLLM(prompt + extra, onPartial, opt);
+    try { return parseJSONLoose(raw); }
+    catch (_) { throw new Error('模型两次都没给出合法格式，过会儿再试'); }
+  }
+}
+
+/* ================= 口径 ================= */
+const STYLE_SYSTEM = `你是一个中文现代生活模拟游戏的叙事引擎。你只负责把引擎给定的结果写成故事，不负责决定成败。
+
+怎么写：
+- 像一个会写小说的人在写一个具体的人过的具体日子。名词要具体：几路公交、几块钱的面、几层的办公楼、几点几分的消息。
+- 人说话就是人说话：有口语、有废话、会打断、会答非所问、会说一半不说了。不许所有人都说完整漂亮的长句。
+- 不许写"他终于明白了""这一刻他忽然懂得""生活就是这样"之类的感悟句，尤其不许拿它收尾。
+- 不许总结升华，不许每段都用天色、窗外、灯光收尾。
+- 不许排比句，不许"不是……而是……"的句式堆叠，不许成语连用。
+- 微信消息要像真的微信：短、有语气词、有错字也行、有人发两条、有人只回一个字。
+- 写失败和难堪时不要找补，写顺利时不要煽情。
+- 不出现真实存在的公司、平台、品牌、真人姓名，用虚构的名字。`;
+
+function worldRules() {
+  const f = E.FREEDOM[S.freedom];
+  return `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角22岁刚出校门，从零开始。
+这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
+
+【铁律】
+- 引擎的判定结果不可更改：成就是成，败就是败，钱的加减、身体的毛病、日期的推移，都必须照引擎给的写。
+- 你不能宣布主角达成了理想的里程碑，那由引擎裁定。你只能把过程写出来，并在 milestoneClaim 里申报。
+- 新出现的人要有来由，但生活里本来就会有人主动找上门：老同学的电话、中介的骚扰、前同事拉你入伙、家里催你，都不必事先铺垫。
+- 钱要具体到数。时间要具体到日子。
+
+${f.tone}`;
+}
+
+const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（25字内）",
+"scene":{"location":"这段结束时主角人在哪","unresolved":["眼下真正悬着且主角打算管的事，至多4条"]},
+"resolvedInfo":["本段了结或放下的事，原样照抄未了之事里的那句"],
+"check":null或{"type":"判定名","attr":"属性","need":70,"success":true},
+"playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
+  "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
+"npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这次和主角之间发生的一句话"}],
+"newNpcs":[{"name":"","age":0,"job":"","tie":"跟主角什么关系","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
+"messages":[{"from":"谁","text":"手机上收到的一条消息，像真的微信"}],
+"appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
+"milestoneClaim":[],
+"newJob":null或{"employer":"新东家名字","title":"职位","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
+"options":["四个下一步的行动，每条12字内，具体、可执行、互相不同"],
+"nextStop":null,
+"gameOver":false,"ending":null}`;
+
+function memBlocks() {
+  const recents = S.recent.slice(-4).map((r, i, a) => {
+    const full = i >= a.length - 2;
+    const t = full ? r.narrative : String(r.narrative || '').replace(/\s+/g, '').slice(0, 90) + '……';
+    return `${r.action ? `【当时的行动】${r.action}\n` : ''}【${full ? '叙事' : '叙事·节略'}】${t}`;
+  }).join('\n---\n') || '（还没开始）';
+  const sums = S.history.slice(-12).map(h => `${h.date}｜${h.summary}`).join('\n') || '（无）';
+  return { recents, sums };
+}
+
+function stateBlocks() {
+  const p = S.player, L = S.ledger;
+  const M = memBlocks();
+  const npc = S.npcs.slice(-12).map(n =>
+    `${n.name}（${n.age || '?'}岁，${n.job || '不详'}，${n.tie}，关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-2).join('；')}`).join('\n') || '（还没认识什么人）';
+  const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}`).join('\n') || '（无）';
+  const plan = ['工作日', '周末'].map((lab, i) => {
+    const t = i ? S.schedule.rest : S.schedule.work;
+    return `${lab}：${E.SLOTS.map(s => s + '=' + t[s]).join('，')}`;
+  }).join('；');
+  return `【今天】${E.dateStr(S.date)}
+【人在哪】${S.place || '不详'}
+【主角】${p.name}，${p.gender}，${p.age}岁，${S.city}。眼下的营生：${p.job}
+【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）
+【志业阶梯】${E.ladderBlock(S)}
+【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
+【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}，${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
+${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
+【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
+【名声】行业口碑${p.信誉}，做人${p.人品}
+【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
+【作息】${plan}
+【认识的人】
+${npc}
+【同期的人在做什么】
+${peers}
+【未了的事】${S.unresolved.join('；') || '暂时没有'}
+【往事提要】
+${M.sums}
+【最近发生的】
+${M.recents}`;
+}
+
+const STOP_WRITE = {
+  '约': d => `这一段收在赴约的当口：${d}。写到主角刚到、事情要开始，不要把结果写出来。`,
+  '事': d => `这一段结束在一件突然冒出来的事上，类别是【${d}】。你来决定具体是什么事，要具体、可信、跟主角眼下的处境有关系。写到事情刚砸下来、主角还没来得及反应。`,
+  '钱': d => `这一段结束在钱上：${d}。把数字写清楚，不要用"捉襟见肘"这类词糊过去。`,
+  '运': d => `这一段结束在一件${d}的事上。大吉就给一桩真机缘（有人看见他、一笔意外的钱、一个够得着的门路），大凶就给一记实实在在的打击，都不要写成梦一场。`,
+  '投入': d => `这一段是主角闷头做一件事：${d}。引擎已经给出了成败，照着写，不要另作判断。`,
+  '人情': d => `这一段结束在别人的消息上：${d}。写主角是怎么知道的，以及他什么反应——不要替他升华，就写反应。`,
+  '久': d => `这一段日子很太平。写出日子的质地（重复的通勤、便利店、群里没人说话），结尾给一点隐隐的不对劲或一个很小的苗头，别写成心灵鸡汤。`,
+  '条件': d => `这一段结束在主角等的那件事上：${d}。`,
+  '考核': d => `这一段结束在季度考核上：${d}。写清楚是谁跟他说的、在哪儿说的、原话大概什么样。结果不许改。`,
+  '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
+};
+
+function judgeBlock(j) {
+  let s = '';
+  if (j.fate) {
+    const f = E.fateInfo(j.fate);
+    s += `- 天命骰：${j.fate}（${f.label}）——${f.desc}\n`;
+  }
+  if (j.check) {
+    const c = j.check;
+    s += `- 属性判定：${c.attr}${c.val}，掷骰${c.roll}（修正${c.mod >= 0 ? '+' : ''}${c.mod}）＝${c.total}，难度${c.need}，判定【${c.success ? '成功' : '失败'}】${c.crit ? '（' + c.crit + '）' : ''}。必须如实体现。\n`;
+  }
+  if (j.focus) {
+    const f = j.focus;
+    s += `- 投入结算：${f.what}，闷头做了${f.days}天，积累${f.progress}，判定【${f.success ? '做成了' : '没做成'}】${f.crit ? '（' + f.crit + '）' : ''}。做成了就写出成果的具体样子，没做成就写卡在哪。\n`;
+  }
+  if (j.stuck >= 55) s += `- ⚑ 引擎发现最近几段太像了（相似度${j.stuck}%），这一段必须打破：${j.nudge}。这是硬要求。\n`;
+  if (!s) s += '- 本段没有预设判定。\n';
+  return s;
+}
+
+function segPrompt(seg) {
+  const { from, to, days, events, stop } = seg.adv;
+  const evText = events.length
+    ? events.slice(-14).map(e => `[${e.t}] ${e.s}`).join('\n')
+    : '（没什么值得记的）';
+  const writer = (STOP_WRITE[stop.kind] || STOP_WRITE['事'])(stop.detail);
+  const actBlock = S.lastAction
+    ? `【上一次主角做的事】${S.lastAction}\n（这一段要先把这件事的结果交代掉，再往下走）`
+    : '（这是开局之后的第一段）';
+  return `${worldRules()}
+
+${stateBlocks()}
+
+${actBlock}
+
+【本段引擎判定（不可更改）】
+${judgeBlock(seg.judge)}${S.claimNote ? `\n【引擎驳回】${S.claimNote}。这一段不许把这一步写成办成了，可以写他差在哪。\n` : ''}
+
+【本段时间】${E.shortDate(from)} 到 ${E.shortDate(to)}，一共${days}天
+【这些天里发生的小事（引擎记下的，必须体现，但不必条条都写）】
+${evText}
+
+【这一段怎么收尾】${writer}
+
+要求：
+- 叙事 ${days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
+- 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
+- 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
+- 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。
+- 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
+- 新出现的人写 newNpcs（最多2人），已有的人有变化写 npcUpdates。
+- options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
+${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
+- 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
+
+只输出一个合法 JSON，不要任何别的字。格式：
+${SCHEMA}`;
+}
+
+function bootPrompt(o) {
+  return `${worldRules()}
+
+现在开局。主角：${o.name}，${o.gender}，22岁，刚从学校出来，落在${o.city}。
+出身：${o.origin}——${E.ORIGINS[o.origin].desc}
+城市：${E.CITIES[o.city].desc}
+他想干成的事：${o.ideal}（赛道：${o.track}）
+手头：存款${S.player.money}元，房租${S.ledger.rent}，一个月生活费${S.ledger.living}${S.ledger.remit ? `，每月还要往家寄${S.ledger.remit}` : ''}，找到的第一份活月薪${S.ledger.salary}。
+
+请铸造开局，写 350-500 字的开场：他住进了什么地方、第一份活是干什么的、7月1日这天在干什么。不要交代背景板，从一个具体的场面切进去。
+
+另外给出：
+- job：他这份活的名字（10字内，比如"一家小设计公司的实习"）
+- place：他现在住的地方（比如"城西老小区的合租次卧"）
+- npcs：3个他身边现在就有的人（室友/同事/家里人/老同学都行），要有名字、年龄、干什么的、跟他什么关系、在意什么
+- peers：5个跟他同期毕业的人（名字 + 一句话现在在干嘛），这些人以后会自己往前走
+- troubles：开局就压着他的3件具体麻烦（要具体到数和日子，比如"押一付三还差2000"）
+- messages：2条他手机上现在就有的消息
+- options：四条他今天可以做的事
+- ladder：把他那句理想拆成三段、每段3个里程碑的阶梯。要求：
+  · 第一段是三个月到一年内够得着的小事（写完一个东西、拿到第一笔钱、有人认你），越具体越好；第三段是他理想真正兑现的样子。
+  · 每个里程碑给一个引擎能算的硬指标 metric，只能从这几个里选：money（存款，给元数）、专业、表达、谋划（属性值 0-100）、信誉（行业口碑 0-100）、人脉（真认他的人几个）、投入（在这件事上攒的功夫，第一段给 40-120，第二段 300-800，第三段 1500-4000）
+  · need 给数字，第一段要低（新人刚出校门，属性都在 20 上下，存款四位数）
+  · scene 从这几个里选一个：面试/提案/谈判/路演/答辩/演出/摊牌/调解/借钱/拉人入伙
+  · gate 用一句话写这道门槛是什么场面（"把稿子塞到编辑手里""让老板同意你带这个项目"）
+
+只输出一个合法 JSON：
+{"narrative":"开场","summary":"一句话","job":"","place":"","scene":{"location":"","unresolved":["3件麻烦，每条20字内"]},
+"ladder":[{"name":"这一段叫什么","milestones":[{"title":"","desc":"","metric":"投入","need":60,"scene":"提案","gate":""}]}],
+"npcs":[{"name":"","age":0,"job":"","tie":"","care":"","note":"","rel":30,"close":true}],
+"peers":[{"name":"","note":""}],
+"messages":[{"from":"","text":""}],
+"options":["","","",""]}`;
+}
+
+/* ================= 渲染 ================= */
+function relWord(v, tie) {
+  v = E.num(v);
+  if (tie && /家|妈|爸|父|母|哥|姐|弟|妹|爷|奶|亲/.test(tie)) {
+    if (v >= 70) return '亲';
+    if (v >= 40) return '还好';
+    if (v >= 18) return '有点远';
+    return '不大来往';
+  }
+  if (v >= 80) return '交心';
+  if (v >= 55) return '朋友';
+  if (v >= 30) return '熟人';
+  if (v >= 12) return '点头之交';
+  if (v >= 0) return '生分了';
+  return '闹掰了';
+}
+function narrativeHtml(t) {
+  return String(t || '').split(/\n+/).filter(x => x.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('');
+}
+function beginChapter(head, sub, action, judge) {
+  const div = document.createElement('div');
+  div.className = 'chapter';
+  let dice = '';
+  if (judge && (judge.fate || judge.check || judge.focus)) {
+    const bits = [];
+    if (judge.fate) { const f = E.fateInfo(judge.fate); bits.push(`<span class="die ${f.cls}">天命 ${judge.fate} ${f.label}</span>`); }
+    if (judge.check) bits.push(`<span class="die ${judge.check.success ? 'good' : 'bad'}">${esc(judge.check.attr)} ${judge.check.total}/${judge.check.need} ${judge.check.success ? '成' : '败'}</span>`);
+    if (judge.focus) bits.push(`<span class="die ${judge.focus.success ? 'good' : 'bad'}">投入${judge.focus.days}天 ${judge.focus.success ? '做成' : '没成'}</span>`);
+    dice = `<div class="dicebar">${bits.join('')}</div>`;
+  }
+  div.innerHTML = `<div class="chaphead"><span class="chapmark">${esc(head)}</span><span class="chaptime">${esc(sub)}</span></div>
+    ${action ? `<div class="action-echo">${esc(action)}</div>` : ''}${dice}<div class="ntext"><p class="typing">……</p></div>`;
+  $('story').appendChild(div);
+  curChapter = div;
+  scrollDown();
+  return div;
+}
+function updateChapterNarrative(t) {
+  if (!curChapter) return;
+  curChapter.querySelector('.ntext').innerHTML = narrativeHtml(t) || '<p class="typing">……</p>';
+  scrollDown();
+}
+function scrollDown() { const s = $('story'); s.scrollTop = s.scrollHeight; }
+async function finishChapter() {
+  if (!curChapter) return;
+  S.chapters.push(curChapter.outerHTML);
+  S.chapters = S.chapters.slice(-40);
+  if (S.runId) {
+    try { await bookPut({ id: S.runId + '-' + S.seg, run: S.runId, seq: S.seg, html: curChapter.outerHTML }); } catch (_) { }
+  }
+  curChapter = null;
+}
+
+function rebuildTop() {
+  if (!S) return;
+  const p = S.player;
+  $('topDate').textContent = E.dateStr(S.date);
+  $('topMoney').textContent = (p.money < 0 ? '−' : '') + '¥' + Math.abs(p.money).toLocaleString('zh-CN');
+  $('topMoney').className = 'kv' + (p.money < 0 ? ' bad' : '');
+  $('enBar').style.width = p.energy + '%';
+  $('enBar').className = 'bar-in' + (p.energy < 30 ? ' bad' : p.energy > 70 ? ' good' : '');
+  $('enNum').textContent = p.energy;
+  const bad = S.status.length ? `｜${S.status.map(s => s.name).join('、')}` : '';
+  $('topSub').textContent = `${S.place || ''}${bad}`;
+}
+
+function renderOptions(opts) {
+  const box = $('acts');
+  box.innerHTML = '';
+  if (S.over) { box.innerHTML = `<div class="ended">这一局结束了：${esc(S.ending || '')}</div>`; return; }
+  (opts || []).slice(0, 4).forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'act-btn'; b.textContent = o;
+    b.onclick = () => doAction(o);
+    box.appendChild(b);
+  });
+  const row = document.createElement('div');
+  row.className = 'act-row';
+  row.innerHTML = `<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="40"/><button class="act-go" id="goBtn">去做</button><button class="act-focus" id="focusBtn" title="闷头做一件事">投入</button>`;
+  box.appendChild(row);
+  $('goBtn').onclick = () => {
+    const v = $('freeAct').value.trim();
+    if (!v) { toast('先写点什么'); return; }
+    doAction(v);
+  };
+  $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter') $('goBtn').click(); });
+  $('focusBtn').onclick = openFocus;
+}
+
+/* ================= 一段推进 ================= */
+async function doAction(action) {
+  if (busy || !S || S.over) return;
+  S.lastAction = action;
+  await runSegment();
+}
+
+function makeJudge(action) {
+  const rng = Math.random;
+  const j = { fate: null, check: null, focus: null, stuck: 0, nudge: null };
+  const st = E.stuckLevel(S);
+  if (st >= 55) { j.stuck = st; j.nudge = E.pickNudge(rng); }
+  return j;
+}
+
+async function runSegment() {
+  if (busy) return;
+  const rng = Math.random;
+  const judge = makeJudge(S.lastAction);
+
+  // 玩家这次行动先判一把（自由度高的一档基本都过）
+  if (S.lastAction && S.freedom !== '心想事成' && Math.random() < 0.55) {
+    const attr = guessAttr(S.lastAction);
+    judge.check = E.rollCheck(S, attr, 52 + Math.round(S.player.age - 22) * 1.5, rng);
+    S.stats.checks++; if (judge.check.success) S.stats.wins++;
+  }
+
+  // 投入中的事，跑之前先记一下
+  const focusing = !!S.focus;
+  const adv = E.advance(S, { rng, maxDays: 35 });
+  if (focusing && adv.stop.kind === '投入') judge.focus = E.settleFocus(S, rng);
+  if (adv.stop.kind === '运') judge.fate = adv.stop.fate;
+  else judge.fate = E.d20(rng);
+
+  S.seg++;
+  S.stats.segs++;
+  const head = adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
+  setBusy(true, adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……');
+  beginChapter(head, `${adv.days}天`, S.lastAction || '', judge);
+  renderOptions([]);
+  S.pending = { action: S.lastAction, stop: adv.stop };
+  saveGame();
+
+  try {
+    const prompt = segPrompt({ adv, judge });
+    const d = await llmJSON(prompt, raw => {
+      const t = extractPartialField(raw, 'narrative');
+      if (t) updateChapterNarrative(t);
+    });
+    updateChapterNarrative(d.narrative);
+    E.applyTurn(S, d);
+    const claim = E.judgeClaim(S, d.milestoneClaim);
+    if (claim && !claim.ok) S.claimNote = `你申报过「${claim.title}」，但${claim.short}，还不够格`;
+    else S.claimNote = null;
+    S.pending = null;
+    S.lastAction = null;
+    S.lastOptions = (d.options && d.options.length) ? d.options : ['接着过日子', '找人聊聊', '琢磨一下理想那件事', '出去走走'];
+    await finishChapter();
+    rebuildTop();
+    renderOptions(S.lastOptions);
+    renderPanel();
+    saveGame();
+    if (S.over) { renderOptions([]); }
+  } catch (e) {
+    updateChapterNarrative('（这一段没写成：' + (e.message || e) + '）');
+    renderOptions(S.lastOptions.length ? S.lastOptions : ['再试一次']);
+    toast(e.message || '出错了');
+  }
+  setBusy(false);
+}
+
+function guessAttr(a) {
+  a = String(a || '');
+  if (/谈|说服|聊|讲|面试|汇报|推销|争|解释|道歉/.test(a)) return '表达';
+  if (/查|想|算|计划|打听|研究|分析|找路子|比较/.test(a)) return '谋划';
+  if (/跑|熬|扛|搬|加班|通宵|锻炼/.test(a)) return '体能';
+  if (/忍|稳住|顶住|面对|撑/.test(a)) return '情绪';
+  return '专业';
+}
+
+/* ================= 开局 ================= */
+function renderStart() {
+  const o = $('startBox');
+  o.innerHTML = `
+  <h2>开局</h2>
+  <div class="frow"><label>名字</label><input id="sName" maxlength="6" placeholder="随你"/></div>
+  <div class="frow"><label>性别</label><div class="segs" id="sGender">${seg(['男', '女'], '男')}</div></div>
+  <div class="frow"><label>出身</label><div class="segs" id="sOrigin">${seg(Object.keys(E.ORIGINS), '普通家庭')}</div></div>
+  <div class="hint" id="oHint">${E.ORIGINS['普通家庭'].desc}</div>
+  <div class="frow"><label>城市</label><div class="segs" id="sCity">${seg(Object.keys(E.CITIES), '新一线')}</div></div>
+  <div class="hint" id="cHint">${E.CITIES['新一线'].desc}</div>
+  <div class="frow"><label>赛道</label><div class="segs wrap" id="sTrack">${seg(Object.keys(E.TRACKS), '创作')}</div></div>
+  <div class="frow col"><label>你想干成的事</label><input id="sIdeal" maxlength="30" placeholder="${E.TRACKS['创作'].ph}"/></div>
+  <div class="frow"><label>口径</label><div class="segs" id="sFree">${seg(Object.keys(E.FREEDOM), '都市传奇')}</div></div>
+  <div class="hint">${esc('写实人生最难，心想事成最松，随时可以在设置里改')}</div>
+  <div class="btns"><button class="ghost" onclick="openSettings()">接口设置</button><button class="primary" id="startGo">开始</button></div>`;
+  bindSeg('sOrigin', v => $('oHint').textContent = E.ORIGINS[v].desc);
+  bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
+  bindSeg('sTrack', v => $('sIdeal').placeholder = E.TRACKS[v].ph);
+  bindSeg('sGender'); bindSeg('sFree');
+  $('startGo').onclick = startNew;
+}
+function seg(arr, cur) { return arr.map(a => `<button class="seg${a === cur ? ' on' : ''}" data-v="${esc(a)}">${esc(a)}</button>`).join(''); }
+function bindSeg(id, cb) {
+  const box = $(id);
+  box.querySelectorAll('.seg').forEach(b => b.onclick = () => {
+    box.querySelectorAll('.seg').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    if (cb) cb(b.dataset.v);
+  });
+}
+const segVal = id => { const b = $(id).querySelector('.seg.on'); return b ? b.dataset.v : null; };
+
+async function startNew() {
+  if (!cfg.key) { toast('先填接口密钥'); openSettings(); return; }
+  const track = segVal('sTrack');
+  const o = {
+    name: $('sName').value.trim() || '林一',
+    gender: segVal('sGender'), origin: segVal('sOrigin'), city: segVal('sCity'),
+    track, ideal: $('sIdeal').value.trim() || E.TRACKS[track].ph,
+    freedom: segVal('sFree'),
+    startYear: new Date().getFullYear(), rngSeed: Date.now(), payRoll: Math.random()
+  };
+  S = E.newState(o);
+  try { await bookClear(S.runId); } catch (_) { }
+  mask('startMask', false);
+  $('story').innerHTML = '';
+  rebuildTop();
+  setBusy(true, '正在铸造开局……');
+  beginChapter('开始', `${S.player.age}岁 · ${S.city}`, '', null);
+  try {
+    const d = await llmJSON(bootPrompt(o), raw => {
+      const t = extractPartialField(raw, 'narrative');
+      if (t) updateChapterNarrative(t);
+    });
+    updateChapterNarrative(d.narrative);
+    S.player.job = d.job || S.player.job;
+    S.place = d.place || '';
+    S.ideal.stages = E.normLadder(d.ladder);
+    S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [] }));
+    E.applyTurn(S, { newNpcs: d.npcs, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
+    S.booted = true;
+    S.lastOptions = d.options && d.options.length ? d.options : ['出门转转', '给家里打个电话', '把手头的活干完', '想想理想那件事'];
+    await finishChapter();
+    rebuildTop();
+    renderOptions(S.lastOptions);
+    renderPanel();
+    saveGame();
+  } catch (e) {
+    updateChapterNarrative('（开局没铸成：' + (e.message || e) + '）');
+    toast(e.message || '出错了');
+    mask('startMask', true);
+  }
+  setBusy(false);
+}
+
+/* ================= 面板 ================= */
+let curTab = '';
+function gotoTab(t) {
+  if (curTab === t) { closePanel(); return; }
+  curTab = t;
+  $('panel').classList.add('on');
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+  renderPanel();
+}
+function closePanel() { curTab = ''; $('panel').classList.remove('on'); document.querySelectorAll('.tab').forEach(x => x.classList.remove('on')); }
+
+function renderPanel() {
+  if (!S || !curTab) return;
+  const box = $('panelBody');
+  const p = S.player, L = S.ledger;
+  if (curTab === 'today') {
+    const t1 = S.schedule.work, t2 = S.schedule.rest;
+    box.innerHTML = `<h3>今天</h3>
+    <div class="card"><div class="cardhd">${esc(E.dateStr(S.date))}</div>
+      <div class="lines">${E.todayPlan(S).map(x => `<div><b>${x.slot}</b><span>${x.act}</span></div>`).join('')}</div></div>
+    <h4>作息</h4>
+    <div class="card">${schedTable('work', '工作日', t1)}${schedTable('rest', '周末', t2)}
+      <div class="tip">改了马上生效。四个时段全排满事情，精力会掉得很快。</div></div>
+    ${S.focus ? `<h4>正在闷头做的事</h4><div class="card"><b>${esc(S.focus.what)}</b><div class="tip">还剩 ${S.focus.left} 天，已经攒了 ${Math.round(S.focus.progress)}</div></div>` : ''}
+    <h4>约好的事</h4><div class="card">${S.appts.filter(a => !a.done).map(a => `<div class="li"><span>${a.m}月${a.d}日</span> ${esc(a.title)}</div>`).join('') || '<div class="tip">没有</div>'}</div>
+    <h4>停下来的条件</h4><div class="card"><div class="frow"><label>存够</label><input id="stopMoney" type="number" placeholder="${S.stopWhen && S.stopWhen.type === 'money' ? S.stopWhen.n : '比如 50000'}"/><button class="ghost sm" onclick="setStopMoney()">记上</button></div></div>`;
+    E.SLOTS.forEach(sl => {
+      ['work', 'rest'].forEach(k => {
+        const el = $(`sc_${k}_${sl}`);
+        if (el) el.onchange = () => { S.schedule[k][sl] = el.value; saveGame(); renderPanel(); rebuildTop(); };
+      });
+    });
+  } else if (curTab === 'msg') {
+    const threads = {};
+    for (const m of S.msgs) {
+      const k = m.from;
+      if (!threads[k]) threads[k] = { from: k, last: m, n: 0, unread: 0, kind: m.kind };
+      threads[k].last = m; threads[k].n++;
+      if (!m.read) threads[k].unread++;
+    }
+    const list = Object.values(threads).sort((a, b) => S.msgs.lastIndexOf(b.last) - S.msgs.lastIndexOf(a.last));
+    box.innerHTML = `<h3>消息</h3>` + (list.length
+      ? `<div class="msgs">${list.map(t => {
+          const n = S.npcs.find(x => x.name === t.from);
+          return `<div class="thread" onclick="openThread('${esc(t.from)}')">
+            <div class="mfrom">${esc(t.from)}${n ? `<em>${relWord(n.rel, n.tie)}</em>` : t.kind === 'peer' ? '<em>同期</em>' : ''}<span>${esc(t.last.date)}${t.unread ? ' <i class="dot"></i>' : ''}</span></div>
+            <div class="mtext one">${esc(t.last.text)}</div></div>`;
+        }).join('')}</div>`
+      : '<div class="card tip">还没有消息</div>')
+      + `<h4>认识的人</h4><div class="card">${S.npcs.length ? S.npcs.slice().sort((a,b)=>b.rel-a.rel).map(n => {
+          const gap = S.stats.days - (n.lastSeen || 0);
+          return `<div class="li" onclick="showNpc('${esc(n.name)}')"><b>${esc(n.name)}</b> <span class="rel${n.rel < 12 ? ' bad' : ''}">${relWord(n.rel, n.tie)}</span>
+            <div class="tip">${esc(n.job || '')}${n.tie ? '｜' + esc(n.tie) : ''}${gap >= 20 ? `｜<u>${gap}天没联系了</u>` : ''}</div></div>`;
+        }).join('') : '<div class="tip">还没认识谁</div>'}</div>
+      <h4>同期的人</h4><div class="card">${S.peers.map(pr => `<div class="li"><b>${esc(pr.name)}</b><div class="tip">${esc(pr.note || '')}${(pr.track || []).length ? '　→　' + esc((pr.track || []).slice(-3).join('　→　')) : ''}</div></div>`).join('') || '<div class="tip">无</div>'}</div>`;
+  } else if (curTab === 'ideal') {
+    box.innerHTML = renderLadder();
+  } else if (curTab === 'book') {
+    const out = L.rent + L.living + L.remit, inc = L.salary + L.subsidy;
+    box.innerHTML = `<h3>账本</h3>
+    <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">¥${p.money.toLocaleString('zh-CN')}</div><div class="tip">存款</div></div>
+    <div class="card"><div class="lines">
+      <div><b>每月进</b><span>${inc}</span></div>
+      <div><b>工资（${L.salaryDay}号）</b><span>${L.salary}</span></div>
+      ${L.subsidy ? `<div><b>家里给</b><span>${L.subsidy}</span></div>` : ''}
+      <div><b>每月出</b><span>${out}</span></div>
+      <div><b>房租（${L.rentDay}号）</b><span>${L.rent}</span></div>
+      <div><b>生活</b><span>${L.living}</span></div>
+      ${L.remit ? `<div><b>寄回家</b><span>${L.remit}</span></div>` : ''}
+      <div class="sum"><b>一个月剩</b><span class="${inc - out < 0 ? 'bad' : 'good'}">${inc - out}</span></div>
+    </div></div>
+    <h4>欠的钱</h4>
+    <div class="card">${(S.debts || []).length
+      ? S.debts.map((d, i) => `<div class="li"><b>${esc(d.who)}</b> <span class="rel${d.late ? ' bad' : ''}">${d.left}元${d.late ? '·过期了' : ''}</span>
+          <div class="tip">${d.due.m}月${d.due.d}日之前要还　<button class="ghost sm" onclick="doPay(${i})">还一笔</button></div></div>`).join('')
+      : '<div class="tip">没欠谁的</div>'}
+      <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>
+    <div class="card tip">${S.broke ? '账上已经是负的了，做什么都差一口气。' : `按这个过法，${inc - out > 0 ? `一个月能剩 ${inc - out}` : '每个月都在倒贴'}。`}</div>`;
+  } else if (curTab === 'me') {
+    box.innerHTML = `<h3>我</h3>
+    <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div>
+    <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
+      <div><b>精力</b><span>${p.energy}</span></div>
+      <div><b>行业口碑</b><span>${p.信誉}</span></div>
+      <div><b>做人</b><span>${p.人品}</span></div>
+      <div><b>干了多久</b><span>${workedText(p.资历天 || 0)}</span></div>
+    </div></div>
+    <h4>饭碗</h4>
+    <div class="card">${S.job.out
+      ? `<div class="big bad">没有工作</div><div class="tip">${S.job.was ? `从${esc(S.job.was)}出来之后` : ''}没有工资进账，房租和生活费照扣。</div>
+         <div class="btns"><button class="ghost" onclick="askJob()">去面一场</button></div>`
+      : `<div class="lines">
+          <div><b>单位</b><span>${esc(S.job.employer || '—')}</span></div>
+          <div><b>职级</b><span>${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（试用期）' : ''}</span></div>
+          <div><b>月薪</b><span>${L.salary}</span></div>
+          <div><b>下次考核</b><span>${E.nextReview(S)}天后</span></div>
+        </div>
+        <div class="cardhd" style="margin-top:10px">这个季度的绩效</div>
+        <div class="bar"><div class="bar-in${S.job.perf > 45 ? ' good' : S.job.perf < 15 ? ' bad' : ''}" style="width:${Math.min(100, Math.round(S.job.perf / 70 * 100))}%"></div></div>
+        <div class="tip">${Math.round(S.job.perf)}　作息里排「主业」才攒得上，晚上和深夜加班攒得更快，代价是精力。${S.job.mood < 0 ? '　上次被约谈过，这个季度要难一些。' : ''}</div>
+        <div class="btns"><button class="ghost" onclick="askRaise()">谈加薪</button><button class="ghost" onclick="doQuit()">辞职</button></div>`}
+    </div>
+    ${S.lastReview ? `<div class="card tip">上次考核：${esc(S.lastReview.kind)}——${esc(S.lastReview.text)}</div>` : ''}
+    <h4>身上的毛病</h4><div class="card">${S.status.length ? S.status.map(s => `<div class="li"><b>${esc(s.name)}</b><span class="rel">还有${s.days}天</span><div class="tip">${esc(s.desc)}</div></div>`).join('') : '<div class="tip">没有</div>'}
+      ${S.chronic.length ? S.chronic.map(c => `<div class="li"><b>${esc(c.name)}</b><span class="rel bad">去不掉</span><div class="tip">${esc(c.desc)}</div></div>`).join('') : ''}</div>
+    <h4>这一路</h4><div class="card">${S.history.slice(-14).reverse().map(h => `<div class="li"><span>${esc(h.date)}</span> ${esc(h.summary)}</div>`).join('') || '<div class="tip">还没开始</div>'}</div>
+    <div class="btns"><button class="ghost" onclick="exportBook()">导出全本</button><button class="ghost" onclick="openSettings()">设置</button></div>`;
+  }
+}
+function workedText(d) {
+  if (d < 60) return d + '天';
+  if (d < 365) return Math.floor(d / 30) + '个月';
+  return Math.floor(d / 365) + '年' + Math.floor((d % 365) / 30) + '个月';
+}
+function schedTable(k, lab, t) {
+  return `<div class="sched"><div class="schedhd">${lab}</div>${E.SLOTS.map(sl => `<div class="schedrow"><span>${sl}</span>
+    <select id="sc_${k}_${sl}">${Object.keys(E.ACTS).map(a => `<option${t[sl] === a ? ' selected' : ''}>${a}</option>`).join('')}</select></div>`).join('')}</div>`;
+}
+function setStopMoney() {
+  const v = Number($('stopMoney').value);
+  if (!v) { S.stopWhen = null; toast('取消了'); }
+  else { S.stopWhen = { type: 'money', n: v }; toast(`存够${v}就停下来`); }
+  saveGame(); renderPanel();
+}
+
+
+/* ================= 理想阶梯 ================= */
+function renderLadder() {
+  const c = E.curMile(S);
+  const box = [];
+  box.push(`<h3>理想</h3>
+    <div class="card"><div class="big">${esc(S.player.ideal)}</div>
+      <div class="tip">${esc(S.player.track)}｜${esc(S.player.skillName)} ${S.player.attrs['专业']}｜在这件事上攒的功夫 ${Math.round(S.ideal.progress)}</div></div>`);
+  if (!S.ideal.stages.length) { box.push('<div class="card tip">这一局没立下阶梯（老存档），下一局开局时会生成。</div>'); return box.join(''); }
+
+  S.ideal.stages.forEach((st, i) => {
+    box.push(`<h4>第${i + 1}段　${esc(st.name)}</h4><div class="card">`);
+    st.milestones.forEach((m, j) => {
+      const cur = c && c.m.id === m.id;
+      const stt = E.mileStat(S, m);
+      box.push(`<div class="mile${m.done ? ' done' : cur ? ' cur' : ''}">
+        <div class="mtitle">${m.done ? '✓ ' : ''}${esc(m.title)}${m.done && m.doneDate ? `<span>${esc(m.doneDate)}</span>` : ''}</div>
+        ${m.desc && !m.done ? `<div class="tip">${esc(m.desc)}</div>` : ''}
+        ${!m.done && cur ? `
+          <div class="bar" style="margin-top:8px"><div class="bar-in${stt.ok ? ' good' : ''}" style="width:${stt.pct}%"></div></div>
+          <div class="tip">${esc(stt.label)} ${stt.cur}${stt.unit} / ${stt.need}${stt.unit}${stt.ok ? '　够了' : `　还差 ${stt.need - stt.cur}${stt.unit}`}</div>
+          <div class="tip">门槛：${esc(m.gate || m.scene)}（得打一场${esc(m.scene)}）</div>
+          ${stt.ok ? `<button class="primary sm" style="margin-top:9px" onclick="askKey(${m.id})">去谈这一场</button>`
+                   : '<div class="tip dim">硬指标没到，谈也没人听</div>'}` : ''}
+      </div>`);
+    });
+    box.push('</div>');
+  });
+  box.push(`<h4>未了的事</h4><div class="card">${S.unresolved.map(u => `<div class="li">${esc(u)}</div>`).join('') || '<div class="tip">暂时没有</div>'}</div>`);
+  if (S.stats.keys) box.push(`<div class="card tip">关键局打过 ${S.stats.keys} 场，谈成 ${S.stats.keyWins || 0} 场。</div>`);
+  return box.join('');
+}
+
+/* ================= 关键局 ================= */
+function keyHard(mileId) {
+  let si = 0, mi = 0;
+  S.ideal.stages.forEach((st, i) => st.milestones.forEach((m, j) => { if (m.id === mileId) { si = i; mi = j; } }));
+  return Math.min(88, 26 + si * 20 + mi * 5);
+}
+function keyOpenPrompt(m, hard) {
+  return `${worldRules()}
+
+${stateBlocks()}
+
+主角要去打一场【${m.scene}】：${m.gate || m.title}。${m.kind === 'raise'
+    ? '这是去跟自己的老板谈钱。对手就是他的直属上级或者老板本人，要跟前面剧情里出现过的人对得上（如果出现过）。'
+    : m.kind === 'job'
+    ? `这是一场面试，主角眼下没有工作${S.job.was ? `（刚从${S.job.was}出来）` : ''}。对手是招人的那一方，给出公司叫什么、什么岗位、多少钱一个月（要跟他的资历和这座城市对得上）。`
+    : `这关系到他理想路上的这一步：${m.title}${m.desc ? `（${m.desc}）` : ''}。`}
+
+给出这场的对手和开场。要求：
+- 对手是个具体的人，有名字、职位、一句让人能摸出他脾气的描述。不要写他属于哪一类，让玩家自己看出来。
+- type 从这五个里选一个最贴的：务实（只认硬东西）/好面子（爱听好听的）/老江湖（什么场面都见过）/和稀泥（不表态能拖就拖）/急性子（没耐心）
+- 开场 180-260 字：主角怎么到的这儿、屋里什么样、对方开口第一句。写到要开谈为止，不要写谈的过程和结果。
+
+只输出一个合法 JSON：
+{"opp":{"name":"","job":"","note":"一句话的人，别点破他是哪一类","type":"务实|好面子|老江湖|和稀泥|急性子"},"where":"在哪儿谈","opening":"开场"}`;
+}
+function keyEndPrompt(res, meta) {
+  const K = meta.log.map(l =>
+    `第${l.round}回合：主角【${l.move}】${l.pw >= 0 ? '压住了' : '没压住'}（${l.pw >= 0 ? '+' : ''}${l.pw}）${l.note ? '，' + l.note : ''}；对方${{ '推': '把话推回来', '追问': '追着问细节', '看表': '看了眼表', '压价': '往下压条件' }[l.oppMove]}。此刻：对方戒心${l.st.guard}、兴趣${l.st.interest}、耐心${l.st.patience}，主角底气${l.st.nerve}`).join('\n');
+  return `${worldRules()}
+
+${stateBlocks()}
+
+主角刚打完一场【${meta.scene}】，对手是${meta.opp.name}（${meta.opp.job || ''}，${meta.opp.note}）。为的是：${meta.stake || '一件要紧事'}。
+
+【这场是怎么打下来的（引擎记录，必须照着写）】
+${K}
+
+【最终结果（不可更改）】${res.result}${meta.why ? `——${meta.why}` : ''}${res.mile ? `。这一步「${res.mile}」就算迈过去了` : ''}${res.price.length ? `。代价：${res.price.join('、')}` : ''}
+
+写这一场，500-700 字：
+- 以对话为主。八个回合不必逐个写，挑三四个真正有转折的写，其余带过。
+- 对方的每一次反应要对得上引擎记录：戒心降了就是他松口了，兴趣涨了就是他开始往下问，耐心掉了就是他开始不耐烦。
+- 结尾写到结果落地：谈成写成怎么定下来的，留口子写成话没说死、下次再约，谈崩写成怎么收的场。不许翻案，不许找补，不许煽情。
+- ${res.result === '谈成' ? '谈成之后不要写主角感慨万千，写他走出门第一件具体的事。' : '没谈成不要写他发誓要怎样，写他当下做了什么。'}
+${meta.kind === 'job' && res.result === '谈成' ? '- 这场是面试而且谈成了：必须把 newJob 填上（东家、职位、月薪、是否试用期），月薪要跟剧情里说的对得上。\n' : ''}${meta.kind === 'job' && res.result !== '谈成' ? '- 这场面试没成，不要安慰他，写他怎么走出那栋楼。\n' : ''}
+
+只输出一个合法 JSON：
+${SCHEMA}`;
+}
+
+async function askKey(mileId) {
+  let m = null;
+  for (const st of S.ideal.stages) for (const x of st.milestones) if (x.id === mileId) m = x;
+  if (!m) return;
+  runKey({ scene: m.scene, gate: m.gate, title: m.title, desc: m.desc, kind: 'mile', mileId, hard: keyHard(mileId) });
+}
+function askJob() {
+  runKey({ scene: '面试', gate: '一场面试', title: '找个新饭碗', kind: 'job', mileId: null, hard: 28 + E.num(S.job.lv) * 8 });
+}
+function askRaise() {
+  if (S.job.out) { toast('眼下没有工作'); return; }
+  const lv = E.num(S.job.lv);
+  runKey({ scene: '谈判', gate: '跟老板谈加薪', title: '加薪', kind: 'raise', mileId: null, hard: 40 + lv * 8 });
+}
+async function runKey(m) {
+  if (busy) return;
+  closePanel();
+  const hard = m.hard;
+  setBusy(true, '正在赶去的路上……');
+  beginChapter(E.shortDate(S.date), m.scene, `去谈：${m.gate || m.title}`, null);
+  try {
+    const d = await llmJSON(keyOpenPrompt(m, hard), raw => {
+      const t = extractPartialField(raw, 'opening');
+      if (t) updateChapterNarrative(t);
+    });
+    updateChapterNarrative(d.opening);
+    S.seg++;
+    await finishChapter();
+    const o = d.opp || {};
+    E.startKey(S, { scene: m.scene, name: o.name, type: o.type, note: o.note, hard, mileId: m.mileId, kind: m.kind, stake: m.gate || m.title });
+    S.key.opp.job = String(o.job || '').slice(0, 16);
+    S.key.where = String(d.where || '').slice(0, 20);
+    saveGame();
+    openKey();
+  } catch (e) {
+    updateChapterNarrative('（没去成：' + (e.message || e) + '）');
+    toast(e.message || '出错了');
+  }
+  setBusy(false);
+}
+
+function openKey() {
+  $('key').classList.add('on');
+  renderKey();
+}
+function bandColor(v) { return v >= 66 ? 'good' : v >= 33 ? '' : 'bad'; }
+function renderKey() {
+  const K = S.key;
+  if (!K) { $('key').classList.remove('on'); return; }
+  $('keyTitle').textContent = `${K.scene}　${K.opp.name}`;
+  $('keySub').textContent = `${K.opp.job ? K.opp.job + '　' : ''}${K.opp.note}`;
+  $('keyBars').innerHTML = [
+    ['对方耐心', K.patience, bandColor(K.patience)],
+    ['对方戒心', K.guard, K.guard >= 60 ? 'bad' : K.guard >= 35 ? '' : 'good'],
+    ['对方兴趣', K.interest, bandColor(K.interest)],
+    ['你的底气', K.nerve, bandColor(K.nerve)]
+  ].map(([lab, v, c]) => `<div class="kbar"><span>${lab}</span><div class="bar"><div class="bar-in ${c}" style="width:${Math.round(v)}%"></div></div><em>${Math.round(v)}</em></div>`).join('');
+
+  $('keyLog').innerHTML = K.log.map(l => {
+    const opp = { '推': '把话推了回来', '追问': '追着问细节', '看表': '看了一眼表', '压价': '往下压条件' }[l.oppMove];
+    return `<div class="krd"><b>${l.round}　${l.move}</b>
+      <span class="${l.pw >= 0 ? 'good' : 'bad'}">${l.pw >= 0 ? '压住 +' : '没压住 '}${l.pw}</span>
+      ${l.note ? `<i>${esc(l.note)}</i>` : ''}<div class="tip">对方${opp}。戒心${l.st.guard}　兴趣${l.st.interest}　耐心${l.st.patience}　底气${l.st.nerve}</div></div>`;
+  }).join('') || `<div class="tip">${esc(K.where || '')}　八个回合之内定输赢。同一招使第二遍就不灵了。</div>`;
+  $('keyLog').scrollTop = $('keyLog').scrollHeight;
+
+  $('keyMoves').innerHTML = Object.keys(E.MOVES).map(k => {
+    const mv = E.MOVES[k];
+    const dead = (k === '亮底牌' && K.usedCard);
+    const seen = (K.used || {})[k] || 0;
+    return `<button class="kmove${dead ? ' dead' : ''}" data-m="${k}"${dead ? ' disabled' : ''}>
+      <b>${k}</b><i>${mv.tip}</i><u>${mv.attr}${S.player.attrs[mv.attr]}${seen ? `　用过${seen}次` : ''}</u></button>`;
+  }).join('');
+  $('keyMoves').querySelectorAll('.kmove').forEach(b => b.onclick = () => keyGo(b.dataset.m));
+  $('keyMoves').style.display = K.over ? 'none' : '';
+  $('keyEnd').style.display = K.over ? '' : 'none';
+  if (K.over) $('keyEnd').textContent = `${K.result}　—　看看这一场怎么写`;
+}
+function keyGo(move) {
+  const r = E.keyRound(S, move, Math.random);
+  if (r && r.bad) { toast(r.bad); return; }
+  renderKey();
+  saveGame();
+}
+async function keyFinish() {
+  const K = S.key;
+  if (!K || !K.over) return;
+  const meta = { scene: K.scene, opp: K.opp, stake: K.stake, kind: K.kind, log: K.log.slice(), why: K.why || '' };
+  const res = E.settleKey(S);
+  $('key').classList.remove('on');
+  setBusy(true, '正在记下这一场……');
+  S.seg++;
+  beginChapter(E.shortDate(S.date), `${meta.scene}·${res.result}`, `跟${meta.opp.name}谈${meta.stake ? '「' + meta.stake + '」' : ''}`,
+    { check: { attr: '这一场', val: meta.log.length + '回合', roll: '', mod: 0, total: res.result, need: '', success: res.result === '谈成' } });
+  try {
+    const d = await llmJSON(keyEndPrompt(res, meta), raw => {
+      const t = extractPartialField(raw, 'narrative');
+      if (t) updateChapterNarrative(t);
+    });
+    updateChapterNarrative(d.narrative);
+    E.applyTurn(S, d);
+    S.date = E.addDays(S.date, 1);
+    S.lastAction = null;
+    S.lastOptions = d.options && d.options.length ? d.options : ['缓一缓', '接着往下做'];
+    await finishChapter();
+    rebuildTop();
+    renderOptions(S.lastOptions);
+    saveGame();
+    if (res.mile) toast(`迈过去了：${res.mile}`);
+    if (res.raise) toast(`月薪涨了${res.raise}`);
+  } catch (e) {
+    updateChapterNarrative('（这场没写成：' + (e.message || e) + '）');
+    renderOptions(S.lastOptions.length ? S.lastOptions : ['缓一缓']);
+  }
+  setBusy(false);
+}
+
+/* ================= 人与聊天 ================= */
+function showNpc(name) {
+  const n = S.npcs.find(x => x.name === name);
+  if (!n) return;
+  const gap = S.stats.days - (n.lastSeen || 0);
+  $('npcBox').innerHTML = `<h2>${esc(n.name)}</h2>
+    <div class="tip" style="margin-top:-10px">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}　${esc(n.tie || '')}</div>
+    <div class="card" style="margin-top:14px"><div class="lines">
+      <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
+      <div><b>上次来往</b><span>${gap <= 0 ? '就这几天' : gap + '天前'}</span></div>
+      ${n.care ? `<div><b>在意</b><span>${esc(n.care)}</span></div>` : ''}
+    </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
+    ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>`;
+  mask('npcMask', true);
+}
+function openThread(from) {
+  for (const m of S.msgs) if (m.from === from) m.read = true;
+  saveGame();
+  const n = S.npcs.find(x => x.name === from);
+  if (n) openConvo(from);
+  else { renderPanel(); toast('这条不是能回的消息'); }
+}
+
+/* ---- 私聊 ---- */
+function convoHead(n) {
+  return `${worldRules()}
+
+你现在扮演的是【${n.name}】，不是主角。只说${n.name}的话，一次一两句，像真人发微信或者当面讲话：短、有口语、可以答非所问、可以不接主角的话茬。
+不许旁白，不许描写主角的动作和心理，不许替主角说话。不许说教，不许煽情。
+
+【${n.name}是谁】${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，跟主角是${n.tie}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
+【你们之前的来往】${(n.mem || []).join('；') || '没什么特别的'}
+【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。手头存款${S.player.money}元。
+【最近发生的事】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(0, 120)}……`;
+}
+function convoPrompt(n, say, judge) {
+  const log = S.convo.lines.map(l => `${l.who === 'me' ? S.player.name : n.name}：${l.text}`).join('\n') || '（刚开口）';
+  return `${convoHead(n)}
+
+【到现在为止的对话】
+${log}
+
+${judge
+    ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。
+这一轮写${n.name}的最终答复，必须照这个结果来。答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞糊弄过去。`
+    : `【主角刚说的】${say}`}
+
+只输出一个合法 JSON：
+{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-8到8的整数),"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","attr":"表达|情绪|谋划|专业","need":40到85,"money":如果是借钱就写数额否则0,"days":多少天内还}'},"end":对方想结束对话就true,"summary":"这次聊天到现在的一句话（20字内）"}`;
+}
+
+function openConvo(name) {
+  const n = S.npcs.find(x => x.name === name);
+  if (!n || busy) return;
+  S.convo = { name, lines: [], turns: 0, summary: '', rel: 0 };
+  closePanel();
+  $('chat').classList.add('on');
+  renderConvo();
+  $('chatIn').value = '';
+  setTimeout(() => $('chatIn').focus(), 200);
+}
+function renderConvo() {
+  const c = S.convo;
+  if (!c) return;
+  const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
+  $('chatName').textContent = n.name;
+  $('chatSub').textContent = `${n.tie || ''}　${relWord(n.rel, n.tie)}${c.rel ? `（${c.rel > 0 ? '+' : ''}${c.rel}）` : ''}`;
+  $('chatBody').innerHTML = c.lines.map(l =>
+    l.who === 'sys'
+      ? `<div class="sysline">${esc(l.text)}</div>`
+      : `<div class="bub ${l.who === 'me' ? 'me' : 'ta'}">${esc(l.text)}${l.mood ? `<i>${esc(l.mood)}</i>` : ''}</div>`).join('')
+    || '<div class="sysline">说点什么</div>';
+  $('chatBody').scrollTop = $('chatBody').scrollHeight;
+}
+async function convoSend() {
+  const c = S.convo;
+  if (!c || busy) return;
+  const say = $('chatIn').value.trim();
+  if (!say) return;
+  $('chatIn').value = '';
+  c.lines.push({ who: 'me', text: say });
+  c.turns++;
+  renderConvo();
+  await convoTurn(say, null);
+  if (c.turns >= 8) { c.lines.push({ who: 'sys', text: '聊得差不多了' }); renderConvo(); }
+}
+async function convoTurn(say, judge) {
+  const c = S.convo;
+  const n = S.npcs.find(x => x.name === c.name);
+  if (!n) return;
+  setBusy(true, '对面在打字……');
+  $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
+  $('chatBody').scrollTop = $('chatBody').scrollHeight;
+  try {
+    const d = await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05 });
+    c.lines.push({ who: 'ta', text: d.reply || '……', mood: d.mood || '' });
+    c.rel += E.num(d.rel);
+    if (d.summary) c.summary = d.summary;
+    renderConvo();
+    if (d.ask && d.ask.what && !judge) {
+      const ck = E.rollCheck(S, d.ask.attr || '表达', E.num(d.ask.need) || 60, Math.random);
+      ck.what = d.ask.what;
+      ck.money = E.num(d.ask.money); ck.days = E.num(d.ask.days);
+      if (ck.success && ck.money > 0) {
+        E.addDebt(S, c.name, ck.money, ck.days || 60);
+        c.lines.push({ who: 'sys', text: `${c.name}给你转了${ck.money}，说好${ck.days || 60}天内还` });
+        rebuildTop();
+      }
+      c.lines.push({ who: 'sys', text: `${ck.attr}${ck.val}　掷骰${ck.roll}　${ck.total}/${ck.need}　${ck.success ? '成' : '不成'}` });
+      renderConvo();
+      setBusy(false);
+      await convoTurn('', ck);
+      return;
+    }
+    if (d.end) { c.lines.push({ who: 'sys', text: '他看样子要走了' }); renderConvo(); }
+  } catch (e) {
+    c.lines.push({ who: 'sys', text: '（没说成：' + (e.message || e) + '）' });
+    renderConvo();
+  }
+  setBusy(false);
+  saveGame();
+}
+function endConvo(goOn) {
+  const c = S.convo;
+  if (!c) { $('chat').classList.remove('on'); return; }
+  const n = S.npcs.find(x => x.name === c.name);
+  const said = c.lines.filter(l => l.who !== 'sys');
+  if (n && said.length) {
+    E.applyConvo(S, c.name, { rel: c.rel, mem: c.summary || said[said.length - 1].text.slice(0, 30) });
+    S.recent.push({
+      seg: S.seg, action: `找${c.name}聊了聊`,
+      narrative: said.map(l => `${l.who === 'me' ? S.player.name : c.name}：${l.text}`).join('\n')
+    });
+    S.recent = S.recent.slice(-8);
+    S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `跟${c.name}聊：${c.summary || '说了会儿话'}` });
+  }
+  const name = c.name, sum = c.summary;
+  S.convo = null;
+  $('chat').classList.remove('on');
+  saveGame();
+  rebuildTop();
+  if (goOn && said.length) { S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment(); }
+}
+
+/* ---- 饭碗与借钱 ---- */
+function doQuit() {
+  if (!confirm('辞了？下个月起没有工资，房租照交。')) return;
+  const r = E.quitJob(S);
+  if (!r) return;
+  S.lastAction = '把辞职的事办了';
+  saveGame();
+  closePanel();
+  toast(r.text);
+  runSegment();
+}
+function doPay(i) {
+  const d = (S.debts || [])[i];
+  if (!d) return;
+  const v = prompt(`还给${d.who}多少？（还欠 ${d.left}，手头 ${S.player.money}）`, String(Math.min(d.left, Math.max(0, S.player.money))));
+  const r = E.payDebt(S, i, Number(v));
+  if (!r) { toast('还不上'); return; }
+  toast(`还了${r.who}${r.pay}元${r.left ? `，还欠${r.left}` : '，清了'}`);
+  saveGame(); rebuildTop(); renderPanel();
+}
+function openBorrow() {
+  const cand = S.npcs.filter(n => n.rel >= 35);
+  if (!cand.length) { toast('眼下没有能开口的人'); return; }
+  $('npcBox').innerHTML = `<h2>找谁开口</h2><div class="tip" style="margin-top:-10px">开口是要还的，还不上关系就完了。</div>
+    <div class="card" style="margin-top:14px">${cand.sort((a, b) => b.rel - a.rel).map(n =>
+      `<div class="li" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')"><b>${esc(n.name)}</b>
+        <span class="rel">${relWord(n.rel, n.tie)}</span><div class="tip">${esc(n.tie)}${n.job ? '｜' + esc(n.job) : ''}</div></div>`).join('')}</div>
+    <div class="tip">进了聊天之后直接开口，对方答不答应由引擎掷骰。</div>
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">算了</button></div>`;
+  mask('npcMask', true);
+  closePanel();
+}
+
+/* ================= 投入 ================= */
+function openFocus() {
+  if (S.focus) { toast('手头这摊还没做完'); return; }
+  mask('focusMask', true);
+  $('fcWhat').value = '';
+  $('fcDays').value = 10;
+  $('fcDaysN').textContent = '10';
+}
+function doFocus() {
+  const what = $('fcWhat').value.trim();
+  if (!what) { toast('写清楚要闷头做什么'); return; }
+  const days = Number($('fcDays').value) || 10;
+  const attr = guessAttr(what);
+  S.focus = { what, days, left: days, progress: 0, attr, ideal: /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
+  mask('focusMask', false);
+  S.lastAction = `接下来这${days}天，闷头${what}`;
+  saveGame();
+  runSegment();
+}
+
+/* ================= 设置 / 存档 ================= */
+function openSettings() {
+  mask('setMask', true);
+  $('cfgBase').value = cfg.base; $('cfgKey').value = cfg.key; $('cfgModel').value = cfg.model;
+  const fb = $('setFree');
+  fb.innerHTML = seg(Object.keys(E.FREEDOM), S ? S.freedom : '都市传奇');
+  bindSeg('setFree', v => { if (S) { S.freedom = v; saveGame(); toast('口径改成' + v); } });
+  $('setFreeWrap').style.display = S ? '' : 'none';
+}
+function saveCfg() {
+  cfg = {
+    base: $('cfgBase').value.trim() || 'https://api.deepseek.com',
+    key: $('cfgKey').value.trim(),
+    model: $('cfgModel').value.trim() || 'deepseek-chat',
+    think: cfg.think
+  };
+  localStorage.setItem(LS_CFG, JSON.stringify(cfg));
+  mask('setMask', false);
+  toast('记下了');
+}
+function saveGame() {
+  if (!S) return;
+  try { localStorage.setItem(LS_SAVE, JSON.stringify(S)); } catch (_) { }
+}
+function loadGame() {
+  const raw = localStorage.getItem(LS_SAVE);
+  if (!raw) return false;
+  try { S = JSON.parse(raw); } catch (_) { return false; }
+  if (!S || !S.player) return false;
+  $('story').innerHTML = S.chapters.join('');
+  if (S.runId) bookAll(S.runId).then(rows => {
+    if (!rows || rows.length <= S.chapters.length) return;
+    $('story').innerHTML = rows.map(r => r.html).join('');
+    scrollDown();
+  }).catch(() => { });
+  rebuildTop();
+  renderOptions(S.lastOptions && S.lastOptions.length ? S.lastOptions : ['接着过日子']);
+  scrollDown();
+  if (S.convo) { $('chat').classList.add('on'); renderConvo(); }
+  if (S.key) openKey();
+  return true;
+}
+function restart() {
+  if (!confirm('重开一局？这一局的存档会没。')) return;
+  localStorage.removeItem(LS_SAVE);
+  if (S && S.runId) bookClear(S.runId).catch(() => { });
+  S = null;
+  $('story').innerHTML = '';
+  mask('setMask', false);
+  closePanel();
+  renderStart();
+  mask('startMask', true);
+}
+async function exportBook() {
+  if (!S) return;
+  let rows = [];
+  try { rows = await bookAll(S.runId); } catch (_) { }
+  const html = rows.length ? rows.map(r => r.html).join('') : S.chapters.join('');
+  const div = document.createElement('div'); div.innerHTML = html;
+  const out = [`# ${S.player.name}　${S.startDate.y}年—${S.date.y}年`, `> ${S.player.ideal}`, ''];
+  div.querySelectorAll('.chapter').forEach(c => {
+    const hd = c.querySelector('.chapmark'), tm = c.querySelector('.chaptime'), ac = c.querySelector('.action-echo');
+    out.push('## ' + (hd ? hd.textContent.trim() : '') + (tm ? '　' + tm.textContent.trim() : ''));
+    if (ac) out.push('> ' + ac.textContent.trim());
+    c.querySelectorAll('.ntext p').forEach(p => out.push(p.textContent.trim()));
+    out.push('');
+  });
+  const blob = new Blob([out.join('\n')], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${S.player.name}的这些年.md`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ================= 启动 ================= */
+function boot() {
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => gotoTab(t.dataset.t));
+  $('panelClose').onclick = closePanel;
+  $('setSave').onclick = saveCfg;
+  $('setClose').onclick = () => mask('setMask', false);
+  $('setRestart').onclick = restart;
+  $('fcGo').onclick = doFocus;
+  $('fcClose').onclick = () => mask('focusMask', false);
+  $('fcDays').oninput = () => $('fcDaysN').textContent = $('fcDays').value;
+  $('topBtn').onclick = openSettings;
+  $('keyEnd').onclick = keyFinish;
+  $('chatSend').onclick = convoSend;
+  $('chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') convoSend(); });
+  $('chatBack').onclick = () => endConvo(false);
+  $('chatDone').onclick = () => endConvo(true);
+  // 输入框拿到焦点时浏览器会把整个壳子顶上去，这里按回去
+  $('app').addEventListener('scroll', () => { const a = $('app'); a.scrollTop = 0; a.scrollLeft = 0; }, { passive: true });
+  window.addEventListener('pagehide', saveGame);
+  window.addEventListener('beforeunload', saveGame);
+  if (!loadGame()) { renderStart(); mask('startMask', true); }
+}
+boot();
+
+</script>
+<script>
+/* ===== 装到桌面 / 主屏幕 ===== */
+(function () {
+  const KEY = 'mls_install';
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR|FxiOS|CriOS/.test(ua);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let deferred = null, armed = false;
+
+  const $ = id => document.getElementById(id);
+  const show = on => $('instMask').classList.toggle('on', on);
+
+  function armOffer() {
+    if (armed || standalone) return;
+    const st = localStorage.getItem(KEY);
+    if (st === 'installed' || st === 'dismissed') return;
+    armed = true;
+    // 等玩进去了再排队，别一进来就弹
+    const t = setInterval(() => {
+      const started = !$('startMask').classList.contains('on') && document.querySelector('.act-btn');
+      if (started) { clearInterval(t); setTimeout(() => openInstall(true), 45000); }
+    }, 2000);
+  }
+
+  function openInstall(auto) {
+    if (auto && (standalone || localStorage.getItem(KEY) === 'installed')) return;
+    const body = $('instBody');
+    if (deferred) {
+      body.innerHTML = `<div class="hint">装到桌面之后，它就像个单独的应用：全屏、没有地址栏，断网也能接着玩。存档还是存在这台设备上。</div>`;
+      $('instGo').style.display = '';
+      $('instGo').textContent = '装上';
+    } else if (isIOS) {
+      body.innerHTML = `<div class="hint">iPhone 上要手动加一下：<br>1　点底部工具栏中间的<b>分享</b>按钮<br>2　往下翻，找到<b>「添加到主屏幕」</b><br>3　右上角<b>添加</b><br><br>装完从主屏幕点进来就是全屏的，断网也能玩。</div>`;
+      $('instGo').style.display = 'none';
+    } else if (isSafari) {
+      body.innerHTML = `<div class="hint">Mac 上的 Safari：菜单栏 <b>文件</b> → <b>添加到程序坞</b>。<br>装完从程序坞点进来就是一个单独的窗口。</div>`;
+      $('instGo').style.display = 'none';
+    } else {
+      body.innerHTML = `<div class="hint">你这个浏览器没给出安装入口。地址栏右侧如果有安装图标可以点一下；没有的话，存个书签也一样能玩。</div>`;
+      $('instGo').style.display = 'none';
+    }
+    show(true);
+  }
+
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; armOffer(); });
+  addEventListener('appinstalled', () => { localStorage.setItem(KEY, 'installed'); show(false); });
+  if (isSafari || isIOS) addEventListener('load', armOffer);
+
+  addEventListener('DOMContentLoaded', () => {
+    $('instGo').onclick = async () => {
+      if (!deferred) return;
+      show(false);
+      deferred.prompt();
+      const { outcome } = await deferred.userChoice;
+      deferred = null;
+      localStorage.setItem(KEY, outcome === 'accepted' ? 'installed' : 'dismissed');
+    };
+    $('instLater').onclick = () => { localStorage.setItem(KEY, 'dismissed'); show(false); };
+    $('instOpen').onclick = () => openInstall(false);
+  });
+  window.openInstall = openInstall;
+
+  /* service worker：断网也能玩 */
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              const bar = $('newver');
+              bar.classList.add('on');
+              $('newverGo').onclick = () => { reg.waiting && reg.waiting.postMessage('skipWaiting'); };
+              $('newverNo').onclick = () => bar.classList.remove('on');
+            }
+          });
+        });
+      }).catch(() => { });
+      // 头一回装上 sw 时它会 claim，这时候不该刷新；只有真的换了新版本才刷
+      const hadController = !!navigator.serviceWorker.controller;
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloading) return;
+        reloading = true;
+        location.reload();
+      });
+    });
+  }
+})();
+
+</script>
+</body>
+</html>

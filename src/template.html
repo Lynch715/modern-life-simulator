@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#101218"/>
+<title>现代生活模拟器</title>
+<link rel="icon" href="favicon.ico" sizes="any"/>
+<link rel="icon" type="image/png" sizes="32x32" href="icon/icon-32.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="icon/icon-180.png"/>
+<link rel="manifest" href="site.webmanifest"/>
+<meta name="apple-mobile-web-app-title" content="现代生活"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="description" content="接入你自己的大模型，在一座虚构的城市里从22岁开始，把想干成的事一点点干起来。"/>
+<style>
+:root{
+  --bg:#0f1116; --bg2:#161922; --line:#242936; --ink:#e7e4de; --dim:#8d94a6; --dim2:#616a7e;
+  --gold:#d6a25e; --good:#6fb894; --bad:#d4736b; --sel:#2b3242;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#07080b;color:var(--ink);
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
+body{display:flex;justify-content:center;align-items:stretch}
+#app{width:100%;max-width:520px;height:100dvh;display:flex;flex-direction:column;background:var(--bg);
+  border-left:1px solid var(--line);border-right:1px solid var(--line);position:relative;overflow:hidden;overflow:clip}
+button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+input,select{font:inherit;color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+input:focus,select:focus{border-color:var(--gold)}
+h3{margin:2px 0 10px;font-size:17px;font-weight:600}
+h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
+
+/* 顶栏 */
+#top{padding:10px 14px 8px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#151822,#0f1116);flex:none}
+#topRow1{display:flex;align-items:center;gap:10px}
+#topDate{font-size:13px;color:var(--dim);flex:1}
+.kv{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.kv.bad{color:var(--bad)}
+#topBtn{width:26px;height:26px;opacity:.7}
+#topRow2{display:flex;align-items:center;gap:8px;margin-top:7px}
+.bar{flex:1;height:5px;border-radius:4px;background:#222634;overflow:hidden}
+.bar-in{height:100%;background:var(--gold);transition:width .4s}
+.bar-in.good{background:var(--good)} .bar-in.bad{background:var(--bad)}
+#enNum{font-size:11px;color:var(--dim2);width:22px;text-align:right;font-variant-numeric:tabular-nums}
+#topSub{font-size:11px;color:var(--dim2);margin-top:5px;min-height:14px}
+
+/* 叙事流 */
+#story{flex:1;overflow-y:auto;padding:16px 16px 4px;scroll-behavior:smooth}
+.chapter{margin-bottom:26px;animation:fade .5s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.chaphead{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.chapmark{font-size:14px;color:var(--gold);letter-spacing:.5px}
+.chaptime{font-size:11px;color:var(--dim2)}
+.action-echo{margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--gold);background:#171b25;
+  font-size:13px;color:var(--dim);border-radius:0 6px 6px 0}
+.dicebar{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.die{font-size:11px;padding:3px 8px;border-radius:20px;background:#1b2030;color:var(--dim);border:1px solid var(--line)}
+.die.good{color:var(--good);border-color:#2c4b3f} .die.bad{color:var(--bad);border-color:#4b2f2d}
+.die.great{color:var(--gold);border-color:#4d3b22}
+.ntext{margin-top:12px;font-size:15.5px;line-height:1.95;font-family:"Songti SC","Noto Serif SC",Georgia,serif;letter-spacing:.2px}
+.ntext p{margin:0 0 14px;text-indent:2em}
+.ntext p.typing{color:var(--dim2)}
+.ended{padding:14px;text-align:center;color:var(--gold);font-size:14px}
+
+/* 行动区 */
+#acts{flex:none;padding:9px 13px 7px;border-top:1px solid var(--line);background:#12151d;max-height:40vh;overflow-y:auto}
+.act-btn{display:block;width:100%;text-align:left;padding:9px 12px;margin-bottom:6px;border-radius:9px;
+  background:#1a1f2b;border:1px solid var(--line);font-size:13.5px;transition:.15s}
+.act-btn:active{background:var(--sel)}
+.act-btn:disabled{opacity:.4}
+.act-row{display:flex;gap:7px;margin-top:2px}
+.act-row input{flex:1;font-size:14px}
+.act-go{padding:8px 13px;border-radius:8px;background:var(--gold);color:#17191f;font-size:13.5px;font-weight:600;flex:none}
+.act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:#161a23;color:var(--dim);font-size:13.5px;flex:none}
+.act-row input{min-width:0}
+.ghost{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:#161a23;width:100%}
+.ghost.sm{width:auto;padding:7px 10px}
+
+/* 底部 tab */
+#tabs{flex:none;display:flex;border-top:1px solid var(--line);background:#0d0f14;padding-bottom:env(safe-area-inset-bottom)}
+.tab{flex:1;padding:8px 0 9px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:10.5px}
+.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tab.on{color:var(--gold)}
+
+/* 面板 */
+#panel{position:absolute;left:0;right:0;top:0;bottom:0;background:var(--bg);z-index:20;
+  transform:translateY(100%);transition:transform .25s ease;display:flex;flex-direction:column}
+#panel.on{transform:none}
+#panelHd{flex:none;display:flex;justify-content:flex-end;padding:10px 14px 0}
+#panelClose{font-size:22px;color:var(--dim);line-height:1;padding:4px 8px}
+#panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.cardhd{font-size:12px;color:var(--dim);margin-bottom:8px}
+.big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.big.bad{color:var(--bad)}
+.tip{font-size:12px;color:var(--dim2);line-height:1.7;margin-top:4px}
+.lines>div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #20242f;font-size:13.5px}
+.lines>div:last-child{border:none}
+.lines b{font-weight:400;color:var(--dim)}
+.lines span{font-variant-numeric:tabular-nums}
+.lines .sum{margin-top:4px;border-top:1px solid var(--line);padding-top:8px}
+.lines .good{color:var(--good)} .lines .bad{color:var(--bad)}
+.li{padding:7px 0;border-bottom:1px dashed #20242f;font-size:13.5px}
+.li:last-child{border:none}
+.li span{color:var(--dim2);font-size:12px}
+.rel{float:right;color:var(--gold)!important}
+.rel.bad{color:var(--bad)!important}
+.msgs .msg{background:#171b25;border-radius:10px;padding:9px 12px;margin-bottom:8px}
+.mfrom{font-size:12px;color:var(--gold);display:flex;justify-content:space-between}
+.mfrom span{color:var(--dim2)}
+.mtext{font-size:14px;margin-top:4px;line-height:1.6}
+.sched{margin-bottom:10px}
+.schedhd{font-size:12px;color:var(--dim);margin-bottom:6px}
+.schedrow{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.schedrow span{width:34px;font-size:13px;color:var(--dim)}
+.schedrow select{flex:1;padding:7px 9px;font-size:13.5px}
+
+/* 聊天 */
+#chat{position:absolute;inset:0;background:var(--bg);z-index:25;display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .22s ease}
+#chat.on{transform:none}
+#chatHd{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:#141822}
+#chatHd>div{flex:1}
+#chatBack{font-size:24px;color:var(--dim);line-height:1;padding:0 6px}
+#chatDone{font-size:12.5px;color:var(--gold);border:1px solid #4d3b22;border-radius:14px;padding:5px 10px}
+#chatName{font-size:15px}
+#chatSub{font-size:11px;color:var(--dim2);margin-top:2px}
+#chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px}
+.bub{max-width:76%;padding:9px 12px;border-radius:13px;margin-bottom:10px;font-size:14.5px;line-height:1.65;position:relative;white-space:pre-wrap}
+.bub.ta{background:#1d2230;border:1px solid var(--line);border-top-left-radius:4px}
+.bub.me{background:#3b3320;border:1px solid #4d3b22;margin-left:auto;border-top-right-radius:4px}
+.bub.typing{color:var(--dim2)}
+.bub i{display:block;font-style:normal;font-size:11px;color:var(--dim2);margin-top:4px}
+.sysline{text-align:center;font-size:11.5px;color:var(--dim2);margin:8px 0 14px;font-variant-numeric:tabular-nums}
+#chatFoot{flex:none;display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--line);background:#12151d;padding-bottom:calc(9px + env(safe-area-inset-bottom))}
+#chatFoot input{flex:1;min-width:0}
+.thread{background:#171b25;border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer}
+.thread:active{background:#1d2230}
+.mfrom em{font-style:normal;color:var(--dim2);margin-left:6px}
+.mtext.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);vertical-align:middle}
+.li u{text-decoration:none;color:var(--bad)}
+
+/* 关键局 */
+#key{position:absolute;inset:0;background:var(--bg);z-index:26;display:flex;flex-direction:column;
+  transform:translateY(100%);transition:transform .25s ease}
+#key.on{transform:none}
+#keyHd{flex:none;padding:12px 14px 10px;border-bottom:1px solid var(--line);background:#141822}
+#keyTitle{font-size:16px;color:var(--gold)}
+#keySub{font-size:12px;color:var(--dim2);margin-top:3px;line-height:1.5}
+#keyBars{flex:none;padding:10px 14px;border-bottom:1px solid var(--line);background:#12151d}
+.kbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.kbar:last-child{margin-bottom:0}
+.kbar span{width:52px;font-size:11.5px;color:var(--dim)}
+.kbar em{width:22px;text-align:right;font-style:normal;font-size:11px;color:var(--dim2);font-variant-numeric:tabular-nums}
+#keyLog{flex:1;overflow-y:auto;padding:12px 14px}
+.krd{border-left:2px solid var(--line);padding:2px 0 8px 10px;margin-bottom:10px}
+.krd b{font-size:13.5px;font-weight:600}
+.krd span{font-size:11.5px;margin-left:8px}
+.krd span.good{color:var(--good)} .krd span.bad{color:var(--bad)}
+.krd i{font-style:normal;font-size:11.5px;color:var(--gold);margin-left:8px}
+#keyMoves{flex:none;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:9px 13px;border-top:1px solid var(--line);background:#12151d;
+  padding-bottom:calc(9px + env(safe-area-inset-bottom))}
+.kmove{text-align:left;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:#1a1f2b}
+.kmove:active{background:var(--sel)}
+.kmove.dead{opacity:.35}
+.kmove b{display:block;font-size:13.5px}
+.kmove i{display:block;font-style:normal;font-size:10.5px;color:var(--dim2);margin-top:2px;line-height:1.35}
+.kmove u{display:block;text-decoration:none;font-size:10px;color:var(--dim2);margin-top:3px}
+#keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:14px}
+.mile{padding:9px 0;border-bottom:1px dashed #20242f}
+.mile:last-child{border:none}
+.mile.done .mtitle{color:var(--dim2)}
+.mile.cur{background:#1b1f2a;margin:0 -8px;padding:10px 8px;border-radius:8px;border:none}
+.mtitle{font-size:14px;display:flex;justify-content:space-between}
+.mtitle span{font-size:11px;color:var(--dim2)}
+.tip.dim{opacity:.7}
+.primary.sm{width:100%;padding:9px;border-radius:8px;font-size:13.5px}
+
+/* 弹层 */
+.mask{position:absolute;inset:0;background:rgba(6,7,10,.86);backdrop-filter:blur(3px);z-index:40;
+  display:none;align-items:center;justify-content:center;padding:18px}
+.mask.on{display:flex}
+.box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px}
+.box h2{margin:0 0 16px;font-size:18px;font-weight:600}
+.frow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.frow.col{flex-direction:column;align-items:stretch;gap:6px}
+.frow label{width:58px;font-size:13px;color:var(--dim);flex:none}
+.frow input{flex:1}
+.segs{display:flex;gap:6px;flex:1;flex-wrap:wrap}
+.segs.wrap{gap:5px}
+.seg{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:#141821}
+.seg.on{border-color:var(--gold);color:var(--gold);background:#1e1a14}
+.hint{font-size:12px;color:var(--dim2);line-height:1.7;margin:-2px 0 14px}
+.btns{display:flex;gap:8px;margin-top:16px}
+.btns button{flex:1;padding:10px;border-radius:9px;font-size:14px}
+.primary{background:var(--gold);color:#17191f;font-weight:600}
+#busy{position:absolute;left:0;right:0;bottom:0;top:0;display:none;align-items:flex-end;justify-content:center;
+  pointer-events:none;z-index:30;padding-bottom:calc(40vh + 20px)}
+#busy.on{display:flex}
+#busyTxt{background:#1b2030;border:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:7px 14px;border-radius:20px}
+#newver{position:absolute;left:12px;right:12px;bottom:calc(58px + env(safe-area-inset-bottom));z-index:55;
+  display:none;align-items:center;gap:8px;background:#22283a;border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+#newver.on{display:flex}
+#newver span{flex:1;font-size:13px}
+#newver button{font-size:12.5px;padding:6px 11px;border-radius:8px;border:1px solid var(--line)}
+#newverGo{background:var(--gold);color:#17191f;font-weight:600;border-color:transparent}
+#toast{position:absolute;left:50%;top:70px;transform:translate(-50%,-14px);background:#22283a;border:1px solid var(--line);
+  color:var(--ink);font-size:13px;padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+.range{width:100%;accent-color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div id="topRow1">
+      <span id="topDate">—</span>
+      <span class="kv" id="topMoney">¥0</span>
+      <button id="topBtn" title="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    </div>
+    <div id="topRow2"><div class="bar"><div class="bar-in" id="enBar" style="width:78%"></div></div><span id="enNum">78</span></div>
+    <div id="topSub"></div>
+  </header>
+
+  <main id="story"></main>
+  <div id="acts"></div>
+
+  <footer id="tabs">
+    <button class="tab" data-t="today"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>今天</button>
+    <button class="tab" data-t="msg"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3 1.2-4.2A8 8 0 1 1 21 12z"/></svg>消息</button>
+    <button class="tab" data-t="ideal"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 3.5L16 11H5"/></svg>理想</button>
+    <button class="tab" data-t="book"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 8h7M8 12h7"/></svg>账本</button>
+    <button class="tab" data-t="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-4 3.2-6.5 7-6.5s7 2.5 7 6.5"/></svg>我</button>
+  </footer>
+
+  <section id="panel">
+    <div id="panelHd"><button id="panelClose">×</button></div>
+    <div id="panelBody"></div>
+  </section>
+
+  <div id="newver"><span>有新版本</span><button id="newverGo">刷新</button><button id="newverNo">回头再说</button></div>
+  <div id="busy"><span id="busyTxt"></span></div>
+  <div id="toast"></div>
+
+  <section id="chat">
+    <div id="chatHd">
+      <button id="chatBack">‹</button>
+      <div><div id="chatName">—</div><div id="chatSub"></div></div>
+      <button id="chatDone">聊完了</button>
+    </div>
+    <div id="chatBody"></div>
+    <div id="chatFoot"><input id="chatIn" placeholder="说点什么" maxlength="60"/><button class="act-go" id="chatSend">发</button></div>
+  </section>
+
+  <section id="key">
+    <div id="keyHd"><div><div id="keyTitle">—</div><div id="keySub"></div></div></div>
+    <div id="keyBars"></div>
+    <div id="keyLog"></div>
+    <div id="keyMoves"></div>
+    <button id="keyEnd" class="primary" style="display:none"></button>
+  </section>
+
+  <div class="mask" id="npcMask"><div class="box" id="npcBox"></div></div>
+
+  <div class="mask" id="startMask"><div class="box" id="startBox"></div></div>
+
+  <div class="mask" id="setMask"><div class="box">
+    <h2>设置</h2>
+    <div class="frow"><label>接口</label><input id="cfgBase" placeholder="https://api.deepseek.com"/></div>
+    <div class="frow"><label>密钥</label><input id="cfgKey" type="password" placeholder="sk-..."/></div>
+    <div class="frow"><label>模型</label><input id="cfgModel" placeholder="deepseek-chat"/></div>
+    <div class="hint">任何 OpenAI 兼容接口都行。密钥只存在这台设备的浏览器里。</div>
+    <div id="setFreeWrap"><div class="frow"><label>口径</label><div class="segs" id="setFree"></div></div>
+    <div class="hint">随时可改，改完下一段就按新口径走。</div></div>
+    <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
+    <div class="btns"><button class="ghost" id="instOpen">装到桌面</button><button class="ghost" id="setRestart">重开一局</button></div>
+  </div></div>
+
+  <div class="mask" id="instMask"><div class="box">
+    <h2>装到桌面</h2>
+    <div id="instBody"></div>
+    <div class="btns"><button class="ghost" id="instLater">以后再说</button><button class="primary" id="instGo">装上</button></div>
+  </div></div>
+
+  <div class="mask" id="focusMask"><div class="box">
+    <h2>闷头做一件事</h2>
+    <div class="frow col"><label>做什么</label><input id="fcWhat" maxlength="24" placeholder="把小说的前三章写完 / 备考 / 装修店面"/></div>
+    <div class="frow"><label>投入</label><input class="range" id="fcDays" type="range" min="3" max="60" value="10"/><span id="fcDaysN" style="width:34px;text-align:right">10</span>天</div>
+    <div class="hint">这些天里你基本只顾这一件事，精力会掉，中间可能被人或事打断。到点了引擎判一次成败。</div>
+    <div class="btns"><button class="ghost" id="fcClose">算了</button><button class="primary" id="fcGo">开始</button></div>
+  </div></div>
+</div>
+
+<script>/*==ENGINE==*/</script>
+<script>/*==UI==*/</script>
+<script>/*==INSTALL==*/</script>
+</body>
+</html>
