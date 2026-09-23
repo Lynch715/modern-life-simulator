@@ -1,5 +1,5 @@
 /* 现代生活模拟器 · 离线 */
-const VER = 'mls-v1';
+const VER = 'mls-v2';
 const SHELL = ['./', './index.html', './site.webmanifest', './favicon.ico',
   './icon/icon-192.png', './icon/icon-512.png', './icon/icon-180.png'];
 

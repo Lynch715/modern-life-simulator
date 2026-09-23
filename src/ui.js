@@ -6,8 +6,10 @@ const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
 
 let S = null;
-let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-chat', think: false };
+let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false };
 try { const c = JSON.parse(localStorage.getItem(LS_CFG) || 'null'); if (c) cfg = Object.assign(cfg, c); } catch (_) { }
+// 老存的模型名已经停用了，悄悄换掉
+if (/^deepseek-(chat|reasoner)$/i.test(cfg.model || '')) { cfg.model = 'deepseek-v4-flash'; try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { } }
 let busy = false, lastFinish = null, curChapter = null;
 
 /* ================= 提示与开关 ================= */
@@ -77,13 +79,14 @@ async function callLLM(prompt, onPartial, opt) {
   if (!cfg.key) { openSettings(); throw new Error('请先在设置里填密钥'); }
   const url = cfg.base.replace(/\/+$/, '') + '/chat/completions';
   const body = {
-    model: cfg.model || 'deepseek-chat',
+    model: cfg.model || 'deepseek-v4-flash',
     messages: [{ role: 'system', content: STYLE_SYSTEM }, { role: 'user', content: prompt }],
     temperature: opt.temperature != null ? opt.temperature : 1.02,
     max_tokens: opt.maxTokens || 8000,
     stream: true,
     response_format: { type: 'json_object' }
   };
+  if (/deepseek/i.test(body.model)) body.thinking = { type: cfg.think ? 'enabled' : 'disabled' };
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const ms = opt.timeout || 180000;
   let timer = ac ? setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms) : null;
@@ -1162,6 +1165,11 @@ function doFocus() {
 function openSettings() {
   mask('setMask', true);
   $('cfgBase').value = cfg.base; $('cfgKey').value = cfg.key; $('cfgModel').value = cfg.model;
+  $('cfgThink').value = cfg.think ? 'on' : 'off';
+  document.querySelectorAll('#modelPick .seg').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === cfg.model);
+    b.onclick = () => { $('cfgModel').value = b.dataset.v; document.querySelectorAll('#modelPick .seg').forEach(x => x.classList.toggle('on', x === b)); };
+  });
   const fb = $('setFree');
   fb.innerHTML = seg(Object.keys(E.FREEDOM), S ? S.freedom : '都市传奇');
   bindSeg('setFree', v => { if (S) { S.freedom = v; saveGame(); toast('口径改成' + v); } });
@@ -1171,8 +1179,8 @@ function saveCfg() {
   cfg = {
     base: $('cfgBase').value.trim() || 'https://api.deepseek.com',
     key: $('cfgKey').value.trim(),
-    model: $('cfgModel').value.trim() || 'deepseek-chat',
-    think: cfg.think
+    model: $('cfgModel').value.trim() || 'deepseek-v4-flash',
+    think: $('cfgThink').value === 'on'
   };
   localStorage.setItem(LS_CFG, JSON.stringify(cfg));
   mask('setMask', false);

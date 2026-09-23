@@ -31,7 +31,7 @@ h3{margin:2px 0 10px;font-size:17px;font-weight:600}
 h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 
 /* 顶栏 */
-#top{padding:10px 14px 8px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#151822,#0f1116);flex:none}
+#top{padding:calc(10px + env(safe-area-inset-top)) 14px 8px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#151822,#0f1116);flex:none}
 #topRow1{display:flex;align-items:center;gap:10px}
 #topDate{font-size:13px;color:var(--dim);flex:1}
 .kv{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
@@ -86,7 +86,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #panel{position:absolute;left:0;right:0;top:0;bottom:0;background:var(--bg);z-index:20;
   transform:translateY(100%);transition:transform .25s ease;display:flex;flex-direction:column}
 #panel.on{transform:none}
-#panelHd{flex:none;display:flex;justify-content:flex-end;padding:10px 14px 0}
+#panelHd{flex:none;display:flex;justify-content:flex-end;padding:calc(10px + env(safe-area-inset-top)) 14px 0}
 #panelClose{font-size:22px;color:var(--dim);line-height:1;padding:4px 8px}
 #panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
@@ -119,7 +119,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #chat{position:absolute;inset:0;background:var(--bg);z-index:25;display:flex;flex-direction:column;
   transform:translateX(100%);transition:transform .22s ease}
 #chat.on{transform:none}
-#chatHd{flex:none;display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:#141822}
+#chatHd{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;border-bottom:1px solid var(--line);background:#141822}
 #chatHd>div{flex:1}
 #chatBack{font-size:24px;color:var(--dim);line-height:1;padding:0 6px}
 #chatDone{font-size:12.5px;color:var(--gold);border:1px solid #4d3b22;border-radius:14px;padding:5px 10px}
@@ -145,7 +145,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #key{position:absolute;inset:0;background:var(--bg);z-index:26;display:flex;flex-direction:column;
   transform:translateY(100%);transition:transform .25s ease}
 #key.on{transform:none}
-#keyHd{flex:none;padding:12px 14px 10px;border-bottom:1px solid var(--line);background:#141822}
+#keyHd{flex:none;padding:calc(12px + env(safe-area-inset-top)) 14px 10px;border-bottom:1px solid var(--line);background:#141822}
 #keyTitle{font-size:16px;color:var(--gold)}
 #keySub{font-size:12px;color:var(--dim2);margin-top:3px;line-height:1.5}
 #keyBars{flex:none;padding:10px 14px;border-bottom:1px solid var(--line);background:#12151d}
@@ -179,7 +179,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 
 /* 弹层 */
 .mask{position:absolute;inset:0;background:rgba(6,7,10,.86);backdrop-filter:blur(3px);z-index:40;
-  display:none;align-items:center;justify-content:center;padding:18px}
+  display:none;align-items:center;justify-content:center;
+  padding:calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom))}
 .mask.on{display:flex}
 .box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px}
 .box h2{margin:0 0 16px;font-size:18px;font-weight:600}
@@ -205,7 +206,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #newver span{flex:1;font-size:13px}
 #newver button{font-size:12.5px;padding:6px 11px;border-radius:8px;border:1px solid var(--line)}
 #newverGo{background:var(--gold);color:#17191f;font-weight:600;border-color:transparent}
-#toast{position:absolute;left:50%;top:70px;transform:translate(-50%,-14px);background:#22283a;border:1px solid var(--line);
+#toast{position:absolute;left:50%;top:calc(70px + env(safe-area-inset-top));transform:translate(-50%,-14px);background:#22283a;border:1px solid var(--line);
   color:var(--ink);font-size:13px;padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .range{width:100%;accent-color:var(--gold)}
@@ -269,8 +270,16 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
     <h2>设置</h2>
     <div class="frow"><label>接口</label><input id="cfgBase" placeholder="https://api.deepseek.com"/></div>
     <div class="frow"><label>密钥</label><input id="cfgKey" type="password" placeholder="sk-..."/></div>
-    <div class="frow"><label>模型</label><input id="cfgModel" placeholder="deepseek-chat"/></div>
-    <div class="hint">任何 OpenAI 兼容接口都行。密钥只存在这台设备的浏览器里。</div>
+    <div class="frow"><label>模型</label><input id="cfgModel" placeholder="deepseek-v4-flash"/></div>
+    <div class="frow"><label></label><div class="segs" id="modelPick">
+      <button class="seg" data-v="deepseek-v4-flash">v4-flash</button>
+      <button class="seg" data-v="deepseek-v4-pro">v4-pro</button>
+    </div></div>
+    <div class="hint">推荐 deepseek-v4-flash，快且便宜；要剧情更缜密可以填 deepseek-v4-pro，慢一些贵一些。旧的 deepseek-chat / deepseek-reasoner 已经停用。任何 OpenAI 兼容接口都行，密钥只存在这台设备的浏览器里。</div>
+    <div class="frow"><label>思考</label><select id="cfgThink" style="flex:1">
+      <option value="off">关 —— 出得快，推荐</option>
+      <option value="on">开 —— 更缜密，等得久</option>
+    </select></div>
     <div id="setFreeWrap"><div class="frow"><label>口径</label><div class="segs" id="setFree"></div></div>
     <div class="hint">随时可改，改完下一段就按新口径走。</div></div>
     <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
