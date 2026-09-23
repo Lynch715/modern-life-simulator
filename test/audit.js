@@ -134,7 +134,7 @@ const SEG = n => ({
   });
   await pg.addInitScript(() => {
     localStorage.setItem('mls_cfg', JSON.stringify({ base: 'https://api.deepseek.com', key: 'sk-test', model: 'deepseek-chat', theme: 'paper' }));
-    if (!sessionStorage.getItem('t_started')) { localStorage.removeItem('mls_save'); sessionStorage.setItem('t_started', '1'); }
+    // 每次 launch 都是全新的浏览器环境，本来就没有存档；以前这里按 sessionStorage 清存档，刷新时会撞上竞态把存档误删
   });
 
 
@@ -559,7 +559,7 @@ const SEG = n => ({
   let lastPrompt = '';
   pg.on('request', r => { if (/chat\/completions/.test(r.url())) { const d = r.postData(); if (d && d.includes('本段引擎判定')) lastPrompt = d; } });
   await pg.evaluate(() => { S.over = false; S.freedom = '心想事成'; saveGame(); renderOptions(S.lastOptions.length ? S.lastOptions : ['随便走走']); });
-  await pg.fill('#freeAct', '路上捡到一个皮夹，里面有二十万现金');
+  await pg.fill('#freeAct', '路上捡到一个皮夹，里面有二十万现金（详细写他数钱时手在抖，最后把钱存进了银行）');
   await pg.click('#goBtn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   const p = JSON.parse(lastPrompt).messages[1].content;
@@ -572,6 +572,7 @@ const SEG = n => ({
   console.log('   口径段：', has('这一局是玩家点单'));
   console.log('   头等大事那条：', has('这一段的头等大事'));
   console.log('   还带不带属性判定：', p.includes('属性判定') ? '带（不对）' : '不带（对）');
+  console.log('   括号要求单列：', has('【玩家在括号里提的要求·无条件照办·优先级最高】'), '｜内容：', has('1. 详细写他数钱时手在抖，最后把钱存进了银行'), '｜字数放开：', has('至少 600 字，不设上限'));
   console.log('   天命骰：', (p.match(/天命骰：(\d+)（(..)）/) || []).slice(1).join(' ') || '没掷');
   const fates = await pg.evaluate(() => {
     const out = [];
@@ -592,20 +593,16 @@ const SEG = n => ({
   await pg.click('#panelClose');
 
   // 刷新看存档
-  console.log('刷新前存档KB', await pg.evaluate(() => Math.round((localStorage.getItem('mls_save')||'').length/1024)), await pg.evaluate(() => sessionStorage.getItem('t_started')));
-  pg.on('console', m => { if (m.text().startsWith('DBG')) console.log(m.text()); });
-  await pg.addInitScript(() => console.log('DBG start save=' + !!localStorage.getItem('mls_save') + ' flag=' + sessionStorage.getItem('t_started')));
   await pg.reload();
   await pg.waitForTimeout(800);
   if (!(await pg.$('.act-btn'))) {
     console.log('刷新后没按钮：', await pg.evaluate(() => ({
-      有存档: !!localStorage.getItem('mls_save'),
+      有存档: !!localStorage.getItem('mls_save'), 键: Object.keys(localStorage).join(','), 地址: location.href.slice(-40),
       存档KB: Math.round((localStorage.getItem('mls_save') || '').length / 1024),
       S有没有: !!window.S, over: window.S && S.over, opts: window.S && S.lastOptions,
       开局弹窗: document.getElementById('startMask').className, acts: document.getElementById('acts').innerHTML.slice(0, 80)
     })));
   }
-  if (!(await pg.$('.act-btn'))) console.log('ERRS', errs);
   await pg.waitForSelector('.act-btn', { timeout: 10000 });
   const after = await pg.textContent('#topDate');
   const chapters = await pg.$$eval('.chapter', e => e.length);
