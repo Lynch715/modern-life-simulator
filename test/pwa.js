@@ -63,7 +63,7 @@ const BOOT = {
     reg: !!(await navigator.serviceWorker.getRegistration()),
     ctrl: !!navigator.serviceWorker.controller,
     keys: await caches.keys(),
-    cached: (await caches.open('mls-v4')).keys ? (await (await caches.open('mls-v4')).keys()).map(r => new URL(r.url).pathname) : []
+    cached: (await caches.open('mls-v5')).keys ? (await (await caches.open('mls-v5')).keys()).map(r => new URL(r.url).pathname) : []
   }));
   console.log('service worker：', sw.reg ? '装上了' : '没装上', '｜接管：', sw.ctrl, '｜缓存：', sw.keys.join());
   console.log('缓存了：', sw.cached.join(' '));

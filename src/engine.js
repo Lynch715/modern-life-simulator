@@ -186,6 +186,16 @@ function newState(o) {
   };
 }
 
+// 老存档补齐：开局那会儿没记单位名
+function fixJob(S) {
+  if (!S.job) S.job = { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false };
+  if (!S.job.employer && !S.job.out && S.player && S.player.job) {
+    const m = String(S.player.job).match(/^(.{2,10}?)(的)?(实习|助理|专员|编辑|设计|运营|职员|工程师|学徒|服务员|销售)?$/);
+    S.job.employer = (m && m[1]) ? m[1] : String(S.player.job).slice(0, 10);
+  }
+  return S.job;
+}
+
 /* ---------- 一天 ---------- */
 const HEAL_PLAN = { '早': '睡觉', '白天': '身心', '晚上': '闲着', '深夜': '睡觉' };
 function todayPlan(S) {
@@ -1642,7 +1652,7 @@ const API = {
   num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
-  rollCheck, attrVal, applyTurn, addNpcs, growAttr,
+  rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
   housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,

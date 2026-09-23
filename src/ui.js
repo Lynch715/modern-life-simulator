@@ -6,11 +6,26 @@ const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
 
 let S = null;
-let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false };
+let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false, theme: 'dark', font: 'm' };
 try { const c = JSON.parse(localStorage.getItem(LS_CFG) || 'null'); if (c) cfg = Object.assign(cfg, c); } catch (_) { }
 // 老存的模型名已经停用了，悄悄换掉
 if (/^deepseek-(chat|reasoner)$/i.test(cfg.model || '')) { cfg.model = 'deepseek-v4-flash'; try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { } }
 let busy = false, lastFinish = null, curChapter = null;
+
+/* ================= 看着舒不舒服 ================= */
+const THEME_BG = { dark: '#0f1116', light: '#f7f5f1', paper: '#f2ead9' };
+function applySkin() {
+  const t = THEME_BG[cfg.theme] ? cfg.theme : 'dark';
+  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.font = ['s', 'm', 'l'].indexOf(cfg.font) >= 0 ? cfg.font : 'm';
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', THEME_BG[t]);
+}
+function setSkin(k, v) {
+  cfg[k] = v;
+  try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { }
+  applySkin();
+}
 
 /* ================= 提示与开关 ================= */
 let toastT = null;
@@ -450,8 +465,15 @@ function relWord(v, tie) {
   if (v >= 0) return '生分了';
   return '闹掰了';
 }
+function sayHl(html) {
+  // 引号里的话挑出来上色，中英文引号和方引号都认
+  return html
+    .replace(/&quot;([^&]{1,120}?)&quot;/g, '<q class="say">“$1”</q>')
+    .replace(/[“]([^”]{1,120}?)[”]/g, '<q class="say">“$1”</q>')
+    .replace(/「([^」]{1,120}?)」/g, '<q class="say">「$1」</q>');
+}
 function narrativeHtml(t) {
-  return String(t || '').split(/\n+/).filter(x => x.trim()).map(p => `<p>${esc(p.trim())}</p>`).join('');
+  return String(t || '').split(/\n+/).filter(x => x.trim()).map(p => `<p>${sayHl(esc(p.trim()))}</p>`).join('');
 }
 function beginChapter(head, sub, action, judge) {
   const div = document.createElement('div');
@@ -799,7 +821,7 @@ function renderPanel() {
       ? `<div class="big bad">没有工作</div><div class="tip">${S.job.was ? `从${esc(S.job.was)}出来之后` : ''}没有工资进账，房租和生活费照扣。</div>
          <div class="btns"><button class="ghost" onclick="askJob()">去面一场</button></div>`
       : `<div class="lines">
-          <div><b>单位</b><span>${esc(S.job.employer || '—')}</span></div>
+          <div><b>单位</b><span>${esc(S.job.employer || S.player.job || '—')}</span></div>
           <div><b>职级</b><span>${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（试用期）' : ''}</span></div>
           <div><b>月薪</b><span>${L.salary}</span></div>
           <div><b>下次考核</b><span>${E.nextReview(S)}天后</span></div>
@@ -1595,6 +1617,14 @@ function openSettings() {
   mask('setMask', true);
   $('cfgBase').value = cfg.base; $('cfgKey').value = cfg.key; $('cfgModel').value = cfg.model;
   $('cfgThink').value = cfg.think ? 'on' : 'off';
+  document.querySelectorAll('#setTheme .seg').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === (cfg.theme || 'dark'));
+    b.onclick = () => { setSkin('theme', b.dataset.v); document.querySelectorAll('#setTheme .seg').forEach(x => x.classList.toggle('on', x === b)); };
+  });
+  document.querySelectorAll('#setFont .seg').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === (cfg.font || 'm'));
+    b.onclick = () => { setSkin('font', b.dataset.v); document.querySelectorAll('#setFont .seg').forEach(x => x.classList.toggle('on', x === b)); };
+  });
   document.querySelectorAll('#modelPick .seg').forEach(b => {
     b.classList.toggle('on', b.dataset.v === cfg.model);
     b.onclick = () => { $('cfgModel').value = b.dataset.v; document.querySelectorAll('#modelPick .seg').forEach(x => x.classList.toggle('on', x === b)); };
@@ -1615,7 +1645,8 @@ function saveCfg() {
     base: $('cfgBase').value.trim() || 'https://api.deepseek.com',
     key: $('cfgKey').value.trim(),
     model: $('cfgModel').value.trim() || 'deepseek-v4-flash',
-    think: $('cfgThink').value === 'on'
+    think: $('cfgThink').value === 'on',
+    theme: cfg.theme, font: cfg.font
   };
   localStorage.setItem(LS_CFG, JSON.stringify(cfg));
   mask('setMask', false);
@@ -1630,6 +1661,7 @@ function loadGame() {
   if (!raw) return false;
   try { S = JSON.parse(raw); } catch (_) { return false; }
   if (!S || !S.player) return false;
+  E.fixJob(S);
   $('story').innerHTML = S.chapters.join('');
   if (S.runId) bookAll(S.runId).then(rows => {
     if (!rows || rows.length <= S.chapters.length) return;
@@ -1721,6 +1753,11 @@ async function exportBook() {
 
 /* ================= 启动 ================= */
 function boot() {
+  applySkin();
+  // iOS 上 user-scalable 会被忽略，这里再挡一道
+  document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => gotoTab(t.dataset.t));
   $('panelClose').onclick = closePanel;
   $('setSave').onclick = saveCfg;
