@@ -68,6 +68,19 @@ const YEAR = {
   summary: '第一年，写废了三摞稿子',
   options: ['把废稿整理一遍', '年后跟周越再联系', '给家里打个电话', '先把身体养养']
 };
+const END = {
+  narrative: '六十岁生日那天你在店里，第一锅出得晚了十分钟。\n沈知打电话来问要不要回家吃饭，你说不了，晚上还有两桌。挂了电话才想起来今天是自己生日。',
+  summary: '还在店里，第一锅出晚了',
+  title: '还在灶台前'
+};
+const LOVE = {
+  narrative: '话是在地铁口说的，风大，她把围巾往上拉了拉，说：那就试试。',
+  summary: '跟许宁在一起了',
+  scene: { location: '地铁口', unresolved: [] },
+  playerChanges: { energy: -4 },
+  options: ['一起吃个饭', '接着写东西', '告诉赵鹏', '回去睡觉'],
+  gameOver: false
+};
 const SEG = n => ({
   narrative: `第${n}段：办公室的空调坏了一整周，孙姐说修不了，让大家自己带小风扇。你带了，第二天风扇被人拿走了。\n周三下班，赵鹏在楼道里抽烟，问你这个月房租能不能晚两天。你说行。说完才想起自己卡里剩不到八百。`,
   summary: `第${n}段发生的事`,
@@ -94,7 +107,8 @@ const SEG = n => ({
     const post = route.request().postData() || '';
     let body;
     if (post.includes('给出这场的对手和开场')) { body = KEY_OPEN; }
-    else if (post.includes('这场是怎么打下来的')) { body = post.includes('面试') ? KEY_JOB : KEY_END; }
+    else if (post.includes('这场是怎么打下来的')) { body = post.includes('面试') ? KEY_JOB : post.includes('把话挑明') ? LOVE : KEY_END; }
+    else if (post.includes('写这一局的结尾')) { body = END; }
     else if (post.includes('写一篇 320-450 字的年终小结')) { body = YEAR; }
     else if (post.includes('你现在扮演的是')) {
       convoCalls++;
@@ -300,7 +314,7 @@ const SEG = n => ({
   console.log('梁子：', JSON.stringify(rift, null, 0));
 
   // 养病
-  await pg.evaluate(() => { S.status = [{ name: '感冒', desc: 'x', days: 4 }, { name: '腰伤', desc: 'y', days: 30 }]; S.chronic = [{ name: '老失眠', desc: 'z', eased: 0 }]; saveGame(); rebuildTop(); });
+  await pg.evaluate(() => { S.focus = null; S.status = [{ name: '感冒', desc: 'x', days: 4 }, { name: '腰伤', desc: 'y', days: 30 }]; S.chronic = [{ name: '老失眠', desc: 'z', eased: 0 }]; saveGame(); rebuildTop(); });
   await pg.click('#focusBtn');
   await pg.fill('#fcWhat', '回老家歇一阵');
   await pg.evaluate(() => { document.getElementById('fcHeal').checked = true; document.getElementById('fcDays').value = 20; });
@@ -374,6 +388,58 @@ const SEG = n => ({
   }));
   console.log('三档：', fdm.join(' ｜ '));
   await pg.evaluate(() => { S.freedom = '写实人生'; saveGame(); });
+
+  // 家：买房 → 挑明 → 结婚 → 孩子
+  await pg.evaluate(() => {
+    S.player.money = 400000; S.player.attrs['谋划'] = 60; S.player.attrs['体能'] = 70;
+    const n = S.npcs.find(x => x.name === '孙姐') || S.npcs[0]; n.rel = 78; n.tie = '朋友';
+    saveGame(); rebuildTop();
+  });
+  await pg.click('.tab[data-t="home"]');
+  await pg.waitForTimeout(150);
+  console.log('家·租房时：', (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').slice(0, 76));
+  await pg.click('button:has-text("付首付，买")');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  console.log('买房后：', await pg.evaluate(() => `${S.home.kind}｜月供${S.ledger.loan}｜房租${S.ledger.rent}｜净值${ENGINE.homeWorth(S)}｜存款${S.player.money}`));
+
+  await pg.click('.tab[data-t="home"]');
+  await pg.waitForTimeout(150);
+  await pg.click('button:has-text("挑明")');
+  await pg.waitForSelector('#key.on', { timeout: 15000 });
+  await pg.evaluate(() => { S.key.interest = 75; S.key.guard = 28; });
+  await pg.click('.kmove[data-m="共情"]');
+  await pg.waitForTimeout(80);
+  await pg.click('#keyEnd');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  console.log('挑明：', await pg.evaluate(() => { const P = ENGINE.partnerOf(S); return P ? `${P.name}／${P.stage}／热乎${Math.round(P.warm)}` : '没成'; }));
+
+  const fam = await pg.evaluate(() => {
+    const P = ENGINE.partnerOf(S);
+    ENGINE.marry(S, 51000);
+    let t = 0, r; do { r = ENGINE.wantKid(S, Math.random); t++; } while (!r.ok && t < 30);
+    S.stats.days += 280;
+    const f = ENGINE.familyTick(S, Math.random);
+    S.family.kids[0].age = 7;
+    saveGame(); renderPanel();
+    return { 婚: P.stage, 孩子: S.family.kids.map(k => k.name + k.age + '岁'), 月养: ENGINE.kidCost(S), 出生停点: f.stop && f.stop.detail };
+  });
+  console.log('成家：', JSON.stringify(fam));
+  await pg.click('.tab[data-t="home"]');
+  await pg.waitForTimeout(200);
+  await pg.screenshot({ path: 'test/shot-13-home.png' });
+  await pg.click('#panelClose');
+
+  // 结局 + 接着过
+  const lines4 = await pg.evaluate(() => { S.player.age = 60; saveGame(); return ENGINE.endingScore(S); });
+  console.log('四条线：', JSON.stringify(lines4));
+  await pg.click('#acts .act-btn');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
+  const ended = await pg.evaluate(() => ({ over: S.over, title: S.endTitle, 条: [...document.querySelectorAll('.endblock .kbar span')].map(x => x.textContent), 按钮: [...document.querySelectorAll('#acts .act-btn')].map(b => b.textContent) }));
+  console.log('结局：', JSON.stringify(ended));
+  await pg.screenshot({ path: 'test/shot-14-end.png' });
+  await pg.click('#acts .act-btn');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
+  console.log('接着过：', await pg.evaluate(() => `over=${S.over}　退休线${S.retireAge}岁　还在走到 ${ENGINE.dateStr(S.date)}`));
 
   // 改作息
   await pg.click('.tab[data-t="today"]');

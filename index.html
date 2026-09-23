@@ -78,7 +78,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 
 /* 底部 tab */
 #tabs{flex:none;display:flex;border-top:1px solid var(--line);background:#0d0f14;padding-bottom:env(safe-area-inset-bottom)}
-.tab{flex:1;padding:8px 0 9px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:10.5px}
+.tab{flex:1;padding:8px 0 9px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:10px;min-width:0}
+.tab svg{flex:none}
 .tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tab.on{color:var(--gold)}
 
@@ -168,6 +169,9 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .kmove i{display:block;font-style:normal;font-size:10.5px;color:var(--dim2);margin-top:2px;line-height:1.35}
 .kmove u{display:block;text-decoration:none;font-size:10px;color:var(--dim2);margin-top:3px}
 #keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:14px}
+.endblock{margin-top:16px;padding:14px;border:1px solid #4d3b22;border-radius:12px;background:#1a1712}
+.endblock h4{margin:0 0 12px;color:var(--gold);font-size:15px;text-align:center;letter-spacing:2px}
+.endblock .kbar{margin-bottom:7px}
 .mile{padding:9px 0;border-bottom:1px dashed #20242f}
 .mile:last-child{border:none}
 .mile.done .mtitle{color:var(--dim2)}
@@ -233,6 +237,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
     <button class="tab" data-t="today"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>今天</button>
     <button class="tab" data-t="msg"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3 1.2-4.2A8 8 0 1 1 21 12z"/></svg>消息</button>
     <button class="tab" data-t="ideal"><svg viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 3.5L16 11H5"/></svg>理想</button>
+    <button class="tab" data-t="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>家</button>
     <button class="tab" data-t="book"><svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M8 8h7M8 12h7"/></svg>账本</button>
     <button class="tab" data-t="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 21c0-4 3.2-6.5 7-6.5s7 2.5 7 6.5"/></svg>我</button>
   </footer>
@@ -361,6 +366,7 @@ const ACTS = {
   '人情': { en: -5,  gain: { '表达': 0.028 }, social: 1 },
   '身心': { en: 6,   gain: { '体能': 0.03, '情绪': 0.014 } },
   '学习': { en: -7,  gain: { '谋划': 0.028, '专业': 0.018 } },
+  '顾家': { en: -3,  gain: { '情绪': 0.02 }, home: 1 },
   '闲着': { en: 4,   gain: {} },
   '睡觉': { en: 0,   gain: {}, sleep: 1 }
 };
@@ -468,6 +474,9 @@ function newState(o) {
     job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
     debts: [], rifts: [], ailLog: {},
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
+    home: { kind: '租', since: '', place: '' },
+    family: { partner: null, kids: [], past: [] },
+    retireAge: 60, endedOnce: [],
     schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
     ideal: { progress: 0, stages: [] },
     key: null,
@@ -518,6 +527,7 @@ function dayTick(S, rng) {
       if (a.work) p.资历天 = (p.资历天 || 0) + 1;
       if (a.ideal) S.ideal.progress = r2(S.ideal.progress + 0.6 + p.attrs['专业'] / 150);
       if (a.social) S.flags.socialToday = 1;
+      if (a.home) S.flags.homeDays = (S.flags.homeDays || 0) + 0.5;
     }
     if (it.slot === '深夜' && !a.sleep) { en -= 7; S.flags.nightCnt++; }
   }
@@ -582,10 +592,13 @@ function moneyTick(S, rng) {
     }
   }
   if (d.d === L.rentDay) {
-    const out = L.rent + L.living + L.remit;
+    const kid = kidCost(S);
+    const loan = num(L.loan);
+    if (loan) homeTick(S);
+    const out = L.rent + loan + L.living + L.remit + kid;
     p.money -= out;
     S.flags.monthNet -= out;
-    ev.push({ t: '钱', s: `房租${L.rent}、生活${L.living}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
+    ev.push({ t: '钱', s: `${L.rent ? `房租${L.rent}、` : ''}${loan ? `月供${loan}、` : ''}生活${L.living}${kid ? `、孩子${kid}` : ''}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
     if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
   }
   if (d.d === L.salaryDay && !S.job.out) {
@@ -606,7 +619,7 @@ function moneyTick(S, rng) {
     if (p.money < 0) {
       S.broke = true; S.brokeMonths++;
       stop = { kind: '钱', detail: `账上是负的（${p.money}），得想办法` };
-    } else if (p.money < floor) {
+    } else if (p.money < floor + num(L.loan)) {
       stop = { kind: '钱', detail: `剩下的钱撑不到下个月（${p.money}）` };
     } else if (net < 0) {
       stop = { kind: '钱', detail: `这个月倒贴了${-net}` };
@@ -704,8 +717,13 @@ function advance(S, opt) {
     // 生日：开局那个月日
     if (S.date.m === S.startDate.m && S.date.d === S.startDate.d && S.date.y > S.startDate.y) {
       S.player.age = 22 + (S.date.y - S.startDate.y);
-      events.push({ t: '家里', s: `你${S.player.age}岁了` });
+      kidsGrow(S);
+      events.push({ t: '家里', s: `你${S.player.age}岁了${(S.family.kids || []).filter(k => !k.unborn).length ? `，${S.family.kids.filter(k => !k.unborn).map(k => k.name + k.age + '岁').join('、')}` : ''}` });
     }
+
+    // 到头了：这两件事排在所有停点前面
+    const en = endReason(S);
+    if (en && !S.over) { stop = { kind: '结局', detail: en.text, why: en.why }; break; }
 
     // 一年到头，别的什么都往后排
     if (S.date.m === 12 && S.date.d === 31) {
@@ -728,6 +746,10 @@ function advance(S, opt) {
     const wd = windTick(S, rng);
     events.push(...wd.ev);
     if (wd.stop && S.flags.cool <= 0) { stop = wd.stop; break; }
+
+    const fm = familyTick(S, rng);
+    events.push(...fm.ev);
+    if (fm.stop) { stop = fm.stop; break; }
 
     const rt = riftTick(S, rng);
     events.push(...rt.ev);
@@ -929,6 +951,193 @@ function applyConvo(S, name, res) {
 
 
 
+
+
+/* ================= 家：住处、伴侣、孩子 ================= */
+function housePrice(S) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  return Math.round(city.rent * 290 / 10000) * 10000;        // 一套普通两居，按房租倒推
+}
+function canBuy(S) {
+  const price = housePrice(S);
+  const down = Math.round(price * 0.32);
+  const loan = price - down;
+  const monthly = Math.round(loan * 0.0052);                  // 三十年，粗算
+  return { price, down, loan, monthly, ok: S.player.money >= down };
+}
+function buyHouse(S, rng) {
+  const b = canBuy(S);
+  if (!b.ok) return { ok: false, why: `首付要 ${b.down}，你手头 ${S.player.money}` };
+  const ck = rollCheck(S, '谋划', 48, rng || Math.random);
+  const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
+  S.player.money -= (b.down - cut);
+  S.home = {
+    kind: '买', since: shortDate(S.date), price: b.price - cut,
+    loan: { left: b.loan, monthly: b.monthly, months: 360, paid: 0 }
+  };
+  S.ledger.rent = 0;
+  S.ledger.loan = b.monthly;
+  return { ok: true, price: b.price - cut, down: b.down - cut, monthly: b.monthly, cut, ck };
+}
+function homeTick(S) {
+  // 月供跟着房租一起在 1 号扣，在 moneyTick 里算
+  const H = S.home;
+  if (!H || H.kind !== '买' || !H.loan) return;
+  H.loan.left = Math.max(0, H.loan.left - Math.round(H.loan.monthly * 0.42));   // 本金部分
+  H.loan.paid++;
+  if (H.loan.left <= 0) { S.ledger.loan = 0; H.loan.done = true; }
+}
+function homeWorth(S) {
+  const H = S.home;
+  if (!H || H.kind !== '买') return 0;
+  return Math.max(0, num(H.price) - (H.loan && !H.loan.done ? num(H.loan.left) : 0));
+}
+
+/* ---- 伴侣 ---- */
+function partnerOf(S) { return S.family && S.family.partner && !S.family.partner.over ? S.family.partner : null; }
+function startRomance(S, name, stage) {
+  S.family = S.family || { partner: null, kids: [], past: [] };
+  const n = S.npcs.find(x => x.name === name);
+  S.family.partner = {
+    name, since: shortDate(S.date), sinceDay: S.stats.days,
+    stage: stage || '在一起', warm: Math.max(55, n ? n.rel : 55), over: false
+  };
+  if (n) { n.close = true; n.tie = stage === '结婚' ? '爱人' : '对象'; }
+  return S.family.partner;
+}
+function marry(S, cost) {
+  const P = partnerOf(S);
+  if (!P) return null;
+  P.stage = '结婚';
+  P.marriedAt = shortDate(S.date);
+  S.player.money -= num(cost);
+  const n = S.npcs.find(x => x.name === P.name);
+  if (n) { n.tie = '爱人'; n.rel = clamp(n.rel + 10, 0, 100); }
+  return P;
+}
+function breakUp(S, why) {
+  const P = partnerOf(S);
+  if (!P) return null;
+  P.over = true; P.endedAt = shortDate(S.date); P.why = String(why || '过不下去了').slice(0, 30);
+  const wasMarried = P.stage === '结婚';
+  S.family.past = (S.family.past || []).concat([P]).slice(-4);
+  const n = S.npcs.find(x => x.name === P.name);
+  if (n) { n.tie = wasMarried ? '前妻/前夫' : '前任'; n.rel = clamp(n.rel - 30, 0, 100); }
+  if (wasMarried) {
+    // 分一半家当
+    const half = Math.round(S.player.money * 0.42);
+    S.player.money -= Math.max(0, half);
+    S.family.partner = null;
+    return { wasMarried, half };
+  }
+  S.family.partner = null;
+  return { wasMarried, half: 0 };
+}
+function wantKid(S, rng) {
+  const P = partnerOf(S);
+  if (!P || P.stage !== '结婚') return { ok: false, why: '这事得两个人，而且得先成家' };
+  if ((S.family.kids || []).some(k => k.unborn)) return { ok: false, why: '已经在等了' };
+  const ck = rollCheck(S, '体能', 46 + (S.player.age - 26) * 1.5, rng || Math.random);
+  if (!ck.success) return { ok: false, why: '这回没成', ck };
+  S.family.kids = (S.family.kids || []).concat([{ unborn: true, dueDay: S.stats.days + 270, name: '', age: 0 }]);
+  return { ok: true, ck };
+}
+const KID_MING = ['念','安','一','小满','年年','知','麦','屿','禾','早早','团团','多多','星','沐','昀'];
+function familyTick(S, rng) {
+  const ev = [];
+  let stop = null;
+  S.family = S.family || { partner: null, kids: [], past: [] };
+  const P = partnerOf(S);
+
+  // 孩子出生
+  for (const k of (S.family.kids || [])) {
+    if (k.unborn && S.stats.days >= k.dueDay) {
+      k.unborn = false;
+      k.name = (S.player.name || '').slice(0, 1) + pick(rng, KID_MING);
+      k.bornY = S.date.y; k.born = shortDate(S.date); k.age = 0;
+      ev.push({ t: '家里', s: `孩子出生了，叫${k.name}` });
+      stop = { kind: '家里', detail: `孩子生下来了，${k.name}` };
+    }
+  }
+  // 过日子的热乎气
+  if (P) {
+    const days = S.stats.days;
+    if (days % 7 === 0) {
+      const tended = S.flags.homeDays || 0;
+      P.warm = clamp(P.warm + (tended >= 2 ? 2.5 : tended >= 1 ? 0.5 : -2.2) - ((S.biz && !S.biz.dead) || S.focus ? 0.6 : 0), 0, 100);
+      S.flags.homeDays = 0;
+      if (P.warm <= 18 && rng() < 0.25) {
+        stop = { kind: '家里', detail: `跟${P.name}到了要说清楚的时候（这阵子几乎没在一起过）` };
+        P.warned = (P.warned || 0) + 1;
+        if (P.warned >= 3 && rng() < 0.5) {
+          const r = breakUp(S, '各过各的太久了');
+          stop = { kind: '家里', detail: `跟${P.name}${r.wasMarried ? '离了，家当分走一半' : '分了'}` };
+        }
+      }
+    }
+  }
+  return { ev, stop };
+}
+function kidCost(S) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  let c = 0;
+  for (const k of (S.family.kids || [])) {
+    if (k.unborn) continue;
+    c += Math.round(city.living * (k.age < 3 ? 0.5 : k.age < 6 ? 0.42 : k.age < 18 ? 0.62 : 0));
+  }
+  return c;
+}
+function kidsGrow(S) {
+  for (const k of (S.family.kids || [])) if (!k.unborn) k.age++;
+}
+function kidStage(k) {
+  if (k.unborn) return '还没出生';
+  if (k.age < 1) return '刚出生';
+  if (k.age < 3) return '会走了';
+  if (k.age < 6) return '上幼儿园';
+  if (k.age < 12) return '小学';
+  if (k.age < 15) return '初中';
+  if (k.age < 18) return '高中';
+  return '大了，自己过';
+}
+
+/* ================= 结局 ================= */
+function scoreLines(S) {
+  const p = S.player;
+  const total = S.ideal.stages.reduce((a, st) => a + st.milestones.length, 0) || 1;
+  const done = S.ideal.stages.reduce((a, st) => a + st.milestones.filter(m => m.done).length, 0);
+  const wealth = p.money + homeWorth(S) + (S.biz && !S.biz.dead ? Math.max(0, S.biz.total) : 0);
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const P = partnerOf(S);
+  const kids = (S.family && S.family.kids || []).filter(k => !k.unborn).length;
+  return {
+    志业: clamp(Math.round(done / total * 78 + Math.min(22, S.ideal.progress / 200)), 0, 100),
+    财务: clamp(Math.round(wealth / (city.living * 220) * 100), 0, 100),
+    关系: clamp(Math.round(S.npcs.filter(n => n.rel >= 55).length * 9 + (P ? (P.stage === '结婚' ? 26 : 14) : 0) + kids * 9 + (S.rifts || []).filter(r => !r.done).length * -6), 0, 100),
+    身心: clamp(Math.round(p.energy * 0.6 + (100 - chronicLoad(S) * 22) * 0.4), 0, 100)
+  };
+}
+function endReason(S) {
+  const p = S.player;
+  if (p.age >= (S.retireAge || 60)) return { why: '到了岁数', text: `${p.age}岁，该收了` };
+  if ((S.chronic || []).length >= 4) return { why: '身体垮了', text: '一身的毛病，跑不动了' };
+  if (p.money < -50000 && S.job.out && !(S.biz && !S.biz.dead)) return { why: '撑不住了', text: '没活干、没进项，窟窿越来越大' };
+  return null;
+}
+function endingScore(S) {
+  const L = scoreLines(S);
+  const avg = Math.round((L.志业 + L.财务 + L.关系 + L.身心) / 4);
+  const top = Object.keys(L).sort((a, b) => L[b] - L[a])[0];
+  const low = Object.keys(L).sort((a, b) => L[a] - L[b])[0];
+  return { lines: L, avg, top, low };
+}
+// 结局之后还想过下去
+function keepGoing(S, years) {
+  S.over = false;
+  S.retireAge = (S.retireAge || 60) + (num(years) || 10);
+  S.endedOnce = (S.endedOnce || []).concat([{ at: shortDate(S.date), age: S.player.age }]).slice(-4);
+  return S.retireAge;
+}
 
 /* ================= 自立门户 ================= */
 const BIZ_KINDS = {
@@ -1456,6 +1665,7 @@ function startKey(S, o) {
     stake: String(o.stake || '').slice(0, 40),
     mileId: o.mileId || null,
     kind: o.kind || 'mile',
+    who: o.who || null,
     opp: { name: String(o.name || '对方').slice(0, 12), type: t, note: String(o.note || T.desc).slice(0, 40) },
     hard,
     guard: clamp(T.guard + (hard - 50) * 0.35, 10, 95),
@@ -1548,6 +1758,26 @@ function settleKey(S) {
   if (!K) return null;
   const out = { result: K.result, scene: K.scene, opp: K.opp.name, rounds: K.round, cost: K.cost, mile: null, price: [] };
   const f = fdm(S);
+  if (K.kind === 'love' || K.kind === 'marry') {
+    const who = K.opp.name;
+    if (K.result === '谈成') {
+      if (K.kind === 'love') { startRomance(S, K.who || who, '在一起'); out.love = K.who || who; }
+      else {
+        const cost = Math.round((CITIES[S.city] || CITIES['新一线']).rent * 30);
+        marry(S, cost);
+        out.married = K.who || who; out.cost = cost;
+      }
+    } else if (K.result === '谈崩') {
+      const n = S.npcs.find(x => x.name === (K.who || who));
+      if (n) n.rel = clamp(n.rel - 10, 0, 100);
+      out.price.push('话说破了，反而远了');
+    }
+    S.player.energy = clamp(S.player.energy - 8, 0, 100);
+    S.stats.keys = (S.stats.keys || 0) + 1;
+    if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
+    S.key = null;
+    return out;
+  }
   if (K.kind === 'raise') {
     if (K.result === '谈成') {
       const up = Math.round(S.ledger.salary * (0.09 + Math.random() * 0.09));
@@ -1633,6 +1863,8 @@ const API = {
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, growAttr,
   simRatio, stuckLevel, pickNudge,
+  housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
+  scoreLines, endReason, endingScore, keepGoing,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
@@ -1923,7 +2155,14 @@ function stateBlocks() {
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}，${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
 ${(S.rifts || []).filter(r => !r.done).length ? `【结下的梁子】${S.rifts.filter(r => !r.done).map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
-${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
+${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}【家】${(() => {
+    const H = S.home || {}; const P = E.partnerOf(S); const kids = (S.family && S.family.kids || []).filter(k => !k.unborn);
+    const a = [H.kind === '买' ? `有自己的房子（${H.loan && !H.loan.done ? `月供${H.loan.monthly}，还欠${H.loan.left}` : '贷款还清了'}）` : `还在租房，房租${S.ledger.rent}`];
+    a.push(P ? `跟${P.name}${P.stage}${P.warm >= 60 ? '，还热乎' : P.warm >= 30 ? '，不咸不淡' : '，早淡了'}` : '一个人过');
+    if (kids.length) a.push(`孩子${kids.map(k => `${k.name}${k.age}岁`).join('、')}，每月养孩子${E.kidCost(S)}`);
+    return a.join('；');
+  })()}
+【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
 【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
 【名声】行业口碑${p.信誉}，做人${p.人品}
 【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
@@ -2124,7 +2363,18 @@ function rebuildTop() {
 function renderOptions(opts) {
   const box = $('acts');
   box.innerHTML = '';
-  if (S.over) { box.innerHTML = `<div class="ended">这一局结束了：${esc(S.ending || '')}</div>`; return; }
+  if (S.over) {
+    box.innerHTML = `<div class="ended">${esc(S.endTitle || '这一局')}　—　${esc(S.ending || '')}</div>`;
+    const go = document.createElement('button');
+    go.className = 'act-btn'; go.textContent = '日子还得过下去（再给十年）';
+    go.onclick = () => { S.over = false; goOn(); };
+    box.appendChild(go);
+    const ex = document.createElement('div');
+    ex.className = 'act-row2';
+    ex.innerHTML = `<button class="ghost" onclick="exportBook()">把这一生导出来</button>`;
+    box.appendChild(ex);
+    return;
+  }
   (opts || []).slice(0, 4).forEach(o => {
     const b = document.createElement('button');
     b.className = 'act-btn'; b.textContent = o;
@@ -2187,6 +2437,12 @@ async function runSegment() {
   S.pending = { action: S.lastAction, stop: adv.stop };
   saveGame();
 
+  if (adv.stop.kind === '结局') {
+    S.seg++;
+    setBusy(false);
+    await runEnding({ why: adv.stop.why, text: adv.stop.detail });
+    return;
+  }
   const isYear = adv.stop.kind === '年终';
   try {
     const prompt = isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge });
@@ -2288,6 +2544,7 @@ async function startNew() {
     updateChapterNarrative(d.narrative);
     S.player.job = d.job || S.player.job;
     S.place = d.place || '';
+    S.home = { kind: '租', since: E.shortDate(S.date), place: S.place };
     S.ideal.stages = E.normLadder(d.ladder);
     S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [] }));
     E.applyTurn(S, { newNpcs: d.npcs, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
@@ -2363,6 +2620,8 @@ function renderPanel() {
       <h4>同期的人</h4><div class="card">${S.peers.map(pr => `<div class="li"><b>${esc(pr.name)}</b><div class="tip">${esc(pr.note || '')}${(pr.track || []).length ? '　→　' + esc((pr.track || []).slice(-3).join('　→　')) : ''}</div></div>`).join('') || '<div class="tip">无</div>'}</div>`;
   } else if (curTab === 'ideal') {
     box.innerHTML = renderLadder();
+  } else if (curTab === 'home') {
+    box.innerHTML = renderHome();
   } else if (curTab === 'book') {
     const out = L.rent + L.living + L.remit, inc = L.salary + L.subsidy;
     box.innerHTML = `<h3>账本</h3>
@@ -2494,12 +2753,16 @@ ${stateBlocks()}
 
 主角要去打一场【${m.scene}】：${m.gate || m.title}。${m.kind === 'raise'
     ? '这是去跟自己的老板谈钱。对手就是他的直属上级或者老板本人，要跟前面剧情里出现过的人对得上（如果出现过）。'
+    : m.kind === 'love'
+    ? `这是主角要跟${m.who}把话挑明。对手就是${m.who}本人，按【认识的人】里那一条写他，别换人。`
+    : m.kind === 'marry'
+    ? `这是主角要跟${m.who}谈结婚。对手是${m.who}（也可能连带她/他家里人的态度），按【认识的人】里那一条写。`
     : m.kind === 'job'
     ? `这是一场面试，主角眼下没有工作${S.job.was ? `（刚从${S.job.was}出来）` : ''}。对手是招人的那一方，给出公司叫什么、什么岗位、多少钱一个月（要跟他的资历和这座城市对得上）。`
     : `这关系到他理想路上的这一步：${m.title}${m.desc ? `（${m.desc}）` : ''}。`}
 
 给出这场的对手和开场。要求：
-- 对手是个具体的人，有名字、职位、一句让人能摸出他脾气的描述。不要写他属于哪一类，让玩家自己看出来。
+- 对手是个具体的人，有名字、职位、一句让人能摸出他脾气的描述。不要写他属于哪一类，让玩家自己看出来。${m.who ? `本场对手的名字必须是「${m.who}」，不许换人。` : ''}
 - type 从这五个里选一个最贴的：务实（只认硬东西）/好面子（爱听好听的）/老江湖（什么场面都见过）/和稀泥（不表态能拖就拖）/急性子（没耐心）
 - 开场 180-260 字：主角怎么到的这儿、屋里什么样、对方开口第一句。写到要开谈为止，不要写谈的过程和结果。
 
@@ -2525,7 +2788,7 @@ ${K}
 - 对方的每一次反应要对得上引擎记录：戒心降了就是他松口了，兴趣涨了就是他开始往下问，耐心掉了就是他开始不耐烦。
 - 结尾写到结果落地：谈成写成怎么定下来的，留口子写成话没说死、下次再约，谈崩写成怎么收的场。不许翻案，不许找补，不许煽情。
 - ${res.result === '谈成' ? '谈成之后不要写主角感慨万千，写他走出门第一件具体的事。' : '没谈成不要写他发誓要怎样，写他当下做了什么。'}
-${meta.kind === 'job' && res.result === '谈成' ? '- 这场是面试而且谈成了：必须把 newJob 填上（东家、职位、月薪、是否试用期），月薪要跟剧情里说的对得上。\n' : ''}${meta.kind === 'job' && res.result !== '谈成' ? '- 这场面试没成，不要安慰他，写他怎么走出那栋楼。\n' : ''}
+${meta.kind === 'job' && res.result === '谈成' ? '- 这场是面试而且谈成了：必须把 newJob 填上（东家、职位、月薪、是否试用期），月薪要跟剧情里说的对得上。\n' : ''}${meta.kind === 'love' ? (res.result === '谈成' ? '- 话挑明了，对方也接了：写两个人怎么把这层窗户纸捅破的，别写成偶像剧，写具体的地点和那几句话。\n' : '- 没接住：写清楚是拒绝、是躲开了、还是说再看看，之后两个人怎么把场面收掉。\n') : ''}${meta.kind === 'marry' ? (res.result === '谈成' ? '- 婚事定下来了：写谁先开的口、钱怎么算、家里人什么态度。\n' : '- 婚事没谈成：写卡在哪儿——钱、房、家里、还是对方本来就没想好。\n') : ''}${meta.kind === 'job' && res.result !== '谈成' ? '- 这场面试没成，不要安慰他，写他怎么走出那栋楼。\n' : ''}
 
 只输出一个合法 JSON：
 ${SCHEMA}`;
@@ -2560,7 +2823,7 @@ async function runKey(m) {
     S.seg++;
     await finishChapter();
     const o = d.opp || {};
-    E.startKey(S, { scene: m.scene, name: o.name, type: o.type, note: o.note, hard, mileId: m.mileId, kind: m.kind, stake: m.gate || m.title });
+    E.startKey(S, { scene: m.scene, name: o.name, type: o.type, note: o.note, hard, mileId: m.mileId, kind: m.kind, who: m.who, stake: m.gate || m.title });
     S.key.opp.job = String(o.job || '').slice(0, 16);
     S.key.where = String(d.where || '').slice(0, 20);
     saveGame();
@@ -2641,6 +2904,8 @@ async function keyFinish() {
     saveGame();
     if (res.mile) toast(`迈过去了：${res.mile}`);
     if (res.raise) toast(`月薪涨了${res.raise}`);
+    if (res.love) toast(`跟${res.love}在一起了`);
+    if (res.married) toast(`跟${res.married}成家了，花了${res.cost}`);
   } catch (e) {
     updateChapterNarrative('（这场没写成：' + (e.message || e) + '）');
     renderOptions(S.lastOptions.length ? S.lastOptions : ['缓一缓']);
@@ -2793,6 +3058,207 @@ function endConvo(goOn) {
   if (goOn && said.length) { S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment(); }
 }
 
+
+
+/* ================= 家 ================= */
+function renderHome() {
+  const H = S.home || { kind: '租' };
+  const P = E.partnerOf(S);
+  const kids = (S.family && S.family.kids || []);
+  const b = E.canBuy(S);
+  const out = [`<h3>家</h3>`];
+
+  // 住处
+  out.push(`<h4>住处</h4><div class="card">`);
+  if (H.kind === '买') {
+    const left = H.loan && !H.loan.done ? H.loan.left : 0;
+    out.push(`<div class="big">自己的房子</div>
+      <div class="lines" style="margin-top:8px">
+        <div><b>买下来</b><span>${esc(H.since)}｜${H.price}元</span></div>
+        ${left ? `<div><b>还欠银行</b><span class="bad">${left}</span></div><div><b>月供</b><span>${H.loan.monthly}｜已还${H.loan.paid}期</span></div>` : '<div><b>贷款</b><span class="good">还清了</span></div>'}
+        <div><b>净值</b><span class="good">${E.homeWorth(S)}</span></div>
+      </div>`);
+  } else {
+    out.push(`<div class="big">${esc(H.place || S.place || '租来的地方')}</div>
+      <div class="lines" style="margin-top:8px"><div><b>房租</b><span>${S.ledger.rent}/月</span></div></div>
+      <div class="tip">买一套要 ${b.price}，首付 ${b.down}，之后每月供 ${b.monthly}。买了就没有房租，但三十年绑在这儿。</div>
+      <div class="btns"><button class="${b.ok ? 'primary' : 'ghost'}" ${b.ok ? '' : 'disabled'} onclick="doBuyHouse()">${b.ok ? '付首付，买' : `首付还差 ${b.down - S.player.money}`}</button></div>`);
+  }
+  out.push(`</div>`);
+
+  // 身边的人
+  out.push(`<h4>枕边</h4><div class="card">`);
+  if (P) {
+    const warmWord = P.warm >= 75 ? '热乎着' : P.warm >= 50 ? '还好' : P.warm >= 25 ? '淡了' : '快过不下去了';
+    out.push(`<div class="big">${esc(P.name)}</div>
+      <div class="lines" style="margin-top:8px">
+        <div><b>什么关系</b><span>${esc(P.stage)}${P.marriedAt ? `（${esc(P.marriedAt)}领的证）` : `（${esc(P.since)}起）`}</span></div>
+        <div><b>过得怎么样</b><span class="${P.warm < 25 ? 'bad' : P.warm >= 75 ? 'good' : ''}">${warmWord}</span></div>
+      </div>
+      <div class="bar" style="margin-top:8px"><div class="bar-in${P.warm >= 60 ? ' good' : P.warm < 25 ? ' bad' : ''}" style="width:${Math.round(P.warm)}%"></div></div>
+      <div class="tip">作息里排「顾家」才顾得上；一直不着家，热乎气一周一周往下掉。</div>
+      <div class="btns">
+        ${P.stage !== '结婚' ? `<button class="primary" onclick="askMarry()">求婚</button>` : ''}
+        <button class="ghost" onclick="openConvo('${esc(P.name)}')">说说话</button>
+        <button class="ghost" onclick="doBreak()">分了</button>
+      </div>`);
+  } else {
+    const cand = S.npcs.filter(n => n.rel >= 55 && !/爱人|前任|家里人|妈|爸/.test(n.tie || ''));
+    out.push(`<div class="tip">眼下一个人过。</div>
+      ${cand.length ? `<div class="cardhd" style="margin-top:8px">能开口的人</div>` + cand.map(n =>
+        `<div class="li"><b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span>
+          <div class="tip">${esc(n.job || '')}${n.tie ? '｜' + esc(n.tie) : ''}
+            <button class="ghost sm" onclick="askLove('${esc(n.name)}')">挑明</button></div></div>`).join('')
+        : '<div class="tip">还没有走得够近的人——关系到「朋友」以上才谈得上这个。</div>'}`);
+  }
+  out.push(`</div>`);
+
+  // 孩子
+  out.push(`<h4>孩子</h4><div class="card">`);
+  if (kids.length) {
+    out.push(kids.map(k => k.unborn
+      ? `<div class="li"><b>还在路上</b><div class="tip">还有 ${Math.max(0, k.dueDay - S.stats.days)} 天</div></div>`
+      : `<div class="li"><b>${esc(k.name)}</b><span class="rel">${k.age}岁</span><div class="tip">${E.kidStage(k)}｜${esc(k.born)}生的</div></div>`).join(''));
+    out.push(`<div class="tip">每月养孩子 ${E.kidCost(S)} 元，上了学还要往上走。</div>`);
+  } else out.push(`<div class="tip">还没有。</div>`);
+  if (P && P.stage === '结婚' && !kids.some(k => k.unborn)) out.push(`<div class="btns"><button class="ghost" onclick="doWantKid()">要个孩子</button></div>`);
+  out.push(`</div>`);
+
+  // 自己的摊子（摘要，细账在账本里）
+  if (S.biz && !S.biz.dead) {
+    const B = S.biz;
+    out.push(`<h4>自己的摊子</h4><div class="card">
+      <div class="big">${esc(B.name)}</div>
+      <div class="lines" style="margin-top:8px">
+        <div><b>${esc(B.kind)}</b><span>开了${B.months}个月</span></div>
+        <div><b>上个月</b><span class="${B.net >= 0 ? 'good' : 'bad'}">${B.net >= 0 ? '剩' + B.net : '亏' + (-B.net)}</span></div>
+        <div><b>口碑</b><span>${Math.round(B.rep)}</span></div>
+        <div><b>人手</b><span>${B.staff.length}个</span></div>
+      </div>
+      <div class="btns"><button class="ghost" onclick="gotoTab('book')">去账本里看细账</button></div></div>`);
+  }
+  // 身家
+  out.push(`<h4>身家</h4><div class="card"><div class="lines">
+    <div><b>存款</b><span class="${S.player.money < 0 ? 'bad' : ''}">${S.player.money}</span></div>
+    ${E.homeWorth(S) ? `<div><b>房子净值</b><span>${E.homeWorth(S)}</span></div>` : ''}
+    ${S.biz && !S.biz.dead ? `<div><b>摊子累计</b><span class="${S.biz.total < 0 ? 'bad' : ''}">${S.biz.total}</span></div>` : ''}
+    ${(S.debts || []).length ? `<div><b>欠人的</b><span class="bad">${S.debts.reduce((a, d) => a + d.left, 0)}</span></div>` : ''}
+  </div></div>`);
+  return out.join('');
+}
+
+function doBuyHouse() {
+  const r = E.buyHouse(S, Math.random);
+  if (!r.ok) { toast(r.why); return; }
+  closePanel();
+  S.lastAction = `付了首付，把房子买下来了${r.cut ? `（砍下来${r.cut}）` : ''}`;
+  saveGame(); rebuildTop();
+  toast(`首付${r.down}，往后每月供${r.monthly}`);
+  runSegment();
+}
+function askLove(name) {
+  const n = S.npcs.find(x => x.name === name);
+  if (!n) return;
+  runKey({ scene: '摊牌', gate: `跟${name}把话挑明`, title: '挑明', kind: 'love', who: name, mileId: null, hard: Math.round(72 - n.rel * 0.42) });
+}
+function askMarry() {
+  const P = E.partnerOf(S);
+  if (!P) return;
+  const cost = Math.round((E.CITIES[S.city] || E.CITIES['新一线']).rent * 30);
+  if (S.player.money < cost) { toast(`办下来少说要 ${cost}，手头不够`); return; }
+  runKey({ scene: '摊牌', gate: `跟${P.name}谈结婚的事`, title: '结婚', kind: 'marry', who: P.name, mileId: null, hard: Math.round(64 - P.warm * 0.3) });
+}
+function doBreak() {
+  const P = E.partnerOf(S);
+  if (!P) return;
+  if (!confirm(P.stage === '结婚' ? `离？家当分走一半。` : `分了？`)) return;
+  const r = E.breakUp(S, '说不下去了');
+  closePanel();
+  S.lastAction = r.wasMarried ? `跟${P.name}把证退了，家当分了一半` : `跟${P.name}分了`;
+  saveGame(); rebuildTop();
+  runSegment();
+}
+function doWantKid() {
+  const r = E.wantKid(S, Math.random);
+  if (!r.ok) { toast(r.why + (r.ck ? `（${r.ck.attr}${r.ck.val}，掷${r.ck.roll}）` : '')); saveGame(); return; }
+  toast('有了');
+  closePanel();
+  S.lastAction = '要孩子这件事定下来了';
+  saveGame();
+  runSegment();
+}
+
+/* ================= 结局 ================= */
+function endPrompt(sc, reason) {
+  const L = sc.lines;
+  const P = E.partnerOf(S);
+  const kids = (S.family && S.family.kids || []).filter(k => !k.unborn);
+  const done = [];
+  for (const st of S.ideal.stages) for (const m of st.milestones) if (m.done) done.push(m.title);
+  return `${worldRules()}
+
+${stateBlocks()}
+
+这一局到头了：${reason.text}（${reason.why}）。${S.player.name}今年${S.player.age}岁。
+
+引擎算完的四条线（满分100，不许改）：
+- 志业 ${L.志业}：想干的是「${S.player.ideal}」，迈过的台阶${done.length ? '：' + done.join('、') : '一级都没迈过'}
+- 财务 ${L.财务}：存款${S.player.money}${E.homeWorth(S) ? `，房子净值${E.homeWorth(S)}` : '，没有房'}${S.biz && !S.biz.dead ? `，自己的${S.biz.kind}「${S.biz.name}」` : ''}${(S.debts || []).length ? `，还欠人${S.debts.reduce((a, d) => a + d.left, 0)}` : ''}
+- 关系 ${L.关系}：${P ? `${P.stage === '结婚' ? '跟' + P.name + '成了家' : '和' + P.name + '在一起'}（${P.warm >= 60 ? '还热乎' : P.warm >= 30 ? '平平淡淡' : '早就淡了'}）` : '一个人'}${kids.length ? `，孩子${kids.map(k => k.name + k.age + '岁').join('、')}` : ''}，真交心的朋友${S.npcs.filter(n => n.rel >= 55).length}个${(S.rifts || []).filter(r => !r.done).length ? `，还有${S.rifts.filter(r => !r.done).length}笔没了的梁子` : ''}
+- 身心 ${L.身心}：精力${S.player.energy}${(S.chronic || []).length ? `，${S.chronic.map(c => c.name).join('、')}` : '，还算利索'}
+
+最高的是${sc.top}，最低的是${sc.low}。
+
+写这一局的结尾，450-650 字。要求：
+- 从一个具体的场面切进去：某天早上、某个房间、手里正在做的一件事。不要从"回首这些年"开头。
+- 把四条线都落到实处，尤其是最高和最低那两条的对照——他得到的和他搭进去的。
+- 不许写成励志故事，也不许写成惨剧。${sc.avg >= 65 ? '他这一局过得不算差，但代价要写出来。' : sc.avg >= 40 ? '有得有失，两边都别美化。' : '过得不顺，但也别把他写成废人。'}
+- 不许升华，不许"人生就是"，不许展望。最后一句停在一个动作或者一个具体的东西上。
+
+只输出一个合法 JSON：
+{"narrative":"结尾","summary":"一句话（20字内）","title":"给这一局起个四到八个字的名字"}`;
+}
+
+async function runEnding(reason) {
+  const sc = E.endingScore(S);
+  S.over = true;
+  S.ending = reason.text;
+  setBusy(true, '正在收尾……');
+  S.seg++;
+  const div = beginChapter(`${S.date.y}年`, `${S.player.age}岁 · 收`, '', null);
+  try {
+    const d = await llmJSON(endPrompt(sc, reason), raw => {
+      const t = extractPartialField(raw, 'narrative');
+      if (t) updateChapterNarrative(t);
+    });
+    updateChapterNarrative(d.narrative);
+    S.endTitle = d.title || '';
+    S.endText = d.narrative || '';
+    S.endScore = sc;
+    const bars = Object.keys(sc.lines).map(k =>
+      `<div class="kbar"><span>${k}</span><div class="bar"><div class="bar-in ${sc.lines[k] >= 66 ? 'good' : sc.lines[k] >= 33 ? '' : 'bad'}" style="width:${sc.lines[k]}%"></div></div><em>${sc.lines[k]}</em></div>`).join('');
+    div.insertAdjacentHTML('beforeend',
+      `<div class="endblock"><h4>${esc(d.title || '这一局')}</h4>${bars}
+        <div class="tip">最拿得出手的是${sc.top}，最亏的是${sc.low}。四条线平均 ${sc.avg}。</div></div>`);
+    S.history.push({ seg: S.seg, date: `${S.date.y}年`, summary: `【收】${d.summary || ''}` });
+    await finishChapter();
+    rebuildTop();
+    saveGame();
+    renderOptions([]);
+  } catch (e) {
+    updateChapterNarrative('（结尾没写成：' + (e.message || e) + '）');
+    renderOptions([]);
+  }
+  setBusy(false);
+}
+function goOn() {
+  const to = E.keepGoing(S, 10);
+  S.lastAction = '日子还得往下过';
+  saveGame();
+  renderOptions([]);
+  toast(`接着过，下一个坎在 ${to} 岁`);
+  runSegment();
+}
 
 /* ================= 生意 ================= */
 function renderBiz() {

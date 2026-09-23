@@ -54,6 +54,7 @@ const ACTS = {
   '人情': { en: -5,  gain: { '表达': 0.028 }, social: 1 },
   '身心': { en: 6,   gain: { '体能': 0.03, '情绪': 0.014 } },
   '学习': { en: -7,  gain: { '谋划': 0.028, '专业': 0.018 } },
+  '顾家': { en: -3,  gain: { '情绪': 0.02 }, home: 1 },
   '闲着': { en: 4,   gain: {} },
   '睡觉': { en: 0,   gain: {}, sleep: 1 }
 };
@@ -161,6 +162,9 @@ function newState(o) {
     job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
     debts: [], rifts: [], ailLog: {},
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
+    home: { kind: '租', since: '', place: '' },
+    family: { partner: null, kids: [], past: [] },
+    retireAge: 60, endedOnce: [],
     schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
     ideal: { progress: 0, stages: [] },
     key: null,
@@ -211,6 +215,7 @@ function dayTick(S, rng) {
       if (a.work) p.资历天 = (p.资历天 || 0) + 1;
       if (a.ideal) S.ideal.progress = r2(S.ideal.progress + 0.6 + p.attrs['专业'] / 150);
       if (a.social) S.flags.socialToday = 1;
+      if (a.home) S.flags.homeDays = (S.flags.homeDays || 0) + 0.5;
     }
     if (it.slot === '深夜' && !a.sleep) { en -= 7; S.flags.nightCnt++; }
   }
@@ -275,10 +280,13 @@ function moneyTick(S, rng) {
     }
   }
   if (d.d === L.rentDay) {
-    const out = L.rent + L.living + L.remit;
+    const kid = kidCost(S);
+    const loan = num(L.loan);
+    if (loan) homeTick(S);
+    const out = L.rent + loan + L.living + L.remit + kid;
     p.money -= out;
     S.flags.monthNet -= out;
-    ev.push({ t: '钱', s: `房租${L.rent}、生活${L.living}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
+    ev.push({ t: '钱', s: `${L.rent ? `房租${L.rent}、` : ''}${loan ? `月供${loan}、` : ''}生活${L.living}${kid ? `、孩子${kid}` : ''}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
     if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
   }
   if (d.d === L.salaryDay && !S.job.out) {
@@ -299,7 +307,7 @@ function moneyTick(S, rng) {
     if (p.money < 0) {
       S.broke = true; S.brokeMonths++;
       stop = { kind: '钱', detail: `账上是负的（${p.money}），得想办法` };
-    } else if (p.money < floor) {
+    } else if (p.money < floor + num(L.loan)) {
       stop = { kind: '钱', detail: `剩下的钱撑不到下个月（${p.money}）` };
     } else if (net < 0) {
       stop = { kind: '钱', detail: `这个月倒贴了${-net}` };
@@ -397,8 +405,13 @@ function advance(S, opt) {
     // 生日：开局那个月日
     if (S.date.m === S.startDate.m && S.date.d === S.startDate.d && S.date.y > S.startDate.y) {
       S.player.age = 22 + (S.date.y - S.startDate.y);
-      events.push({ t: '家里', s: `你${S.player.age}岁了` });
+      kidsGrow(S);
+      events.push({ t: '家里', s: `你${S.player.age}岁了${(S.family.kids || []).filter(k => !k.unborn).length ? `，${S.family.kids.filter(k => !k.unborn).map(k => k.name + k.age + '岁').join('、')}` : ''}` });
     }
+
+    // 到头了：这两件事排在所有停点前面
+    const en = endReason(S);
+    if (en && !S.over) { stop = { kind: '结局', detail: en.text, why: en.why }; break; }
 
     // 一年到头，别的什么都往后排
     if (S.date.m === 12 && S.date.d === 31) {
@@ -421,6 +434,10 @@ function advance(S, opt) {
     const wd = windTick(S, rng);
     events.push(...wd.ev);
     if (wd.stop && S.flags.cool <= 0) { stop = wd.stop; break; }
+
+    const fm = familyTick(S, rng);
+    events.push(...fm.ev);
+    if (fm.stop) { stop = fm.stop; break; }
 
     const rt = riftTick(S, rng);
     events.push(...rt.ev);
@@ -622,6 +639,193 @@ function applyConvo(S, name, res) {
 
 
 
+
+
+/* ================= 家：住处、伴侣、孩子 ================= */
+function housePrice(S) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  return Math.round(city.rent * 290 / 10000) * 10000;        // 一套普通两居，按房租倒推
+}
+function canBuy(S) {
+  const price = housePrice(S);
+  const down = Math.round(price * 0.32);
+  const loan = price - down;
+  const monthly = Math.round(loan * 0.0052);                  // 三十年，粗算
+  return { price, down, loan, monthly, ok: S.player.money >= down };
+}
+function buyHouse(S, rng) {
+  const b = canBuy(S);
+  if (!b.ok) return { ok: false, why: `首付要 ${b.down}，你手头 ${S.player.money}` };
+  const ck = rollCheck(S, '谋划', 48, rng || Math.random);
+  const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
+  S.player.money -= (b.down - cut);
+  S.home = {
+    kind: '买', since: shortDate(S.date), price: b.price - cut,
+    loan: { left: b.loan, monthly: b.monthly, months: 360, paid: 0 }
+  };
+  S.ledger.rent = 0;
+  S.ledger.loan = b.monthly;
+  return { ok: true, price: b.price - cut, down: b.down - cut, monthly: b.monthly, cut, ck };
+}
+function homeTick(S) {
+  // 月供跟着房租一起在 1 号扣，在 moneyTick 里算
+  const H = S.home;
+  if (!H || H.kind !== '买' || !H.loan) return;
+  H.loan.left = Math.max(0, H.loan.left - Math.round(H.loan.monthly * 0.42));   // 本金部分
+  H.loan.paid++;
+  if (H.loan.left <= 0) { S.ledger.loan = 0; H.loan.done = true; }
+}
+function homeWorth(S) {
+  const H = S.home;
+  if (!H || H.kind !== '买') return 0;
+  return Math.max(0, num(H.price) - (H.loan && !H.loan.done ? num(H.loan.left) : 0));
+}
+
+/* ---- 伴侣 ---- */
+function partnerOf(S) { return S.family && S.family.partner && !S.family.partner.over ? S.family.partner : null; }
+function startRomance(S, name, stage) {
+  S.family = S.family || { partner: null, kids: [], past: [] };
+  const n = S.npcs.find(x => x.name === name);
+  S.family.partner = {
+    name, since: shortDate(S.date), sinceDay: S.stats.days,
+    stage: stage || '在一起', warm: Math.max(55, n ? n.rel : 55), over: false
+  };
+  if (n) { n.close = true; n.tie = stage === '结婚' ? '爱人' : '对象'; }
+  return S.family.partner;
+}
+function marry(S, cost) {
+  const P = partnerOf(S);
+  if (!P) return null;
+  P.stage = '结婚';
+  P.marriedAt = shortDate(S.date);
+  S.player.money -= num(cost);
+  const n = S.npcs.find(x => x.name === P.name);
+  if (n) { n.tie = '爱人'; n.rel = clamp(n.rel + 10, 0, 100); }
+  return P;
+}
+function breakUp(S, why) {
+  const P = partnerOf(S);
+  if (!P) return null;
+  P.over = true; P.endedAt = shortDate(S.date); P.why = String(why || '过不下去了').slice(0, 30);
+  const wasMarried = P.stage === '结婚';
+  S.family.past = (S.family.past || []).concat([P]).slice(-4);
+  const n = S.npcs.find(x => x.name === P.name);
+  if (n) { n.tie = wasMarried ? '前妻/前夫' : '前任'; n.rel = clamp(n.rel - 30, 0, 100); }
+  if (wasMarried) {
+    // 分一半家当
+    const half = Math.round(S.player.money * 0.42);
+    S.player.money -= Math.max(0, half);
+    S.family.partner = null;
+    return { wasMarried, half };
+  }
+  S.family.partner = null;
+  return { wasMarried, half: 0 };
+}
+function wantKid(S, rng) {
+  const P = partnerOf(S);
+  if (!P || P.stage !== '结婚') return { ok: false, why: '这事得两个人，而且得先成家' };
+  if ((S.family.kids || []).some(k => k.unborn)) return { ok: false, why: '已经在等了' };
+  const ck = rollCheck(S, '体能', 46 + (S.player.age - 26) * 1.5, rng || Math.random);
+  if (!ck.success) return { ok: false, why: '这回没成', ck };
+  S.family.kids = (S.family.kids || []).concat([{ unborn: true, dueDay: S.stats.days + 270, name: '', age: 0 }]);
+  return { ok: true, ck };
+}
+const KID_MING = ['念','安','一','小满','年年','知','麦','屿','禾','早早','团团','多多','星','沐','昀'];
+function familyTick(S, rng) {
+  const ev = [];
+  let stop = null;
+  S.family = S.family || { partner: null, kids: [], past: [] };
+  const P = partnerOf(S);
+
+  // 孩子出生
+  for (const k of (S.family.kids || [])) {
+    if (k.unborn && S.stats.days >= k.dueDay) {
+      k.unborn = false;
+      k.name = (S.player.name || '').slice(0, 1) + pick(rng, KID_MING);
+      k.bornY = S.date.y; k.born = shortDate(S.date); k.age = 0;
+      ev.push({ t: '家里', s: `孩子出生了，叫${k.name}` });
+      stop = { kind: '家里', detail: `孩子生下来了，${k.name}` };
+    }
+  }
+  // 过日子的热乎气
+  if (P) {
+    const days = S.stats.days;
+    if (days % 7 === 0) {
+      const tended = S.flags.homeDays || 0;
+      P.warm = clamp(P.warm + (tended >= 2 ? 2.5 : tended >= 1 ? 0.5 : -2.2) - ((S.biz && !S.biz.dead) || S.focus ? 0.6 : 0), 0, 100);
+      S.flags.homeDays = 0;
+      if (P.warm <= 18 && rng() < 0.25) {
+        stop = { kind: '家里', detail: `跟${P.name}到了要说清楚的时候（这阵子几乎没在一起过）` };
+        P.warned = (P.warned || 0) + 1;
+        if (P.warned >= 3 && rng() < 0.5) {
+          const r = breakUp(S, '各过各的太久了');
+          stop = { kind: '家里', detail: `跟${P.name}${r.wasMarried ? '离了，家当分走一半' : '分了'}` };
+        }
+      }
+    }
+  }
+  return { ev, stop };
+}
+function kidCost(S) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  let c = 0;
+  for (const k of (S.family.kids || [])) {
+    if (k.unborn) continue;
+    c += Math.round(city.living * (k.age < 3 ? 0.5 : k.age < 6 ? 0.42 : k.age < 18 ? 0.62 : 0));
+  }
+  return c;
+}
+function kidsGrow(S) {
+  for (const k of (S.family.kids || [])) if (!k.unborn) k.age++;
+}
+function kidStage(k) {
+  if (k.unborn) return '还没出生';
+  if (k.age < 1) return '刚出生';
+  if (k.age < 3) return '会走了';
+  if (k.age < 6) return '上幼儿园';
+  if (k.age < 12) return '小学';
+  if (k.age < 15) return '初中';
+  if (k.age < 18) return '高中';
+  return '大了，自己过';
+}
+
+/* ================= 结局 ================= */
+function scoreLines(S) {
+  const p = S.player;
+  const total = S.ideal.stages.reduce((a, st) => a + st.milestones.length, 0) || 1;
+  const done = S.ideal.stages.reduce((a, st) => a + st.milestones.filter(m => m.done).length, 0);
+  const wealth = p.money + homeWorth(S) + (S.biz && !S.biz.dead ? Math.max(0, S.biz.total) : 0);
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const P = partnerOf(S);
+  const kids = (S.family && S.family.kids || []).filter(k => !k.unborn).length;
+  return {
+    志业: clamp(Math.round(done / total * 78 + Math.min(22, S.ideal.progress / 200)), 0, 100),
+    财务: clamp(Math.round(wealth / (city.living * 220) * 100), 0, 100),
+    关系: clamp(Math.round(S.npcs.filter(n => n.rel >= 55).length * 9 + (P ? (P.stage === '结婚' ? 26 : 14) : 0) + kids * 9 + (S.rifts || []).filter(r => !r.done).length * -6), 0, 100),
+    身心: clamp(Math.round(p.energy * 0.6 + (100 - chronicLoad(S) * 22) * 0.4), 0, 100)
+  };
+}
+function endReason(S) {
+  const p = S.player;
+  if (p.age >= (S.retireAge || 60)) return { why: '到了岁数', text: `${p.age}岁，该收了` };
+  if ((S.chronic || []).length >= 4) return { why: '身体垮了', text: '一身的毛病，跑不动了' };
+  if (p.money < -50000 && S.job.out && !(S.biz && !S.biz.dead)) return { why: '撑不住了', text: '没活干、没进项，窟窿越来越大' };
+  return null;
+}
+function endingScore(S) {
+  const L = scoreLines(S);
+  const avg = Math.round((L.志业 + L.财务 + L.关系 + L.身心) / 4);
+  const top = Object.keys(L).sort((a, b) => L[b] - L[a])[0];
+  const low = Object.keys(L).sort((a, b) => L[a] - L[b])[0];
+  return { lines: L, avg, top, low };
+}
+// 结局之后还想过下去
+function keepGoing(S, years) {
+  S.over = false;
+  S.retireAge = (S.retireAge || 60) + (num(years) || 10);
+  S.endedOnce = (S.endedOnce || []).concat([{ at: shortDate(S.date), age: S.player.age }]).slice(-4);
+  return S.retireAge;
+}
 
 /* ================= 自立门户 ================= */
 const BIZ_KINDS = {
@@ -1149,6 +1353,7 @@ function startKey(S, o) {
     stake: String(o.stake || '').slice(0, 40),
     mileId: o.mileId || null,
     kind: o.kind || 'mile',
+    who: o.who || null,
     opp: { name: String(o.name || '对方').slice(0, 12), type: t, note: String(o.note || T.desc).slice(0, 40) },
     hard,
     guard: clamp(T.guard + (hard - 50) * 0.35, 10, 95),
@@ -1241,6 +1446,26 @@ function settleKey(S) {
   if (!K) return null;
   const out = { result: K.result, scene: K.scene, opp: K.opp.name, rounds: K.round, cost: K.cost, mile: null, price: [] };
   const f = fdm(S);
+  if (K.kind === 'love' || K.kind === 'marry') {
+    const who = K.opp.name;
+    if (K.result === '谈成') {
+      if (K.kind === 'love') { startRomance(S, K.who || who, '在一起'); out.love = K.who || who; }
+      else {
+        const cost = Math.round((CITIES[S.city] || CITIES['新一线']).rent * 30);
+        marry(S, cost);
+        out.married = K.who || who; out.cost = cost;
+      }
+    } else if (K.result === '谈崩') {
+      const n = S.npcs.find(x => x.name === (K.who || who));
+      if (n) n.rel = clamp(n.rel - 10, 0, 100);
+      out.price.push('话说破了，反而远了');
+    }
+    S.player.energy = clamp(S.player.energy - 8, 0, 100);
+    S.stats.keys = (S.stats.keys || 0) + 1;
+    if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
+    S.key = null;
+    return out;
+  }
   if (K.kind === 'raise') {
     if (K.result === '谈成') {
       const up = Math.round(S.ledger.salary * (0.09 + Math.random() * 0.09));
@@ -1326,6 +1551,8 @@ const API = {
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, growAttr,
   simRatio, stuckLevel, pickNudge,
+  housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
+  scoreLines, endReason, endingScore, keepGoing,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
