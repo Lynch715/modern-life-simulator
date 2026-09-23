@@ -322,42 +322,88 @@ function moneyTick(S, rng) {
 }
 
 /* ---------- 同辈对照组 ---------- */
+// 每条：动静、朋友圈怎么说、这件事让他涨还是跌、会不会来找你（找你干嘛）
 const PEER_MOVES = [
-  ['升了职', ['转正了，组长', '今天起换了个title，活还是那些活']],
-  ['跳了家公司', ['下周入职新的地方，江湖再见', '换东家了，涨了一点']],
-  ['辞职去做自己的东西了', ['辞了。想清楚了，不干了', '最后一天，工位收拾干净了']],
-  ['拿到一笔钱', ['谈下来了，下周打款', '见了三个人，有一个给钱了']],
-  ['搬去了别的城市', ['搬走啦，有空来玩', '换个城市重来一次']],
-  ['结婚了', ['领证了', '下个月办酒，记得来']],
-  ['分手了', ['分了。别问', '一个人住了']],
-  ['买了房', ['签了，三十年', '钥匙拿到手了，空的，什么都没有']],
-  ['创业黄了', ['关了。欠的慢慢还', '散伙了，挺好的']],
-  ['回老家考编了', ['回去了，考编', '不折腾了']],
-  ['出了点成绩被人认识了', ['被人转了一圈，有点懵', '有人找我约稿了']],
-  ['生病歇了一阵', ['住了几天院，没大事', '歇了半个月，现在能下床了']]
+  ['升了职', ['转正了，组长', '今天起换了个title，活还是那些活'], 8, '挖你'],
+  ['跳了家公司', ['下周入职新的地方，江湖再见', '换东家了，涨了一点'], 5, '挖你'],
+  ['辞职去做自己的东西了', ['辞了。想清楚了，不干了', '最后一天，工位收拾干净了'], 2, '合伙'],
+  ['拿到一笔钱', ['谈下来了，下周打款', '见了三个人，有一个给钱了'], 12, '合伙'],
+  ['搬去了别的城市', ['搬走啦，有空来玩', '换个城市重来一次'], 0, null],
+  ['结婚了', ['领证了', '下个月办酒，记得来'], 2, '喜事'],
+  ['分手了', ['分了。别问', '一个人住了'], -2, '求助'],
+  ['买了房', ['签了，三十年', '钥匙拿到手了，空的，什么都没有'], 6, null],
+  ['创业黄了', ['关了。欠的慢慢还', '散伙了，挺好的'], -15, '借钱'],
+  ['回老家考编了', ['回去了，考编', '不折腾了'], -3, null],
+  ['出了点成绩被人认识了', ['被人转了一圈，有点懵', '有人找我约稿了'], 10, '抢'],
+  ['生病歇了一阵', ['住了几天院，没大事', '歇了半个月，现在能下床了'], -6, '求助']
 ];
+// 主角自己混到什么水位，用来跟同期对照
+function selfLevel(S) {
+  const p = S.player;
+  const miles = S.ideal.stages.reduce((a, st) => a + st.milestones.filter(m => m.done).length, 0);
+  const b = S.biz && !S.biz.dead ? num(S.biz.rep) * 0.22 + (num(S.biz.net) > 0 ? 6 : 0) : 0;
+  return clamp(Math.round(p.信誉 * 0.32 + Math.min(32, Math.max(0, p.money) / 9000) + miles * 7 + num(S.job.lv) * 3 + b), 0, 100);
+}
+function peerWord(S, pr) {
+  const d = num(pr.level) - selfLevel(S);
+  if (d >= 22) return '混得比你好不少';
+  if (d >= 8) return '比你强一点';
+  if (d > -8) return '跟你差不多';
+  if (d > -22) return '不如你';
+  return '过得比你差远了';
+}
+const PEER_HOOK = {
+  '合伙': p => `${p.name}来找你合伙`,
+  '挖你': p => `${p.name}想把你挖过去`,
+  '抢':   p => `${p.name}跟你盯上了同一个机会`,
+  '借钱': p => `${p.name}开口要跟你借钱`,
+  '求助': p => `${p.name}遇上事了，来找你`,
+  '喜事': p => `${p.name}的喜事，要你到场`
+};
 function peerTick(S, rng) {
   const ev = [];
   if (!S.peers.length) return { ev, stop: null };
   S.flags.lastPeer++;
-  if (S.flags.lastPeer < rnd(rng, 14, 32)) return { ev, stop: null };
+  if (S.flags.lastPeer < rnd(rng, 12, 28)) return { ev, stop: null };
   S.flags.lastPeer = 0;
   const pr = pick(rng, S.peers);
-  const [mv, says] = pick(rng, PEER_MOVES);
+  if (pr.level == null) pr.level = rnd(rng, 38, 58);
+  const mvRow = pick(rng, PEER_MOVES);
+  const mv = mvRow[0], says = mvRow[1], up = mvRow[2], hook = mvRow[3];
   pr.track = (pr.track || []).concat([mv]).slice(-4);
+  pr.level = clamp(num(pr.level) + num(up) + rnd(rng, -2, 3), 0, 100);
+  pr.last = mv;
   ev.push({ t: '人情', s: `${pr.name}${mv}` });
   S.msgs.push({ from: pr.name, text: pick(rng, says), date: shortDate(S.date), kind: 'peer', read: false });
   S.msgs = S.msgs.slice(-80);
-  // 大动静才值得停下来
-  if (/升了职|拿到一笔钱|出了点成绩|买了房|结婚/.test(mv) && rng() < 0.45)
-    return { ev, stop: { kind: '人情', detail: `${pr.name}${mv}，消息传到你这儿` } };
+
+  // 这件事要不要牵到主角身上
+  const gap = num(pr.level) - selfLevel(S);
+  let use = null, p0 = 0.5;
+  if (hook === '挖你' && gap >= 6) { use = '挖你'; p0 = 0.6; }
+  else if (hook === '借钱' && gap <= -6) { use = '借钱'; p0 = 0.6; }
+  else if (hook === '抢' && Math.abs(gap) <= 20) { use = '抢'; p0 = 0.65; }
+  else if (hook === '合伙' && gap >= -12) { use = '合伙'; p0 = 0.6; }
+  else if (hook === '喜事') { use = '喜事'; p0 = 0.45; }
+  else if (hook === '求助' && gap <= 12) { use = '求助'; p0 = 0.3; }   // 这个别太频繁
+  if (use && rng() < p0) {
+    // 从此他是个能说上话的人，不再只是朋友圈里的名字
+    if (!S.npcs.some(n => n.name === pr.name)) {
+      S.npcs.push({ name: pr.name, age: S.player.age, job: pr.note || '同期', rel: 38, tie: '同期',
+        care: '', note: (pr.track || []).slice(-2).join('，'), close: false, mem: [], lastSeen: S.stats.days });
+    }
+    pr.npc = true;
+    return { ev, stop: { kind: '同期', detail: PEER_HOOK[use](pr) + `（他${mv}，${peerWord(S, pr)}）`, peer: pr.name, hook: use } };
+  }
+  if (/升了职|拿到一笔钱|出了点成绩|买了房/.test(mv) && rng() < 0.4)
+    return { ev, stop: { kind: '人情', detail: `${pr.name}${mv}，消息传到你这儿（${peerWord(S, pr)}）` } };
   return { ev, stop: null };
 }
 
 /* ---------- 认识的人主动找你 ---------- */
 function npcTick(S, rng) {
   if (!S.npcs.length) return { ev: [], stop: null };
-  if (rng() > 0.03) return { ev: [], stop: null };
+  if (rng() > 0.022) return { ev: [], stop: null };
   const cand = S.npcs.filter(n => {
     const gap = S.stats.days - (n.lastSeen || 0);
     return n.rel >= 25 && gap >= 18;
@@ -372,7 +418,7 @@ function npcTick(S, rng) {
 /* ---------- 随机事件（只给种类，内容交给 LLM） ---------- */
 const EVT_TAGS = ['工作', '钱', '身体', '人情', '机会', '家里'];
 function evtChance(S) {
-  let p = 0.052;
+  let p = 0.040;   // 停点的总数攒多了，随机事件让一让
   const pl = S.player;
   if (pl.energy < 35) p += 0.025;
   if (S.unresolved.length >= 3) p += 0.02;
@@ -536,44 +582,54 @@ function settleFocus(S, rng) {
 }
 
 /* ---------- 吃 LLM 返回的 JSON ---------- */
+// 一段里能改多少，引擎说了算
+function capMoney(S) {
+  const inc = num(S.ledger.salary) + (S.biz && !S.biz.dead ? Math.max(0, num(S.biz.rev)) : 0);
+  return Math.max(12000, Math.round(inc * 2.5 + Math.abs(S.player.money) * 0.35));
+}
 function applyTurn(S, d) {
   d = d || {};
   const p = S.player;
   const pc = d.playerChanges || {};
+  const cut = [];   // 被截下来的，下一段要告诉模型
+  const cap = (label, v, lim) => {
+    const n = num(v);
+    if (Math.abs(n) <= lim) return n;
+    cut.push(`${label}你写了${n}，引擎只认${n > 0 ? lim : -lim}`);
+    return n > 0 ? lim : -lim;
+  };
   if (pc.attributes) for (const k of ATTRS) if (num(pc.attributes[k])) {
-    p.attrF[k] = r2(clamp(num(p.attrF[k]) + num(pc.attributes[k]), 0, 100));
+    p.attrF[k] = r2(clamp(num(p.attrF[k]) + cap(k, pc.attributes[k], 2.5), 0, 100));
     p.attrs[k] = Math.round(p.attrF[k]);
   }
-  if (num(pc.energy)) p.energy = clamp(p.energy + num(pc.energy), 0, 100);
-  if (num(pc.money)) p.money += num(pc.money);
-  if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + num(pc.信誉), 0, 100);
-  if (num(pc.人品)) p.人品 = clamp(p.人品 + num(pc.人品), 0, 100);
-  if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + num(pc.idealProgress));
+  if (num(pc.energy)) p.energy = clamp(p.energy + cap('精力', pc.energy, 35), 0, energyCap(S));
+  if (num(pc.money)) p.money += cap('钱', pc.money, capMoney(S));
+  if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + cap('行业口碑', pc.信誉, 8), 0, 100);
+  if (num(pc.人品)) p.人品 = clamp(p.人品 + cap('做人', pc.人品, 8), 0, 100);
+  if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + cap('理想的功夫', pc.idealProgress, 35));
   if (pc.job) p.job = String(pc.job).slice(0, 30);
-  if (num(pc.salary)) S.ledger.salary = Math.max(0, num(pc.salary));
+  if (num(pc.salary)) {
+    const want = Math.max(0, num(pc.salary));
+    const now = Math.max(1000, num(S.ledger.salary));
+    const lo = Math.round(now * 0.5), hi = Math.round(now * 1.8);
+    if (want > hi || want < lo) cut.push(`月薪你写成${want}，引擎只认到${clamp(want, lo, hi)}`);
+    S.ledger.salary = clamp(want, lo, hi);
+  }
   if (d.newJob && d.newJob.employer) takeJob(S, d.newJob);
 
   for (const st of (pc.statusAdd || [])) {
     if (!st || !st.name) continue;
     const name = String(st.name).slice(0, 8);
     if (S.status.some(x => x.name === name)) continue;
-    S.status.push({ name, desc: String(st.desc || '').slice(0, 40), days: Math.max(1, num(st.days) || 5) });
+    S.status.push({ name, desc: String(st.desc || '').slice(0, 40), days: clamp(num(st.days) || 5, 1, 120) });
+    noteAil(S, name);
   }
   for (const nm of (pc.statusRemove || [])) S.status = S.status.filter(x => x.name !== nm);
   for (const c of (pc.chronicAdd || [])) if (c && c.name && !S.chronic.some(x => x.name === c.name))
     S.chronic.push({ name: String(c.name).slice(0, 10), desc: String(c.desc || '').slice(0, 50) });
 
-  for (const n of (d.newNpcs || []).slice(0, 3)) {
-    if (!n || !n.name) continue;
-    if (S.npcs.some(x => x.name === n.name)) continue;
-    S.npcs.push({
-      name: String(n.name).slice(0, 12), age: num(n.age) || 0,
-      job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
-      tie: String(n.tie || '认识的人').slice(0, 12),
-      care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
-      close: !!n.close, mem: [], lastSeen: S.stats.days
-    });
-  }
+  addNpcs(S, d.newNpcs, d.npcMax || 2);
+
   for (const u of (d.npcUpdates || [])) {
     const n = S.npcs.find(x => x.name === u.name);
     if (!n) continue;
@@ -587,7 +643,7 @@ function applyTurn(S, d) {
       n.lastSeen = S.stats.days;
     }
   }
-  for (const r of (d.newRifts || []).slice(0, 2)) {
+  for (const r of (d.newRifts || []).slice(0, 1)) {
     if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
   }
   for (const e of (d.riftEased || [])) easeRift(S, typeof e === 'string' ? e : e.who, 35);
@@ -624,6 +680,7 @@ function applyTurn(S, d) {
     S.recent = S.recent.slice(-8);
   }
   if (d.gameOver) { S.over = true; S.ending = d.ending || '此局终了'; }
+  S.capNote = cut.length ? cut.slice(0, 3).join('；') : null;
   return S;
 }
 
@@ -1269,6 +1326,20 @@ const METRICS = {
 };
 const SCENES = ['面试', '提案', '谈判', '路演', '答辩', '演出', '摊牌', '调解', '借钱', '拉人入伙'];
 
+// 模型给的硬指标常常离谱，按段位拉回合理区间
+const NEED_BAND = {
+  'money':  [[3000, 30000], [30000, 220000], [200000, 2000000]],
+  '专业':   [[28, 46], [46, 66], [64, 90]],
+  '表达':   [[28, 46], [46, 66], [64, 90]],
+  '谋划':   [[28, 46], [46, 66], [64, 90]],
+  '信誉':   [[20, 42], [42, 64], [62, 90]],
+  '人脉':   [[1, 3], [3, 7], [6, 14]],
+  '投入':   [[40, 160], [300, 900], [1500, 4500]]
+};
+function bandNeed(metric, stage, v) {
+  const b = (NEED_BAND[metric] || NEED_BAND['投入'])[clamp(stage, 0, 2)];
+  return clamp(Math.round(num(v) || b[0]), b[0], b[1]);
+}
 function normLadder(raw) {
   const stages = [];
   let id = 0;
@@ -1282,7 +1353,8 @@ function normLadder(raw) {
         title: String(m.title).slice(0, 24),
         desc: String(m.desc || '').slice(0, 40),
         metric: key,
-        need: Math.max(1, num(m.need)),
+        need: bandNeed(key, stages.length, m.need),
+        needRaw: num(m.need),
         scene: SCENES.includes(m.scene) ? m.scene : '谈判',
         gate: String(m.gate || '').slice(0, 24),
         done: false, doneDate: null
@@ -1518,6 +1590,20 @@ function settleKey(S) {
   return out;
 }
 
+function addNpcs(S, list, max) {
+  for (const n of (list || []).slice(0, max || 2)) {
+    if (!n || !n.name) continue;
+    if (S.npcs.some(x => x.name === n.name)) continue;
+    S.npcs.push({
+      name: String(n.name).slice(0, 12), age: num(n.age) || 0,
+      job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
+      tie: String(n.tie || '认识的人').slice(0, 12),
+      care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
+      close: !!n.close, mem: [], lastSeen: S.stats.days
+    });
+  }
+}
+
 /* ---------- 雷同检测（照搬武侠版的思路） ---------- */
 function bigrams(s) {
   s = String(s || '').replace(/\s+/g, '');
@@ -1556,11 +1642,12 @@ const API = {
   num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
-  rollCheck, attrVal, applyTurn, growAttr,
-  simRatio, stuckLevel, pickNudge,
+  rollCheck, attrVal, applyTurn, addNpcs, growAttr,
+  simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
   housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
+  PEER_MOVES, PEER_HOOK, selfLevel, peerWord,
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
   LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,

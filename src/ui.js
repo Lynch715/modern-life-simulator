@@ -267,7 +267,7 @@ function stateBlocks() {
   const M = memBlocks();
   const npc = S.npcs.slice(-12).map(n =>
     `${n.name}（${n.age || '?'}岁，${n.job || '不详'}，${n.tie}，关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-2).join('；')}`).join('\n') || '（还没认识什么人）';
-  const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}`).join('\n') || '（无）';
+  const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
   const plan = ['工作日', '周末'].map((lab, i) => {
     const t = i ? S.schedule.rest : S.schedule.work;
     return `${lab}：${E.SLOTS.map(s => s + '=' + t[s]).join('，')}`;
@@ -319,6 +319,9 @@ const STOP_WRITE = {
   '风向': d => `这一段结束在行业风向变了这件事上：${d}。写他是从哪儿察觉的（群里、同行、客户、招聘网站），先别写他决定怎么办。`,
   '时代': d => `这一段里外面出了一件事：${d}。让它以很日常的方式撞到主角身上——一条推送、一个电话、饭桌上别人在聊。别写成新闻播报。`,
   '年终': d => `${d}`,
+  '同期': d => `这一段结束在一个跟主角同期起步的人身上：${d}。
+他是带着来意来的——合伙就说他缺什么、挖你就说他能给什么、借钱就说清数目和什么时候还、抢机会就让主角发现两个人报的是同一件事、有喜事就把请柬和日子说清楚。
+写到他把来意摆上桌、主角还没答复为止。别替主角决定。同期之间那点不好明说的比较，藏在话里，别写成旁白。`,
   '裂痕': d => `这一段结束在一个跟主角有梁子的人身上：${d}。他可以是直接堵上门、打电话、找到单位去、或者把事捅到别人那儿——挑一个最难堪的方式。写到他把话撂下为止，别替主角解决。`,
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
@@ -371,7 +374,7 @@ ${stateBlocks()}
 ${actBlock}
 
 【本段引擎判定（不可更改）】
-${judgeBlock(seg.judge)}${S.claimNote ? `\n【引擎驳回】${S.claimNote}。这一段不许把这一步写成办成了，可以写他差在哪。\n` : ''}
+${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。这一段别再往大里写，数值按引擎认的那个来。\n` : ''}${S.claimNote ? `\n【引擎驳回】${S.claimNote}。这一段不许把这一步写成办成了，可以写他差在哪。\n` : ''}
 
 【本段时间】${E.shortDate(from)} 到 ${E.shortDate(to)}，一共${days}天
 【这些天里发生的小事（引擎记下的，必须体现，但不必条条都写）】
@@ -687,7 +690,7 @@ async function startNew() {
     S.home = { kind: '租', since: E.shortDate(S.date), place: S.place };
     S.ideal.stages = E.normLadder(d.ladder);
     S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [] }));
-    E.applyTurn(S, { newNpcs: d.npcs, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
+    E.applyTurn(S, { newNpcs: d.npcs, npcMax: 4, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
     S.booted = true;
     S.lastOptions = d.options && d.options.length ? d.options : ['出门转转', '给家里打个电话', '把手头的活干完', '想想理想那件事'];
     await finishChapter();
@@ -757,7 +760,10 @@ function renderPanel() {
           return `<div class="li" onclick="showNpc('${esc(n.name)}')"><b>${esc(n.name)}</b> <span class="rel${n.rel < 12 ? ' bad' : ''}">${relWord(n.rel, n.tie)}</span>
             <div class="tip">${esc(n.job || '')}${n.tie ? '｜' + esc(n.tie) : ''}${gap >= 20 ? `｜<u>${gap}天没联系了</u>` : ''}</div></div>`;
         }).join('') : '<div class="tip">还没认识谁</div>'}</div>
-      <h4>同期的人</h4><div class="card">${S.peers.map(pr => `<div class="li"><b>${esc(pr.name)}</b><div class="tip">${esc(pr.note || '')}${(pr.track || []).length ? '　→　' + esc((pr.track || []).slice(-3).join('　→　')) : ''}</div></div>`).join('') || '<div class="tip">无</div>'}</div>`;
+      <h4>同期的人</h4><div class="card">
+        <div class="tip">你现在的水位 ${E.selfLevel(S)}（口碑、钱、迈过的台阶、职级、摊子一起算）。</div>
+        ${S.peers.map(pr => `<div class="li"><b>${esc(pr.name)}</b><span class="rel${E.num(pr.level) - E.selfLevel(S) >= 8 ? ' bad' : ''}">${esc(E.peerWord(S, pr))}</span>
+          <div class="tip">${esc(pr.note || '')}${(pr.track || []).length ? '　→　' + esc((pr.track || []).slice(-3).join('　→　')) : ''}${pr.npc ? '　（打过交道）' : ''}</div></div>`).join('') || '<div class="tip">无</div>'}</div>`;
   } else if (curTab === 'ideal') {
     box.innerHTML = renderLadder();
   } else if (curTab === 'home') {
@@ -1647,6 +1653,41 @@ function restart() {
   renderStart();
   mask('startMask', true);
 }
+async function exportSave() {
+  if (!S) return;
+  let rows = [];
+  try { rows = await bookAll(S.runId); } catch (_) { }
+  const pack = {
+    what: '现代生活模拟器·存档', v: 1, at: new Date().toISOString(),
+    who: `${S.player.name} ${S.player.age}岁 ${E.dateStr(S.date)}`,
+    save: S, book: rows.map(r => ({ id: r.id, run: r.run, seq: r.seq, html: r.html }))
+  };
+  const blob = new Blob([JSON.stringify(pack)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${S.player.name}-${S.date.y}年${S.date.m}月.mls.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('存档拿走了，另一台设备上导入就行');
+}
+function importSave(file) {
+  if (!file) return;
+  const fr = new FileReader();
+  fr.onload = async () => {
+    let pack;
+    try { pack = JSON.parse(fr.result); } catch (_) { toast('这个文件读不出来'); return; }
+    if (!pack || !pack.save || !pack.save.player) { toast('这不是这个游戏的存档'); return; }
+    if (S && !confirm(`导入「${pack.who || '别处的存档'}」？这台设备上现在这局会被盖掉。`)) return;
+    try {
+      localStorage.setItem(LS_SAVE, JSON.stringify(pack.save));
+      for (const r of (pack.book || [])) { try { await bookPut(r); } catch (_) { } }
+      toast('导入了，正在重开页面');
+      setTimeout(() => location.reload(), 700);
+    } catch (e) { toast('写不进去：' + (e.message || e)); }
+  };
+  fr.readAsText(file);
+}
+
 async function exportBook() {
   if (!S) return;
   let rows = [];
@@ -1684,6 +1725,9 @@ function boot() {
   $('setSave').onclick = saveCfg;
   $('setClose').onclick = () => mask('setMask', false);
   $('setRestart').onclick = restart;
+  $('setExport').onclick = exportSave;
+  $('setImport').onclick = () => $('setFile').click();
+  $('setFile').onchange = e => { importSave(e.target.files[0]); e.target.value = ''; };
   $('fcGo').onclick = doFocus;
   $('fcClose').onclick = () => mask('focusMask', false);
   $('fcDays').oninput = () => $('fcDaysN').textContent = $('fcDays').value;

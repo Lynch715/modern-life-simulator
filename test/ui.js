@@ -267,12 +267,22 @@ const SEG = n => ({
   console.log(`谈加薪：${kres}　月薪 ${before} → ${await pg.evaluate(() => S.ledger.salary)}`);
 
   // 借钱：私聊里开口，判定成功就入账成债
-  await pg.evaluate(() => { S.player.money = 300; saveGame(); rebuildTop(); });
+  await pg.evaluate(() => {
+    S.player.money = 300;
+    const m = S.npcs.find(n => n.name === '妈'); if (m) { m.rel = 62; m.close = true; }
+    saveGame(); rebuildTop();
+  });
   await pg.click('.tab[data-t="book"]');
   await pg.waitForTimeout(150);
   await pg.click('button:has-text("找人借钱")');
   await pg.waitForSelector('#npcMask.on');
+  const borrowList = await pg.textContent('#npcBox');
+  console.log('借钱名单里有谁：', borrowList.replace(/\s+/g, ' ').slice(0, 100));
+  console.log('通讯录：', await pg.evaluate(() => S.npcs.map(n => n.name + ':' + Math.round(n.rel)).join(' ')));
   await pg.click('#npcBox .li:has-text("妈")');
+  await pg.waitForTimeout(300);
+  const st = await pg.evaluate(() => ({ chat: document.getElementById('chat').className, convo: !!S.convo, busy: document.getElementById('busy').className, npcs: S.npcs.map(n => n.name + ':' + Math.round(n.rel)) }));
+  if (!st.convo) { console.log('借钱这步卡住了：', JSON.stringify(st), '｜名单：', borrowList.replace(/\s+/g, ' ').slice(0, 120)); }
   await pg.waitForSelector('#chat.on');
   await pg.evaluate(() => { window.__r = Math.random; Math.random = () => 0.985; });   // 把这一掷压成必过，好验证入账
   await pg.fill('#chatIn', '妈 能先借我三千吗');
@@ -402,8 +412,17 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   console.log('买房后：', await pg.evaluate(() => `${S.home.kind}｜月供${S.ledger.loan}｜房租${S.ledger.rent}｜净值${ENGINE.homeWorth(S)}｜存款${S.player.money}`));
 
+  await pg.evaluate(() => {   // 走到这儿已经过了不少日子，关系自己凉下去了，重新拉一把
+    const n = S.npcs.find(x => x.name === '孙姐') || S.npcs[0];
+    n.rel = 78; n.tie = '朋友'; n.lastSeen = S.stats.days;
+    saveGame();
+  });
   await pg.click('.tab[data-t="home"]');
   await pg.waitForTimeout(150);
+  if (!(await pg.$('button:has-text("挑明")'))) {
+    console.log('没有挑明按钮｜枕边那段：', (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/枕边.{0,90}/)[0]);
+    console.log('通讯录：', await pg.evaluate(() => S.npcs.map(n => `${n.name}:${Math.round(n.rel)}/${n.tie}`).join(' ')));
+  }
   await pg.click('button:has-text("挑明")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
   await pg.evaluate(() => { S.key.interest = 75; S.key.guard = 28; });
@@ -477,6 +496,15 @@ const SEG = n => ({
 
   // 刷新看存档
   await pg.reload();
+  await pg.waitForTimeout(800);
+  if (!(await pg.$('.act-btn'))) {
+    console.log('刷新后没按钮：', await pg.evaluate(() => ({
+      有存档: !!localStorage.getItem('mls_save'),
+      存档KB: Math.round((localStorage.getItem('mls_save') || '').length / 1024),
+      S有没有: !!window.S, over: window.S && S.over, opts: window.S && S.lastOptions,
+      开局弹窗: document.getElementById('startMask').className, acts: document.getElementById('acts').innerHTML.slice(0, 80)
+    })));
+  }
   await pg.waitForSelector('.act-btn', { timeout: 10000 });
   const after = await pg.textContent('#topDate');
   const chapters = await pg.$$eval('.chapter', e => e.length);
