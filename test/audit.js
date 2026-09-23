@@ -280,6 +280,16 @@ const SEG = n => ({
   const relAfter = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); const n = s.npcs.find(x => x.name === '赵鹏'); return { rel: n.rel, mem: n.mem, lastSeen: n.lastSeen, day: s.stats.days }; });
   console.log('聊完之后的赵鹏：', JSON.stringify(relAfter));
 
+  // 从手机点进聊天，点返回应该回到手机
+  await pg.click('.tab[data-t="phone"]');
+  await pg.waitForTimeout(150);
+  await pg.click('.thread:has-text("赵鹏")');
+  await pg.waitForSelector('#chat.on');
+  await pg.click('#chatBack');
+  await pg.waitForTimeout(200);
+  console.log('聊天点返回后：', await pg.evaluate(() => `手机面板${document.getElementById('panel').classList.contains('on') && curTab === 'phone' ? '开着（对）' : '关了（不对）'}`));
+  await pg.click('#panelClose');
+
   // 人物名片：从聊天界面顶上点名字进去
   await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
@@ -292,7 +302,9 @@ const SEG = n => ({
   console.log('人物卡：', (await pg.textContent('#npcBox')).replace(/\s+/g, ' ').slice(0, 70));
   await pg.screenshot({ path: 'audit/shot-4-npc.png' });
   await pg.click('#npcMask .ghost');
-  await pg.click('#chatBack');
+  await pg.click('#chatBack', { timeout: 5000 });
+  console.log('名片→返回后：', await pg.evaluate(() => curTab === 'phone' ? '回到手机（对）' : '在' + (curTab || '推演页')));
+  await pg.click('#panelClose');
 
   // 理想阶梯 + 关键局
   await pg.click('.tab[data-t="ideal"]');
