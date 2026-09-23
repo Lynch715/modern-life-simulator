@@ -98,7 +98,7 @@ const SEG = n => ({
 
 (async () => {
   const b = await chromium.launch();
-  const pg = await b.newPage({ viewport: { width: 430, height: 880 } });
+  const pg = await b.newPage({ viewport: { width: 375, height: 740 }, deviceScaleFactor: 2 });
   const errs = [];
   pg.on('pageerror', e => errs.push('pageerror: ' + e.message));
   pg.on('console', m => { if (m.type() === 'error') errs.push('console: ' + m.text()); });
@@ -133,12 +133,48 @@ const SEG = n => ({
     await route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(body) });
   });
   await pg.addInitScript(() => {
-    localStorage.setItem('mls_cfg', JSON.stringify({ base: 'https://api.deepseek.com', key: 'sk-test', model: 'deepseek-chat' }));
+    localStorage.setItem('mls_cfg', JSON.stringify({ base: 'https://api.deepseek.com', key: 'sk-test', model: 'deepseek-chat', theme: 'paper' }));
     if (!sessionStorage.getItem('t_started')) { localStorage.removeItem('mls_save'); sessionStorage.setItem('t_started', '1'); }
   });
 
+
+  const ISS = {};
+  await pg.exposeFunction('__report', k => { ISS[k] = (ISS[k] || 0) + 1; });
+  await pg.addInitScript(() => {
+    const openOnes = () => [...document.querySelectorAll('.mask.on,#panel.on,#chat.on,#key.on,#busy.on')].map(e => e.id).join('+') || 'main';
+    const check = () => {
+      const W = innerWidth, where = openOnes();
+      const add = (k) => { window.__report && window.__report(where + ' | ' + k); };
+      if (document.documentElement.scrollWidth > W + 1) add('页面横向溢出 ' + document.documentElement.scrollWidth);
+      for (const el of document.querySelectorAll('body *')) {
+        if (!el.offsetParent && getComputedStyle(el).position !== 'fixed') continue;
+        const cs = getComputedStyle(el); if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+        const r = el.getBoundingClientRect(); if (!r.width || !r.height) continue;
+        const own = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join('');
+        const tag = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).join('.') : '');
+        const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4;
+        let tr = null; for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim().length >= 5) { const rg = document.createRange(); rg.selectNodeContents(n); const q = rg.getBoundingClientRect(); if (q.width && (!tr || q.height > tr.height)) tr = q; }
+        const fsz = parseFloat(cs.fontSize);
+        if (tr && tr.height > fsz * 3.2 && tr.width < fsz * 6.5) add(`文字被挤成窄条 ${tag} w=${Math.round(tr.width)} 「${own.slice(0,12)}」`);
+        if (!el.closest('#chat') && r.right > W + 1 && !el.closest('[style*="overflow"], .hscroll') && cs.position !== 'fixed') {
+          let p = el.parentElement, clipped = false;
+          while (p) { const o = getComputedStyle(p).overflowX; if (o === 'auto' || o === 'scroll' || o === 'hidden') { clipped = true; break; } p = p.parentElement; }
+          if (!clipped) add(`出屏 ${tag} right=${Math.round(r.right)} 「${(el.textContent||'').trim().slice(0,12)}」`);
+        }
+        if (own.length && el.scrollWidth > el.clientWidth + 2 && !['input','textarea','select'].includes(el.tagName.toLowerCase()) && cs.overflowX !== 'auto' && cs.textOverflow !== 'ellipsis' && cs.overflowX==='hidden') add(`文字被截 ${tag} 「${own.slice(0,12)}」`);
+      }
+    };
+    window.__check = check;
+    let t = null;
+    new MutationObserver(() => { clearTimeout(t); t = setTimeout(check, 120); }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  });
+
+  const _shot = pg.screenshot.bind(pg);
+  let shotN = 0;
+  pg.screenshot = async (o) => { await pg.evaluate(() => window.__check && window.__check()); return _shot(o); };
+  pg.snap = async (name) => { await pg.waitForTimeout(250); return pg.screenshot({ path: `audit/z${String(++shotN).padStart(2,'0')}-${name}.png`, fullPage: false }); };
   await pg.goto('file://' + path.join(__dirname, '..', 'index.html'));
-  await pg.waitForSelector('#startMask.on');
+  await pg.waitForSelector('#startMask.on'); await pg.snap('start');
   await pg.fill('#sName', '沈昭');
   await pg.click('#sOrigin .seg[data-v="一人进城"]');
   await pg.click('#sCity .seg[data-v="一线"]');
@@ -149,7 +185,11 @@ const SEG = n => ({
   await pg.waitForSelector('.act-btn', { timeout: 15000 });
   const p0 = await pg.textContent('#topDate');
   console.log('开局：', p0, '|', await pg.textContent('#topMoney'));
-  await pg.screenshot({ path: 'test/shot-1-boot.png' });
+  await pg.screenshot({ path: 'audit/shot-1-boot.png' });
+  await pg.evaluate(() => mask('setMask', true)); await pg.snap('settings');
+  await pg.evaluate(() => { const b = document.querySelector('#setMask .box'); b.scrollTop = 9999; }); await pg.snap('settings-bottom');
+  await pg.evaluate(() => { mask('setMask', false); mask('instMask', true); }); await pg.snap('install');
+  await pg.evaluate(() => mask('instMask', false));
 
   // 自己动手做四件事：每件只该过一天
   for (let i = 0; i < 4; i++) {
@@ -165,11 +205,11 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const b2 = await pg.evaluate(() => ({ d: S.stats.days, head: document.querySelectorAll('.chapmark')[document.querySelectorAll('.chapmark').length - 1].textContent }));
   console.log(`往下过日子：跳了 ${b2.d - b1} 天，章头「${b2.head}」`);
-  await pg.screenshot({ path: 'test/shot-2-run.png' });
+  await pg.screenshot({ path: 'audit/shot-2-run.png' });
 
   // 投入
   await pg.click('#focusBtn');
-  await pg.fill('#fcWhat', '把前三章写完');
+  await pg.snap('focus'); await pg.fill('#fcWhat', '把前三章写完');
   await pg.click('#fcGo');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   console.log('投入之后：', await pg.textContent('#topDate'));
@@ -180,7 +220,8 @@ const SEG = n => ({
     await pg.waitForTimeout(150);
     const txt = (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').slice(0, 80);
     console.log(`[${t}] ${txt}`);
-    await pg.screenshot({ path: `test/shot-tab-${t}.png` });
+    await pg.screenshot({ path: `audit/shot-tab-${t}.png` });
+    if (t === 'book') { await pg.evaluate(() => document.getElementById('panelBody').scrollTop = 420); await pg.snap('ledger'); }
     await pg.click('#panelClose');
   }
 
@@ -196,6 +237,7 @@ const SEG = n => ({
     await pg.waitForTimeout(150);
     await pg.click('.momfoot button:has-text("留言")');
     await pg.waitForSelector('#askMask.on');
+    await pg.snap('ask-comment');
     await pg.fill('#askIn', '这天儿是够呛');
     await pg.click('#askOk');
     await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
@@ -207,7 +249,7 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const mine = await pg.evaluate(() => { const m = S.moments[S.moments.length - 1]; return { who: m.who, text: m.text, 底下: m.cs.map(c => c.who + ':' + c.text) }; });
   console.log('自己发的那条：', JSON.stringify(mine));
-  await pg.screenshot({ path: 'test/moments.png' });
+  await pg.screenshot({ path: 'audit/moments.png' });
   await pg.click('.phoneseg .seg:has-text("通讯录")');
   await pg.waitForTimeout(150);
   await pg.click('#panelClose');
@@ -215,8 +257,10 @@ const SEG = n => ({
   // 私聊：打开消息里的会话，聊两轮，其中一轮触发判定
   await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
+  await pg.snap('contacts');
   await pg.click('.thread:has-text("赵鹏")');
   await pg.waitForSelector('#chat.on');
+  await pg.snap('chat-open');
   await pg.fill('#chatIn', '在吗');
   await pg.click('#chatSend');
   await pg.waitForFunction(() => document.querySelectorAll('#chatBody .bub.ta:not(.typing)').length >= 1, null, { timeout: 15000 });
@@ -230,7 +274,7 @@ const SEG = n => ({
     const c = document.getElementById('chat'), p = document.getElementById('panel');
     return JSON.stringify({ chat: c.className, panel: p.className, rect: c.getBoundingClientRect().toJSON(), body: document.body.scrollLeft, win: window.scrollX });
   }));
-  await pg.screenshot({ path: 'test/shot-3-chat.png' });
+  await pg.screenshot({ path: 'audit/shot-3-chat.png' });
   await pg.click('#chatDone');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const relAfter = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); const n = s.npcs.find(x => x.name === '赵鹏'); return { rel: n.rel, mem: n.mem, lastSeen: n.lastSeen, day: s.stats.days }; });
@@ -241,10 +285,12 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   await pg.click('.thread:has-text("赵鹏")');
   await pg.waitForSelector('#chat.on');
+  await pg.snap('chat-reopen');
   await pg.click('#chatName');
   await pg.waitForSelector('#npcMask.on');
+  await pg.snap('npc');
   console.log('人物卡：', (await pg.textContent('#npcBox')).replace(/\s+/g, ' ').slice(0, 70));
-  await pg.screenshot({ path: 'test/shot-4-npc.png' });
+  await pg.screenshot({ path: 'audit/shot-4-npc.png' });
   await pg.click('#npcMask .ghost');
   await pg.click('#chatBack');
 
@@ -252,7 +298,7 @@ const SEG = n => ({
   await pg.click('.tab[data-t="ideal"]');
   await pg.waitForTimeout(150);
   console.log('阶梯：', (await pg.textContent('#panelBody')).replace(/\s+/g, ' ').slice(0, 120));
-  await pg.screenshot({ path: 'test/shot-5-ladder.png' });
+  await pg.screenshot({ path: 'audit/shot-5-ladder.png' });
   const gated = await pg.$('button:has-text("去谈这一场")');
   console.log('硬指标没到时有没有开谈的按钮：', gated ? '有（不对）' : '没有（对）');
   // 把功夫攒够
@@ -273,7 +319,7 @@ const SEG = n => ({
   }
   const kr = await pg.evaluate(() => S.key ? { r: S.key.result, round: S.key.round, st: [S.key.guard, S.key.interest, S.key.patience, S.key.nerve].map(Math.round) } : null);
   console.log('打完：', JSON.stringify(kr));
-  await pg.screenshot({ path: 'test/shot-6-key.png' });
+  await pg.screenshot({ path: 'audit/shot-6-key.png' });
   await pg.click('#keyEnd');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const afterKey = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); return { mile: s.ideal.stages[0].milestones.map(m => m.title + (m.done ? '✓' : '')), 信誉: s.player.信誉, 精力: s.player.energy, keys: s.stats.keys }; });
@@ -293,7 +339,7 @@ const SEG = n => ({
   await pg.click('.tab[data-t="me"]');
   await pg.waitForTimeout(150);
   console.log('事业卡：', ((await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/事业.{0,60}/) || ['(没找到)'])[0]);
-  await pg.screenshot({ path: 'test/shot-7-job.png' });
+  await pg.screenshot({ path: 'audit/shot-7-job.png' });
   await pg.click('button:has-text("谈加薪")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
   const before = await pg.evaluate(() => S.ledger.salary);
@@ -317,6 +363,7 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   await pg.click('button:has-text("找人借钱")');
   await pg.waitForSelector('#npcMask.on');
+  await pg.snap('borrow');
   const borrowList = await pg.textContent('#npcBox');
   console.log('借钱名单里有谁：', borrowList.replace(/\s+/g, ' ').slice(0, 100));
   console.log('通讯录：', await pg.evaluate(() => S.npcs.map(n => n.name + ':' + Math.round(n.rel)).join(' ')));
@@ -367,7 +414,7 @@ const SEG = n => ({
   // 养病
   await pg.evaluate(() => { S.focus = null; S.status = [{ name: '感冒', desc: 'x', days: 4 }, { name: '腰伤', desc: 'y', days: 30 }]; S.chronic = [{ name: '老失眠', desc: 'z', eased: 0 }]; saveGame(); rebuildTop(); });
   await pg.click('#focusBtn');
-  await pg.fill('#fcWhat', '回老家歇一阵');
+  await pg.fill('#fcWhat', '回老家歇一阵'); await pg.click('#fcHeal'); await pg.snap('focus-heal'); await pg.click('#fcHeal');
   await pg.evaluate(() => { document.getElementById('fcHeal').checked = true; document.getElementById('fcDays').value = 20; });
   await pg.click('#fcGo');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
@@ -378,7 +425,7 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   const me = (await pg.textContent('#panelBody')).replace(/\s+/g, ' ');
   console.log('我·梁子：', (me.match(/梁子.{0,60}/) || [''])[0]);
-  await pg.screenshot({ path: 'test/shot-10-rift.png' });
+  await pg.screenshot({ path: 'audit/shot-10-rift.png' });
   await pg.click('#panelClose');
 
   // 生意：开店 → 招人 → 月结 → 关店
@@ -387,6 +434,7 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   await pg.click('button:has-text("就开这个")');
   await pg.waitForSelector('#askMask.on');
+  await pg.snap('ask-biz');
   await pg.fill('#askIn', '巷口那家');
   await pg.click('#askOk');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
@@ -395,6 +443,7 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   await pg.click('button:has-text("招人")');
   await pg.waitForSelector('#npcMask.on');
+  await pg.snap('hire');
   await pg.click('#npcBox button:has-text("要他")');
   await pg.waitForTimeout(150);
   const biz = await pg.evaluate(() => {
@@ -404,7 +453,8 @@ const SEG = n => ({
     return { 人手: S.biz.staff.map(s => s.name + '/' + s.role + '/' + s.pay), 月结: `进${r.rev} 出${r.cost} 净${r.net} 口碑${r.rep}` };
   });
   console.log('生意：', JSON.stringify(biz));
-  await pg.screenshot({ path: 'test/shot-11-biz.png' });
+  await pg.screenshot({ path: 'audit/shot-11-biz.png' });
+  await pg.evaluate(() => { const b = document.getElementById('panelBody'); b.scrollTop = 0; }); await pg.snap('ledger-biz');
   await pg.click('#panelClose');
 
   // 年终
@@ -417,7 +467,7 @@ const SEG = n => ({
     副: document.querySelectorAll('.chaptime')[document.querySelectorAll('.chaptime').length - 1].textContent
   }));
   console.log('年终：', JSON.stringify(yr));
-  await pg.screenshot({ path: 'test/shot-12-year.png' });
+  await pg.screenshot({ path: 'audit/shot-12-year.png' });
 
   // 导出的全本长什么样
   const book = await pg.evaluate(async () => {
@@ -490,7 +540,7 @@ const SEG = n => ({
   console.log('成家：', JSON.stringify(fam));
   await pg.click('.tab[data-t="home"]');
   await pg.waitForTimeout(200);
-  await pg.screenshot({ path: 'test/shot-13-home.png' });
+  await pg.screenshot({ path: 'audit/shot-13-home.png' });
   await pg.click('#panelClose');
 
   // 结局 + 接着过
@@ -500,7 +550,7 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   const ended = await pg.evaluate(() => ({ over: S.over, title: S.endTitle, 条: [...document.querySelectorAll('.endblock .kbar span')].map(x => x.textContent), 按钮: [...document.querySelectorAll('#acts .act-btn')].map(b => b.textContent) }));
   console.log('结局：', JSON.stringify(ended));
-  await pg.screenshot({ path: 'test/shot-14-end.png' });
+  await pg.screenshot({ path: 'audit/shot-14-end.png' });
   await pg.click('#acts .act-btn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   console.log('接着过：', await pg.evaluate(() => `over=${S.over}　退休线${S.retireAge}岁　还在走到 ${ENGINE.dateStr(S.date)}`));
@@ -536,12 +586,15 @@ const SEG = n => ({
   await pg.waitForTimeout(150);
   await pg.click('.paces .seg:has-text("搞理想")');
   await pg.waitForTimeout(150);
-  
+  await pg.snap('pace');
   const sc = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); return s.pace + ' 周末=' + s.schedule.rest['白天'] + '/' + s.schedule.rest['晚上'] + ' 顶栏=' + document.getElementById('topSub').textContent; });
   console.log('重心改成：' + sc);
   await pg.click('#panelClose');
 
   // 刷新看存档
+  console.log('刷新前存档KB', await pg.evaluate(() => Math.round((localStorage.getItem('mls_save')||'').length/1024)), await pg.evaluate(() => sessionStorage.getItem('t_started')));
+  pg.on('console', m => { if (m.text().startsWith('DBG')) console.log(m.text()); });
+  await pg.addInitScript(() => console.log('DBG start save=' + !!localStorage.getItem('mls_save') + ' flag=' + sessionStorage.getItem('t_started')));
   await pg.reload();
   await pg.waitForTimeout(800);
   if (!(await pg.$('.act-btn'))) {
@@ -552,12 +605,13 @@ const SEG = n => ({
       开局弹窗: document.getElementById('startMask').className, acts: document.getElementById('acts').innerHTML.slice(0, 80)
     })));
   }
+  if (!(await pg.$('.act-btn'))) console.log('ERRS', errs);
   await pg.waitForSelector('.act-btn', { timeout: 10000 });
   const after = await pg.textContent('#topDate');
   const chapters = await pg.$$eval('.chapter', e => e.length);
   console.log('刷新后：', after, `共 ${chapters} 段`);
 
   console.log(errs.length ? '\n发现报错：\n' + errs.join('\n') : '\n没有 JS 报错');
-  await b.close();
+  console.log('=====ISSUES=====\n' + Object.entries(ISS).map(([k,v]) => v + '× ' + k).join('\n')); await b.close();
   process.exit(errs.length ? 1 : 0);
 })();

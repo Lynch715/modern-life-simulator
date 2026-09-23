@@ -28,7 +28,7 @@
   --chip:#1b2030;            /* 骰子、提示胶囊 */
   --ta:#1d2230;              /* 对方的话 */
   --me:#3b3320; --meLine:var(--goldLine);   /* 自己的话 */
-  --goldLine:var(--goldLine); --badLine:#4b2f2d; --goodLine:#2c4b3f;
+  --goldLine:#5a4526; --badLine:#4b2f2d; --goodLine:#2c4b3f;
   --dash:#20242f;            /* 虚线分隔 */
   --top1:#151822; --top2:#0f1116;
   --say:#e8c48c;             /* 剧情里引号内的话 */
@@ -98,6 +98,20 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .die{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--chip);color:var(--dim);border:1px solid var(--line)}
 .die.good{color:var(--good);border-color:var(--goodLine)} .die.bad{color:var(--bad);border-color:var(--badLine)}
 .die.great{color:var(--gold);border-color:var(--goldLine)}
+.fate{display:flex;align-items:center;gap:11px;margin-top:10px;padding:8px 11px;border-radius:11px;background:var(--chip);border:1px solid var(--line)}
+.fdie{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;
+  background:var(--bg2);border:1.5px solid var(--line);color:var(--ink);transform:rotate(-6deg)}
+.fdie.rolling{animation:fdroll .22s linear infinite;color:var(--dim2)}
+.fdie.landed{animation:fdland .32s ease-out}
+@keyframes fdroll{0%{transform:rotate(-14deg) scale(.94)}50%{transform:rotate(12deg) scale(1.04)}100%{transform:rotate(-14deg) scale(.94)}}
+@keyframes fdland{0%{transform:rotate(8deg) scale(1.18)}100%{transform:rotate(-6deg) scale(1)}}
+.ftxt{min-width:0;display:flex;flex-direction:column;gap:1px}
+.ftxt b{font-size:13px;font-weight:600}
+.ftxt span{font-size:12px;color:var(--dim2)}
+.ftxt em{font-style:normal;color:var(--dim)}
+.fate.good .fdie{border-color:var(--goodLine);color:var(--good)} .fate.good b{color:var(--good)}
+.fate.bad .fdie{border-color:var(--badLine);color:var(--bad)} .fate.bad b{color:var(--bad)}
+.fate.great{border-color:var(--goldLine)} .fate.great .fdie{border-color:var(--gold);color:var(--gold);background:var(--me)} .fate.great b{color:var(--gold)}
 .ntext{margin-top:12px;font-size:var(--fs,15.5px);line-height:1.95;font-family:"Songti SC","Noto Serif SC",Georgia,serif;letter-spacing:.2px}
 .ntext p{margin:0 0 14px;text-indent:2em}
 .ntext q.say{quotes:none;color:var(--say);font-style:normal}
@@ -148,6 +162,23 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .lines span{font-variant-numeric:tabular-nums}
 .lines .sum{margin-top:4px;border-top:1px solid var(--line);padding-top:8px}
 .lines .good{color:var(--good)} .lines .bad{color:var(--bad)}
+.acctTabs{margin-bottom:10px}
+.acct{font-size:13.5px}
+.acctrow{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px dashed var(--dash)}
+.acctrow>span:first-child{color:var(--dim2);font-size:12px;font-variant-numeric:tabular-nums}
+.acctrow>span:nth-child(2){min-width:0}
+.acctrow>span:nth-child(2) i{display:block;font-style:normal;font-size:12px;color:var(--dim2);margin-top:1px}
+.acctrow>span:last-child{font-variant-numeric:tabular-nums;text-align:right}
+.acctrow.open{color:var(--dim)}
+.acctrow .good{color:var(--good)} .acctrow .bad{color:var(--bad)}
+.acctsum{margin-top:6px}
+#askMask{z-index:70}
+.askbox h2{margin-bottom:8px}
+.asktext{font-size:13.5px;color:var(--dim);line-height:1.7;white-space:pre-wrap}
+.asktext q{display:block;margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--btn2);color:var(--ink);quotes:none;font-size:13.5px}
+#askIn{width:100%;margin-top:12px}
+#askIn[hidden]{display:none}
+.primary.danger{background:var(--bad);color:#fff}
 .li{padding:7px 0;border-bottom:1px dashed var(--dash);font-size:13.5px}
 .li:last-child{border:none}
 .li span{color:var(--dim2);font-size:12px}
@@ -157,6 +188,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .mfrom{font-size:12px;color:var(--gold);display:flex;justify-content:space-between}
 .mfrom span{color:var(--dim2)}
 .mtext{font-size:14px;margin-top:4px;line-height:1.6}
+.paces{margin-bottom:10px}
+.pacedesc b{display:block;font-weight:500;font-size:14px;margin-bottom:2px}
 .sched{margin-bottom:10px}
 .schedhd{font-size:12px;color:var(--dim);margin-bottom:6px}
 .schedrow{display:flex;align-items:center;gap:10px;margin-bottom:6px}
@@ -261,6 +294,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .frow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .frow.col{flex-direction:column;align-items:stretch;gap:6px}
 .frow label{width:58px;font-size:13px;color:var(--dim);flex:none}
+.frow.col label{width:auto}
+.frow label.chk{width:auto;flex:1;min-width:0;line-height:1.5}
 .frow input{flex:1}
 .segs{display:flex;gap:6px;flex:1;flex-wrap:wrap}
 .segs.wrap{gap:5px}
@@ -285,7 +320,12 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .range{width:100%;accent-color:var(--gold)}
 .chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);width:auto}
-.chk input{width:16px;height:16px;accent-color:var(--gold)}
+.chk input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--gold)}
+.fcdays{flex:none;min-width:48px;text-align:right;font-size:14px;color:var(--ink);white-space:nowrap}
+.lirow{display:flex;align-items:center;gap:8px;margin-top:4px}
+.lirow>span:first-child{flex:1;min-width:0}
+.lirow .liact{display:flex;gap:6px;flex:none}
+.li .lirow .ghost.sm{padding:5px 11px;font-size:12.5px}
 </style>
 </head>
 <body>
@@ -389,10 +429,16 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   <div class="mask" id="focusMask"><div class="box">
     <h2>闷头做一件事</h2>
     <div class="frow col"><label>做什么</label><input id="fcWhat" maxlength="24" placeholder="把小说的前三章写完 / 备考 / 装修店面"/></div>
-    <div class="frow"><label>投入</label><input class="range" id="fcDays" type="range" min="3" max="60" value="10"/><span id="fcDaysN" style="width:34px;text-align:right">10</span>天</div>
-    <div class="frow"><label>养病</label><label class="chk"><input type="checkbox" id="fcHeal"/> 这一段是歇着养身体，不是干活</label></div>
+    <div class="frow"><label>投入</label><input class="range" id="fcDays" type="range" min="3" max="60" value="10"/><span class="fcdays"><span id="fcDaysN">10</span> 天</span></div>
+    <div class="frow"><label>养病</label><label class="chk"><input type="checkbox" id="fcHeal"/><span>这一段是歇着养身体，不是干活</span></label></div>
     <div class="hint">这些天里你基本只顾这一件事，精力会掉，中间可能被人或事打断。到点了引擎判一次成败。<br>勾了养病就反过来：不涨本事，但能把身上的毛病压下去，歇够两周还有机会松一松老毛病。</div>
     <div class="btns"><button class="ghost" id="fcClose">算了</button><button class="primary" id="fcGo">开始</button></div>
+  </div></div>
+  <div class="mask" id="askMask"><div class="box askbox">
+    <h2 id="askTitle"></h2>
+    <div class="asktext" id="askText"></div>
+    <input id="askIn" autocomplete="off"/>
+    <div class="btns"><button class="ghost" id="askNo">算了</button><button class="primary" id="askOk">好</button></div>
   </div></div>
 </div>
 

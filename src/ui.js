@@ -41,6 +41,38 @@ function setBusy(b, txt) {
 }
 function mask(id, on) { $(id).classList.toggle('on', on); }
 
+// 游戏自己的问话框，替掉系统的 prompt/confirm
+// o: { title, text, quote, input: { value, placeholder, number }, ok, no, danger } → 有输入框返回字符串或 null，没有返回 true/false
+function ask(o) {
+  return new Promise(res => {
+    $('askTitle').textContent = o.title || '';
+    $('askText').innerHTML = esc(o.text || '') + (o.quote ? `<q>${esc(o.quote)}</q>` : '');
+    const inp = $('askIn');
+    inp.hidden = !o.input;
+    if (o.input) {
+      inp.type = o.input.number ? 'number' : 'text';
+      inp.inputMode = o.input.number ? 'numeric' : 'text';
+      inp.value = o.input.value != null ? o.input.value : '';
+      inp.placeholder = o.input.placeholder || '';
+      inp.maxLength = o.input.max || 60;
+    }
+    $('askOk').textContent = o.ok || '好';
+    $('askNo').textContent = o.no || '算了';
+    $('askOk').classList.toggle('danger', !!o.danger);
+    const done = v => { mask('askMask', false); $('askOk').onclick = $('askNo').onclick = inp.onkeydown = null; res(v); };
+    $('askOk').onclick = () => {
+      if (!o.input) return done(true);
+      const v = inp.value.trim();
+      if (!v) { inp.focus(); return; }
+      done(v);
+    };
+    $('askNo').onclick = () => done(o.input ? null : false);
+    inp.onkeydown = e => { if (e.key === 'Enter') $('askOk').onclick(); };
+    mask('askMask', true);
+    if (o.input) setTimeout(() => { inp.focus(); inp.select(); }, 60);
+  });
+}
+
 /* ================= 全本存 IndexedDB ================= */
 let idbP = null;
 function idb() {
@@ -276,7 +308,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这次和主角之间发生的一句话"}],
-"newNpcs":[{"name":"","age":0,"job":"","tie":"跟主角什么关系","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
+"newNpcs":[{"name":"","age":0,"job":"","tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"谁","text":"手机上收到的一条消息，像真的微信"}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
@@ -304,14 +336,14 @@ function stateBlocks() {
   const npc = S.npcs.slice(-12).map(n =>
     `${n.name}（${n.age || '?'}岁，${n.job || '不详'}，${n.tie}，关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-2).join('；')}`).join('\n') || '（还没认识什么人）';
   const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
-  const plan = ['工作日', '周末'].map((lab, i) => {
-    const t = i ? S.schedule.rest : S.schedule.work;
-    return `${lab}：${E.SLOTS.map(s => s + '=' + t[s]).join('，')}`;
-  }).join('；');
+  E.fixPace(S);
+  const PC = E.PACES[S.pace];
+  const pf = S.paceFrom && S.stats.days - S.paceFrom.day <= 14 ? `（${S.stats.days - S.paceFrom.day <= 1 ? '刚' : S.stats.days - S.paceFrom.day + '天前'}从「${S.paceFrom.name}」换成这样，这一段要让人看出日子的过法变了）` : '';
+  const plan = `「${S.pace}」：${PC.story}${pf}`;
   return `【今天】${E.dateStr(S.date)}
 【人在哪】${S.place || '不详'}
 【主角】${p.name}，${p.gender}，${p.age}岁，${S.city}。眼下的营生：${p.job}
-【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）
+【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
 【志业阶梯】${E.ladderBlock(S)}
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
@@ -327,7 +359,7 @@ ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，�
 【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
 【名声】行业口碑${p.信誉}，做人${p.人品}
 【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
-【作息】${plan}
+【这阵子的重心】${plan}
 【认识的人】
 ${npc}
 【同期的人在做什么】
@@ -372,7 +404,7 @@ const FIAT_RULE = act => `【本段铁律·压过下面所有条目】
 
 function judgeBlock(j) {
   let s = '';
-  if (j.fiat) return FIAT_RULE(j.fiat) + '\n' + (j.stuck >= 55 ? `- ⚑ 最近几段太像了（相似度${j.stuck}%），这一段照样要打破：${j.nudge}。\n` : '');
+  if (j.fiat) return FIAT_RULE(j.fiat) + '\n' + (j.fate >= 15 ? `- 天命骰：${j.fate}（${E.fateInfo(j.fate).label}）——在办成这件事之外，这几天还另有一点运气：${E.fateInfo(j.fate).desc}\n` : '') + (j.stuck >= 55 ? `- ⚑ 最近几段太像了（相似度${j.stuck}%），这一段照样要打破：${j.nudge}。\n` : '');
   if (j.fate) {
     const f = E.fateInfo(j.fate);
     s += `- 天命骰：${j.fate}（${f.label}）——${f.desc}\n`;
@@ -471,7 +503,7 @@ function bootPrompt(o) {
 现在开局。主角：${o.name}，${o.gender}，22岁，刚从学校出来，落在${o.city}。
 出身：${o.origin}——${E.ORIGINS[o.origin].desc}
 城市：${E.CITIES[o.city].desc}
-他想干成的事：${o.ideal}（赛道：${o.track}）
+他想干成的事：${o.ideal}（赛道：${o.track}）${(E.TRACKS[o.track] || {}).rule ? `\n这条路的规矩：${E.TRACKS[o.track].rule}` : ''}
 手头：存款${S.player.money}元，房租${S.ledger.rent}，一个月生活费${S.ledger.living}${S.ledger.remit ? `，每月还要往家寄${S.ledger.remit}` : ''}，找到的第一份活月薪${S.ledger.salary}。
 
 请铸造开局，写 350-500 字的开场：${cfg.person === 'ta' ? '他' : '你'}住进了什么地方、第一份活是干什么的、7月1日这天在干什么。不要交代背景板，从一个具体的场面切进去。
@@ -496,16 +528,26 @@ function bootPrompt(o) {
 只输出一个合法 JSON：
 {"narrative":"开场","summary":"一句话","employer":"","title":"","place":"","scene":{"location":"","unresolved":["3件麻烦，每条20字内"]},
 "ladder":[{"name":"这一段叫什么","milestones":[{"title":"","desc":"","metric":"投入","need":60,"scene":"提案","gate":""}]}],
-"npcs":[{"name":"","age":0,"job":"","tie":"","care":"","note":"","rel":30,"close":true}],
+"npcs":[{"name":"","age":0,"job":"","tie":"主角手机里给他存的称呼：妈妈、房东、老板、表姐、室友这种，不要写母子、雇主","care":"","note":"","rel":30,"close":true}],
 "peers":[{"name":"","note":""}],
 "messages":[{"from":"","text":""}],
 "options":["","","",""]}`;
 }
 
 /* ================= 渲染 ================= */
+// 手机里怎么存他：妈妈、房东、老板、表姐——不写"母子""雇主"这种关系词
+const CALL_FIX = { '母子': '妈妈', '母女': '妈妈', '母亲': '妈妈', '妈': '妈妈', '老妈': '妈妈', '父子': '爸爸', '父女': '爸爸', '父亲': '爸爸', '爸': '爸爸', '老爸': '爸爸',
+  '雇主': '老板', '雇员': '员工', '同期': '同学', '认识的人': '', '熟人': '', '朋友关系': '朋友', '房东租客': '房东', '租客': '租客', '师徒': '师傅', '同事关系': '同事' };
+function callName(n) {
+  const tie = String((n && n.tie) || '').trim();
+  if (tie in CALL_FIX) return CALL_FIX[tie];
+  if (tie === '家里人' && n && /^(妈|爸)$/.test(n.name)) return n.name === '妈' ? '妈妈' : '爸爸';
+  return tie.replace(/关系$/, '');
+}
+function isKin(tie) { return /家里人|妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅|姑|表|堂|亲戚|哥哥|姐姐|弟弟|妹妹|^[哥姐弟妹]$|婶|侄|外甥/.test(tie || ''); }
 function relWord(v, tie) {
   v = E.num(v);
-  if (tie && /家|妈|爸|父|母|哥|姐|弟|妹|爷|奶|亲/.test(tie)) {
+  if (isKin(tie)) {
     if (v >= 70) return '亲';
     if (v >= 40) return '还好';
     if (v >= 18) return '有点远';
@@ -534,13 +576,23 @@ function beginChapter(head, sub, action, judge) {
   let dice = '';
   if (judge && (judge.fate || judge.check || judge.focus)) {
     const bits = [];
-    if (judge.fate) { const f = E.fateInfo(judge.fate); bits.push(`<span class="die ${f.cls}">天命 ${judge.fate} ${f.label}</span>`); }
     if (judge.check) bits.push(`<span class="die ${judge.check.success ? 'good' : 'bad'}">${esc(judge.check.attr)} ${judge.check.total}/${judge.check.need} ${judge.check.success ? '成' : '败'}</span>`);
     if (judge.focus) bits.push(`<span class="die ${judge.focus.success ? 'good' : 'bad'}">${judge.focus.heal ? '养了' : '投入'}${judge.focus.days}天 ${judge.focus.heal ? (judge.focus.success ? '缓过来了' : '没养利索') : (judge.focus.success ? '做成' : '没成')}</span>`);
-    dice = `<div class="dicebar">${bits.join('')}</div>`;
+    const f = judge.fate ? E.fateInfo(judge.fate) : null;
+    dice = (f ? `<div class="fate ${f.cls}"><div class="fdie" data-v="${judge.fate}">${judge.fate}</div><div class="ftxt"><b>天命·${f.label}</b><span>${esc(f.short || f.desc)}${judge.fateFx ? `　<em>${esc(judge.fateFx)}</em>` : ''}</span></div></div>` : '')
+      + (bits.length ? `<div class="dicebar">${bits.join('')}</div>` : '');
   }
   div.innerHTML = `<div class="chaphead"><span class="chapmark">${esc(head)}</span><span class="chaptime">${esc(sub)}</span></div>
     ${action ? `<div class="action-echo">${esc(action)}</div>` : ''}${dice}<div class="ntext"><p class="typing">……</p></div>`;
+  const fd = div.querySelector('.fdie');
+  if (fd && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const v = fd.dataset.v; let n = 0;
+    fd.classList.add('rolling');
+    const t = setInterval(() => {
+      fd.textContent = 1 + Math.floor(Math.random() * 20);
+      if (++n >= 12) { clearInterval(t); fd.textContent = v; fd.classList.remove('rolling'); fd.classList.add('landed'); }
+    }, 55);
+  }
   $('story').appendChild(div);
   curChapter = div;
   scrollDown();
@@ -572,7 +624,8 @@ function rebuildTop() {
   $('enBar').className = 'bar-in' + (p.energy < 30 ? ' bad' : p.energy > 70 ? ' good' : '');
   $('enNum').textContent = p.energy;
   const bad = S.status.length ? `｜${S.status.map(s => s.name).join('、')}` : '';
-  $('topSub').textContent = `${S.place || ''}${bad}`;
+  E.fixPace(S);
+  $('topSub').textContent = [S.place, S.focus && S.focus.heal ? '养病' : S.pace].filter(Boolean).join('｜') + bad;
 }
 
 function renderOptions(opts) {
@@ -657,6 +710,7 @@ async function runSegment(opt) {
   else judge.fate = E.d20(rng);
   const floor = E.num(E.fdm(S).fateFloor);
   if (floor) judge.fate = Math.max(floor, judge.fate);          // 言出法随这一档不走背字
+  judge.fateFx = E.applyFate(S, judge.fate);
 
   S.seg++;
   S.stats.segs++;
@@ -804,6 +858,7 @@ let curTab = '';
 function gotoTab(t) {
   if (curTab === t) { closePanel(); return; }
   curTab = t;
+  if (t === 'book') acctMonth = null;
   $('panel').classList.add('on');
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.dataset.t === t));
   renderPanel();
@@ -845,9 +900,9 @@ function renderPanel() {
         return `<div class="thread" onclick="openThread('${esc(r.name)}')">
           <div class="face sm" style="--h:${f.hue}">${esc(f.ch)}</div>
           <div class="thbody">
-            <div class="mfrom">${esc(r.name)}${r.npc ? `<em>${relWord(r.npc.rel, r.npc.tie)}${r.npc.tie ? '·' + esc(r.npc.tie) : ''}</em>` : '<em>只能看</em>'}
+            <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
-            <div class="mtext one">${r.last ? esc(r.last.text) : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
+            <div class="mtext one">${r.last ? (r.last.me ? '我：' : '') + esc(r.last.text) : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
             ${r.npc && gap >= 20 ? `<div class="tip"><u>${gap}天没联系了</u></div>` : ''}
           </div></div>`;
       }).join('') || '<div class="card tip">通讯录还是空的</div>'}</div>
@@ -857,34 +912,37 @@ function renderPanel() {
   } else if (curTab === 'home') {
     box.innerHTML = renderHome();
   } else if (curTab === 'book') {
-    const out = L.rent + L.living + L.remit, inc = L.salary + L.subsidy;
+    const loan = E.num(L.loan), kid = E.kidCost(S);
+    const bizNet = S.biz && !S.biz.dead ? E.num(S.biz.net) : 0;
+    const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit;
+    const net = (S.job.out ? L.subsidy : inc) - out + bizNet;
+    const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${Math.abs(v).toLocaleString('zh-CN')}</span></div>`;
     box.innerHTML = `<h3>账本</h3>
     <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">¥${p.money.toLocaleString('zh-CN')}</div><div class="tip">存款</div></div>
+    <h4>每个月固定的</h4>
     <div class="card"><div class="lines">
-      <div><b>每月进</b><span>${inc}</span></div>
-      <div><b>工资（${L.salaryDay}号）</b><span>${L.salary}</span></div>
-      ${L.subsidy ? `<div><b>家里给</b><span>${L.subsidy}</span></div>` : ''}
-      <div><b>每月出</b><span>${out}</span></div>
-      <div><b>房租（${L.rentDay}号）</b><span>${L.rent}</span></div>
-      <div><b>生活</b><span>${L.living}</span></div>
-      ${L.remit ? `<div><b>寄回家</b><span>${L.remit}</span></div>` : ''}
-      ${S.biz && !S.biz.dead ? `<div><b>${esc(S.biz.name)}（上月）</b><span class="${S.biz.net < 0 ? 'bad' : 'good'}">${S.biz.net}</span></div>` : ''}
-      <div class="sum"><b>一个月剩</b><span class="${inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0) < 0 ? 'bad' : 'good'}">${inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0)}</span></div>
-    </div></div>
+      ${S.job.out ? '<div><b>工资</b><span class="tip">没有工作</span></div>' : row(`工资（${L.salaryDay}号）`, L.salary, 1)}
+      ${L.subsidy ? row('家里给的', L.subsidy, 1) : ''}
+      ${bizNet ? row(`${esc(S.biz.name)}（上个月净）`, bizNet, bizNet < 0 ? -1 : 1) : ''}
+      ${L.rent ? row(`房租（${L.rentDay}号）`, L.rent, -1) : ''}
+      ${loan ? row(`房贷月供（${L.rentDay}号）`, loan, -1) : ''}
+      ${row('吃穿用度', L.living, -1)}
+      ${kid ? row('养孩子', kid, -1) : ''}
+      ${L.remit ? row('寄回家', L.remit, -1) : ''}
+      <div class="sum"><b>一个月剩</b><span class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '−' : ''}${Math.abs(net).toLocaleString('zh-CN')}</span></div>
+    </div>
+    <div class="tip" style="margin-top:6px">${S.broke ? '账上已经是负的了，做什么都差一口气。'
+      : net >= 0 ? `照这样过，一个月能剩 ${net}${bizNet ? '（生意按上个月算）' : ''}。剧情里额外的进出不算在内，看下面的明细。`
+      : `每个月倒贴 ${-net}，手上的钱还能撑 ${Math.max(0, Math.floor(p.money / -net))} 个月。`}</div></div>
+    <h4>明细</h4>
+    <div class="card">${renderAcct()}</div>
     ${renderBiz()}
     <h4>欠的钱</h4>
     <div class="card">${(S.debts || []).length
       ? S.debts.map((d, i) => `<div class="li"><b>${esc(d.who)}</b> <span class="rel${d.late ? ' bad' : ''}">${d.left}元${d.late ? '·过期了' : ''}</span>
-          <div class="tip">${d.due.m}月${d.due.d}日之前要还　<button class="ghost sm" onclick="doPay(${i})">还一笔</button></div></div>`).join('')
+          <div class="tip lirow"><span>${d.due.m}月${d.due.d}日之前要还</span><span class="liact"><button class="ghost sm" onclick="doPay(${i})">还一笔</button></span></div></div>`).join('')
       : '<div class="tip">没欠谁的</div>'}
-      <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>
-    <div class="card tip">${(() => {
-      const net = inc - out + (S.biz && !S.biz.dead ? S.biz.net : 0);
-      if (S.broke) return '账上已经是负的了，做什么都差一口气。';
-      if (net > 0) return `按这个过法，一个月能剩 ${net}${S.biz && !S.biz.dead ? '（生意按上个月算）' : ''}。`;
-      const hold = net < 0 ? Math.floor(p.money / -net) : 99;
-      return `每个月倒贴 ${-net}，手上的钱还能撑 ${hold} 个月。`;
-    })()}</div>`;
+      <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
     <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div>
@@ -907,13 +965,12 @@ function renderPanel() {
         </div>
         <div class="cardhd" style="margin-top:10px">这个季度的绩效</div>
         <div class="bar"><div class="bar-in${S.job.perf > 45 ? ' good' : S.job.perf < 15 ? ' bad' : ''}" style="width:${Math.min(100, Math.round(S.job.perf / 70 * 100))}%"></div></div>
-        <div class="tip">${Math.round(S.job.perf)}　作息里排「主业」才攒得上，晚上和深夜加班攒得更快，代价是精力。${S.job.mood < 0 ? '　上次被约谈过，这个季度要难一些。' : ''}</div>
+        <div class="tip">${Math.round(S.job.perf)}　上班就在攒；重心放在「拼工作」攒得最快，代价是精力。${S.job.mood < 0 ? '　上次被约谈过，这个季度要难一些。' : ''}</div>
         <div class="btns"><button class="ghost" onclick="askRaise()">谈加薪</button><button class="ghost" onclick="doQuit()">辞职</button></div>`}
     </div>
     ${S.lastReview ? `<div class="card tip">上次考核：${esc(S.lastReview.kind)}——${esc(S.lastReview.text)}</div>` : ''}
-    <h4>作息</h4>
-    <div class="card">${schedTable('work', '工作日', S.schedule.work)}${schedTable('rest', '周末', S.schedule.rest)}
-      <div class="tip">改了马上生效。四个时段全排满事情，精力掉得飞快；不给「人情」和「顾家」，关系自己就凉了。</div></div>
+    <h4>这阵子的重心</h4>
+    <div class="card">${paceCard()}</div>
     <h4>身上的毛病</h4><div class="card">${S.status.length ? S.status.map(s => `<div class="li"><b>${esc(s.name)}</b><span class="rel">还有${s.days}天</span><div class="tip">${esc(s.desc)}</div></div>`).join('') : '<div class="tip">没有</div>'}
       ${S.chronic.length ? S.chronic.map(c => `<div class="li"><b>${esc(c.name)}</b><span class="rel${E.num(c.eased) ? '' : ' bad'}">${E.num(c.eased) ? '养得松了些' : '去不掉'}</span><div class="tip">${esc(c.desc)}｜压着精力上限，也压着判定</div></div>`).join('') : ''}</div>
     <h4>梁子</h4>
@@ -927,10 +984,7 @@ function renderPanel() {
       <div class="tip">存款${y.snap.money}｜台阶${y.snap.miles}级｜交心的人${y.snap.close}个${y.snap.biz ? `｜${esc(y.snap.biz.name)}` : ''}</div></div>`).join('')}</div>` : ''}
     <h4>这一路</h4><div class="card">${S.history.slice(-14).reverse().map(h => `<div class="li"><span>${esc(h.date)}</span> ${esc(h.summary)}</div>`).join('') || '<div class="tip">还没开始</div>'}</div>
     <div class="btns"><button class="ghost" onclick="exportBook()">导出全本</button><button class="ghost" onclick="openSettings()">设置</button></div>`;
-    E.SLOTS.forEach(sl => ['work', 'rest'].forEach(k => {
-      const el = $(`sc_${k}_${sl}`);
-      if (el) el.onchange = () => { S.schedule[k][sl] = el.value; saveGame(); rebuildTop(); };
-    }));
+
   }
 }
 function workedText(d) {
@@ -938,9 +992,49 @@ function workedText(d) {
   if (d < 365) return Math.floor(d / 30) + '个月';
   return Math.floor(d / 365) + '年' + Math.floor((d % 365) / 30) + '个月';
 }
-function schedTable(k, lab, t) {
-  return `<div class="sched"><div class="schedhd">${lab}</div>${E.SLOTS.map(sl => `<div class="schedrow"><span>${sl}</span>
-    <select id="sc_${k}_${sl}">${Object.keys(E.ACTS).map(a => `<option${t[sl] === a ? ' selected' : ''}>${a}</option>`).join('')}</select></div>`).join('')}</div>`;
+let acctMonth = null;
+function renderAcct() {
+  const A = S.acct || {};
+  const ks = Object.keys(A).sort();
+  const cur = E.acctKey(S.date);
+  if (!ks.length) return '<div class="tip">从这个月起开始记账，下一笔进出就会出现在这儿。</div>';
+  if (!acctMonth || !A[acctMonth]) acctMonth = ks[ks.length - 1];
+  const i = ks.indexOf(acctMonth), M = A[acctMonth];
+  const isCur = acctMonth === cur || i === ks.length - 1 && acctMonth > cur;
+  const close = i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
+  const rows = M.rows.slice();
+  const sum = rows.reduce((a, r) => a + r.amt, 0);
+  const odd = Math.round(close - M.open - sum);
+  const fmt = v => (v < 0 ? '−' : '+') + Math.abs(v).toLocaleString('zh-CN');
+  const [y, m] = acctMonth.split('-').map(Number);
+  const tabs = ks.slice(-6).map(k => { const [yy, mo] = k.split('-').map(Number); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
+  const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => a + r.amt, 0) + Math.max(0, odd);
+  const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => a + r.amt, 0) + Math.min(0, odd);
+  return `<div class="segs wrap acctTabs">${tabs}</div>
+    <div class="acct">
+      <div class="acctrow open"><span></span><span>${m}月初存款</span><span>${M.open.toLocaleString('zh-CN')}</span></div>
+      ${rows.map(r => `<div class="acctrow"><span>${r.d}日</span><span>${esc(r.item)}${r.note ? `<i>${esc(r.note)}</i>` : ''}</span><span class="${r.amt < 0 ? 'bad' : 'good'}">${fmt(r.amt)}</span></div>`).join('')}
+      ${odd ? `<div class="acctrow"><span></span><span>零碎<i>没单独记的小进出</i></span><span class="${odd < 0 ? 'bad' : 'good'}">${fmt(odd)}</span></div>` : ''}
+    </div>
+    <div class="lines acctsum">
+      <div><b>这个月进</b><span class="good">+${inSum.toLocaleString('zh-CN')}</span></div>
+      <div><b>这个月出</b><span class="bad">−${Math.abs(outSum).toLocaleString('zh-CN')}</span></div>
+      <div class="sum"><b>${isCur ? '到今天' : `${m}月底`}存款</b><span class="${close < 0 ? 'bad' : ''}">${close.toLocaleString('zh-CN')}</span></div>
+    </div>`;
+}
+function paceCard() {
+  E.fixPace(S);
+  const P = E.PACES[S.pace];
+  return `<div class="segs wrap paces">${Object.keys(E.PACES).map(k => `<button class="seg${k === S.pace ? ' on' : ''}" onclick="pickPace('${k}')">${k}</button>`).join('')}</div>
+    <div class="pacedesc"><b>${esc(P.say)}</b><div class="tip">${esc(P.gain)}</div></div>
+    ${S.focus && S.focus.heal ? '<div class="tip">养病这几天不算，歇完照这个过。</div>' : ''}`;
+}
+function pickPace(k) {
+  if (!S || k === S.pace) return;
+  E.setPace(S, k);
+  S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `这阵子改成${k}` });
+  saveGame(); rebuildTop(); renderPanel();
+  toast(`从明天起照「${k}」过`);
 }
 
 
@@ -1161,7 +1255,7 @@ function showNpc(name) {
   if (!n) return;
   const gap = S.stats.days - (n.lastSeen || 0);
   $('npcBox').innerHTML = `<h2>${esc(n.name)}</h2>
-    <div class="tip" style="margin-top:-10px">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}　${esc(n.tie || '')}</div>
+    <div class="tip" style="margin-top:-10px">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div>
     <div class="card" style="margin-top:14px"><div class="lines">
       <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
       <div><b>上次来往</b><span>${gap <= 0 ? '就这几天' : gap + '天前'}</span></div>
@@ -1169,7 +1263,7 @@ function showNpc(name) {
     </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
     ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>
-    ${!E.partnerOf(S) && n.rel >= 55 && !/爱人|前任|家里人|妈|爸|父|母/.test(n.tie || '')
+    ${!E.partnerOf(S) && n.rel >= 55 && !/爱人|前任|前妻|前夫/.test(n.tie || '') && !isKin(n.tie)
       ? `<div class="btns"><button class="ghost" onclick="mask('npcMask',false);askLove('${esc(n.name)}')">把话挑明</button></div>`
       : ''}`;
   mask('npcMask', true);
@@ -1182,7 +1276,7 @@ function openThread(from) {
   // 没进通讯录的（房东、同期的朋友圈之类）只能看
   const ms = S.msgs.filter(m => m.from === from).slice(-8);
   $('npcBox').innerHTML = `<h2>${esc(from)}</h2>
-    <div class="tip" style="margin-top:-10px">还说不上话，只能看见他发的。</div>
+    <div class="tip" style="margin-top:-10px">${(S.peers || []).some(p => p.name === from) ? '同学' : ''}</div>
     <div class="card" style="margin-top:14px">${ms.map(m => `<div class="li"><span>${esc(m.date)}</span> ${esc(m.text)}</div>`).join('')}</div>
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">知道了</button></div>`;
   mask('npcMask', true);
@@ -1196,16 +1290,17 @@ function convoHead(n) {
 你现在扮演的是【${n.name}】，不是主角。只说${n.name}的话，一次一两句，像真人发微信或者当面讲话：短、有口语、可以答非所问、可以不接主角的话茬。
 不许旁白，不许描写主角的动作和心理，不许替主角说话。不许说教，不许煽情。
 
-【${n.name}是谁】${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，跟主角是${n.tie}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
+【${n.name}是谁】${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【你们之前的来往】${(n.mem || []).join('；') || '没什么特别的'}
 【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。手头存款${S.player.money}元。
 【最近发生的事】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(0, 120)}……`;
 }
 function convoPrompt(n, say, judge) {
   const log = S.convo.lines.map(l => `${l.who === 'me' ? S.player.name : n.name}：${l.text}`).join('\n') || '（刚开口）';
+  const past = (S.convo.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : n.name}：${m.text}`).join('\n');
   return `${convoHead(n)}
-
-【到现在为止的对话】
+${past ? `\n【手机里之前的来往（主角这次就是接着这些点开的对话框）】\n${past}\n` : ''}
+【这次的对话】
 ${log}
 
 ${judge
@@ -1220,7 +1315,7 @@ ${judge
 function openConvo(name) {
   const n = S.npcs.find(x => x.name === name);
   if (!n || busy) return;
-  S.convo = { name, lines: [], turns: 0, summary: '', rel: 0 };
+  S.convo = { name, lines: [], turns: 0, summary: '', rel: 0, hist: S.msgs.filter(m => m.from === name).slice(-14) };
   closePanel();
   $('chat').classList.add('on');
   renderConvo();
@@ -1233,11 +1328,19 @@ function renderConvo() {
   const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
   $('chatName').innerHTML = `${esc(n.name)} <i class="tapcard">名片</i>`;
   $('chatName').onclick = () => showNpc(n.name);
-  $('chatSub').textContent = `${n.tie || ''}　${relWord(n.rel, n.tie)}${c.rel ? `（${c.rel > 0 ? '+' : ''}${c.rel}）` : ''}`;
-  $('chatBody').innerHTML = c.lines.map(l =>
+  $('chatSub').textContent = callName(n);
+  let lastDate = '';
+  const hist = (c.hist || []).map(m => {
+    const d = m.date && m.date !== lastDate ? `<div class="sysline">${esc(m.date)}</div>` : '';
+    lastDate = m.date || lastDate;
+    return d + `<div class="bub ${m.me ? 'me' : 'ta'}">${esc(m.text)}</div>`;
+  }).join('');
+  const nowD = E.shortDate(S.date);
+  const sep = hist && c.lines.length && lastDate !== nowD ? `<div class="sysline">${esc(nowD)}</div>` : '';
+  $('chatBody').innerHTML = (hist + sep + c.lines.map(l =>
     l.who === 'sys'
       ? `<div class="sysline">${esc(l.text)}</div>`
-      : `<div class="bub ${l.who === 'me' ? 'me' : 'ta'}">${esc(l.text)}${l.mood ? `<i>${esc(l.mood)}</i>` : ''}</div>`).join('')
+      : `<div class="bub ${l.who === 'me' ? 'me' : 'ta'}">${esc(l.text)}${l.mood ? `<i>${esc(l.mood)}</i>` : ''}</div>`).join(''))
     || '<div class="sysline">说点什么</div>';
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
 }
@@ -1302,6 +1405,9 @@ function endConvo(goOn) {
     });
     S.recent = S.recent.slice(-8);
     S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `跟${c.name}聊：${c.summary || '说了会儿话'}` });
+    const dt = E.shortDate(S.date);
+    for (const l of said) S.msgs.push({ from: c.name, me: l.who === 'me', text: String(l.text).slice(0, 120), date: dt, kind: 'talk', read: true });
+    S.msgs = S.msgs.slice(-240);
   }
   const name = c.name, sum = c.summary;
   S.convo = null;
@@ -1351,7 +1457,7 @@ function doLike(id) {
 async function doComment(id) {
   const m = (S.moments || []).find(x => x.id === id);
   if (!m || busy) return;
-  const txt = prompt(`给${m.who}留一句：\n「${m.text}」`, '');
+  const txt = await ask({ title: `给${m.who}留一句`, quote: m.text, input: { placeholder: '说点什么', max: 60 }, ok: '留言' });
   if (!txt) return;
   E.commentMoment(S, id, S.player.name, txt);
   saveGame(); renderPanel();
@@ -1439,14 +1545,14 @@ function renderHome() {
         <div><b>过得怎么样</b><span class="${P.warm < 25 ? 'bad' : P.warm >= 75 ? 'good' : ''}">${warmWord}</span></div>
       </div>
       <div class="bar" style="margin-top:8px"><div class="bar-in${P.warm >= 60 ? ' good' : P.warm < 25 ? ' bad' : ''}" style="width:${Math.round(P.warm)}%"></div></div>
-      <div class="tip">作息里排「顾家」才顾得上；一直不着家，热乎气一周一周往下掉。</div>
+      <div class="tip">重心放在「顾家」才顾得上；一直不着家，热乎气一周一周往下掉。</div>
       <div class="btns">
         ${P.stage !== '结婚' ? `<button class="primary" onclick="askMarry()">求婚</button>` : ''}
         <button class="ghost" onclick="openConvo('${esc(P.name)}')">说说话</button>
         <button class="ghost" onclick="doBreak()">分了</button>
       </div>`);
   } else {
-    const n = S.npcs.filter(x => x.rel >= 55 && !/爱人|前任|家里人|妈|爸|父|母/.test(x.tie || '')).length;
+    const n = S.npcs.filter(x => x.rel >= 55 && !/爱人|前任|前妻|前夫/.test(x.tie || '') && !isKin(x.tie)).length;
     out.push(`<div class="tip">眼下一个人过。${n ? `手机里有 ${n} 个走得够近的人，点开谁的名片就能把话挑明。` : '手机里还没有走得够近的人——聊得多了才谈得上这个。'}</div>`);
   }
   out.push(`</div>`);
@@ -1506,10 +1612,11 @@ function askMarry() {
   if (S.player.money < cost) { toast(`办下来少说要 ${cost}，手头不够`); return; }
   runKey({ scene: '摊牌', gate: `跟${P.name}谈结婚的事`, title: '结婚', kind: 'marry', who: P.name, mileId: null, hard: Math.round(64 - P.warm * 0.3) });
 }
-function doBreak() {
+async function doBreak() {
   const P = E.partnerOf(S);
   if (!P) return;
-  if (!confirm(P.stage === '结婚' ? `离？家当分走一半。` : `分了？`)) return;
+  const married = P.stage === '结婚';
+  if (!await ask({ title: married ? `真要跟${P.name}离？` : `真要跟${P.name}分？`, text: married ? '家当要分走一半，这事没法回头。' : '话说出口，就收不回来了。', no: '再想想', ok: married ? '离' : '分', danger: true })) return;
   const r = E.breakUp(S, '说不下去了');
   closePanel();
   S.lastAction = r.wasMarried ? `跟${P.name}把证退了，家当分了一半` : `跟${P.name}分了`;
@@ -1605,7 +1712,7 @@ function renderBiz() {
   if (!B) {
     const kinds = Object.keys(E.BIZ_KINDS);
     return `<h4>自立门户</h4><div class="card">
-      <div class="tip">自己开一摊子：作息里的「主业」从此是照看自己的生意，工资没了，赚多少看本事、口碑和你盯得紧不紧。开之前先攒够启动的钱。</div>
+      <div class="tip">自己开一摊子：上班的时间从此都拿来照看自己的生意，工资没了，赚多少看本事、口碑和你盯得紧不紧。开之前先攒够启动的钱。</div>
       ${kinds.map(k => {
         const K = E.BIZ_KINDS[k], need = E.bizSetup(S, k);
         const can = S.player.money >= need;
@@ -1625,21 +1732,20 @@ function renderBiz() {
     </div>
     <div class="cardhd" style="margin-top:10px">口碑</div>
     <div class="bar"><div class="bar-in${B.rep > 55 ? ' good' : B.rep < 25 ? ' bad' : ''}" style="width:${Math.round(B.rep)}%"></div></div>
-    <div class="tip">${Math.round(B.rep)}　${B.lossMonths ? `已经连亏${B.lossMonths}个月。` : ''}上个月你盯了${Math.round(E.num(B.lastTend))}分，这个月到现在${Math.round(B.tend)}分（作息里排「主业」才算，盯得越紧生意越好）。</div>
+    <div class="tip">${Math.round(B.rep)}　${B.lossMonths ? `已经连亏${B.lossMonths}个月。` : ''}上个月你盯了${Math.round(E.num(B.lastTend))}分，这个月到现在${Math.round(B.tend)}分（重心放在「拼工作」盯得最紧，盯得越紧生意越好）。</div>
   </div>
   <h4>人手（${B.staff.length}/${K.cap}）</h4>
   <div class="card">
     ${B.staff.length ? B.staff.map((st, i) => `<div class="li"><b>${esc(st.name)}</b><span class="rel${st.loyal < 30 ? ' bad' : ''}">${st.loyal < 30 ? '人心浮动' : st.loyal > 70 ? '跟得住' : '还行'}</span>
-      <div class="tip">${esc(st.role)}｜能力${Math.round(st.skill)}｜${st.pay}元/月｜干了${st.months}个月
-        <button class="ghost sm" onclick="doRaise(${i})">加钱</button>
-        <button class="ghost sm" onclick="doFire(${i})">辞了</button></div></div>`).join('')
+      <div class="tip lirow"><span>${esc(st.role)}｜能力${Math.round(st.skill)}｜${st.pay}元/月｜干了${st.months}个月</span>
+        <span class="liact"><button class="ghost sm" onclick="doRaise(${i})">加钱</button><button class="ghost sm" onclick="doFire(${i})">辞了</button></span></div></div>`).join('')
       : '<div class="tip">就你一个人</div>'}
     <div class="btns"><button class="ghost" onclick="openHire()">招人</button><button class="ghost" onclick="doCloseBiz()">关了这摊</button></div>
   </div>`;
 }
-function askOpenBiz(kind) {
+async function askOpenBiz(kind) {
   const need = E.bizSetup(S, kind);
-  const name = prompt(`给这个${kind}起个名字（启动要 ${need} 元，从存款里出）`, '');
+  const name = await ask({ title: `给这个${kind}起个名字`, text: `启动要 ${need.toLocaleString('zh-CN')} 元，从存款里出。`, input: { placeholder: kind === '小店' ? '比如：巷口那家' : kind === '小公司' ? '比如：青禾文化' : '比如：半山工作室', max: 14 }, no: '再想想', ok: '开张' });
   if (!name) return;
   const r = E.openBiz(S, { kind, name }, Math.random);
   if (!r.ok) { toast(r.why); return; }
@@ -1657,8 +1763,8 @@ function openHire() {
   $('npcBox').innerHTML = `<h2>招人</h2><div class="tip" style="margin-top:-10px">工资低于他值的价，早晚要走。</div>
     <div class="card" style="margin-top:14px">${cand.map((c, i) => `<div class="li">
       <b>${esc(c.name)}</b><span class="rel">${c.pay}元/月</span>
-      <div class="tip">${esc(c.role)}｜能力${c.skill}
-        <button class="ghost sm" onclick='doHire(${JSON.stringify(c).replace(/'/g, "&#39;")})'>要他</button></div></div>`).join('')}</div>
+      <div class="tip lirow"><span>${esc(c.role)}｜能力${c.skill}</span>
+        <span class="liact"><button class="ghost sm" onclick='doHire(${JSON.stringify(c).replace(/'/g, "&#39;")})'>要他</button></span></div></div>`).join('')}</div>
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">再看看</button></div>`;
   mask('npcMask', true);
 }
@@ -1669,26 +1775,26 @@ function doHire(c) {
   toast(`${r.who}来了`);
   saveGame(); renderPanel();
 }
-function doFire(i) {
+async function doFire(i) {
   const s = S.biz.staff[i];
   if (!s) return;
-  if (!confirm(`辞了${s.name}？要给一个月工资 ${s.pay} 元。`)) return;
+  if (!await ask({ title: `让${s.name}走？`, text: `按规矩多给一个月工资，${s.pay} 元。`, no: '留着', ok: '让他走', danger: true })) return;
   const r = E.fireBiz(S, i);
   toast(`${r.who}走了，给了${r.pay}`);
   saveGame(); rebuildTop(); renderPanel();
 }
-function doRaise(i) {
+async function doRaise(i) {
   const s = S.biz.staff[i];
   if (!s) return;
-  const v = prompt(`给${s.name}加多少？（现在 ${s.pay}，填负数就是降）`, '500');
+  const v = await ask({ title: `给${s.name}调工资`, text: `现在每月 ${s.pay} 元。填加多少，填负数就是降。`, input: { value: '500', number: true }, ok: '就这么定' });
   if (v === null) return;
   E.raiseBiz(S, i, Number(v));
   saveGame(); renderPanel();
 }
-function doCloseBiz() {
+async function doCloseBiz() {
   const B = S.biz;
   if (!B) return;
-  if (!confirm(`关掉「${B.name}」？设备折价能回一点，员工要给遣散。`)) return;
+  if (!await ask({ title: `关掉「${B.name}」？`, text: '东西折价能回一点本，跟着你的人得给遣散。', no: '再撑撑', ok: '关', danger: true })) return;
   const r = E.closeBiz(S);
   closePanel();
   S.lastAction = `把「${r.name}」关了`;
@@ -1727,8 +1833,8 @@ ${(S.era || []).length ? `- 这一年外面发生的：${S.era.map(e => e.text).
 }
 
 /* ---- 饭碗与借钱 ---- */
-function doQuit() {
-  if (!confirm('辞了？下个月起没有工资，房租照交。')) return;
+async function doQuit() {
+  if (!await ask({ title: '真辞？', text: '下个月起就没工资了，房租和吃穿照样要花。', no: '再干干', ok: '辞', danger: true })) return;
   const r = E.quitJob(S);
   if (!r) return;
   S.lastAction = '把辞职的事办了';
@@ -1737,10 +1843,11 @@ function doQuit() {
   toast(r.text);
   runSegment({ quick: true });
 }
-function doPay(i) {
+async function doPay(i) {
   const d = (S.debts || [])[i];
   if (!d) return;
-  const v = prompt(`还给${d.who}多少？（还欠 ${d.left}，手头 ${S.player.money}）`, String(Math.min(d.left, Math.max(0, S.player.money))));
+  const v = await ask({ title: `还给${d.who}`, text: `还欠 ${d.left} 元，手头有 ${S.player.money} 元。`, input: { value: String(Math.min(d.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+  if (v === null) return;
   const r = E.payDebt(S, i, Number(v));
   if (!r) { toast('还不上'); return; }
   toast(`还了${r.who}${r.pay}元${r.left ? `，还欠${r.left}` : '，清了'}`);
@@ -1752,7 +1859,7 @@ function openBorrow() {
   $('npcBox').innerHTML = `<h2>找谁开口</h2><div class="tip" style="margin-top:-10px">开口是要还的，还不上关系就完了。</div>
     <div class="card" style="margin-top:14px">${cand.sort((a, b) => b.rel - a.rel).map(n =>
       `<div class="li" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')"><b>${esc(n.name)}</b>
-        <span class="rel">${relWord(n.rel, n.tie)}</span><div class="tip">${esc(n.tie)}${n.job ? '｜' + esc(n.job) : ''}</div></div>`).join('')}</div>
+        <span class="rel">${relWord(n.rel, n.tie)}</span><div class="tip">${esc(callName(n))}${callName(n) && n.job ? '｜' : ''}${esc(n.job || '')}</div></div>`).join('')}</div>
     <div class="tip">进了聊天之后直接开口，对方答不答应由引擎掷骰。</div>
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">算了</button></div>`;
   mask('npcMask', true);
@@ -1836,6 +1943,7 @@ function loadGame() {
   try { S = JSON.parse(raw); } catch (_) { return false; }
   if (!S || !S.player) return false;
   E.fixJob(S);
+  E.fixPace(S);
   $('story').innerHTML = S.chapters.join('');
   if (S.runId) bookAll(S.runId).then(rows => {
     if (!rows || rows.length <= S.chapters.length) return;
@@ -1849,8 +1957,8 @@ function loadGame() {
   if (S.key) openKey();
   return true;
 }
-function restart() {
-  if (!confirm('重开一局？这一局的存档会没。')) return;
+async function restart() {
+  if (!await ask({ title: '重开一局？', text: '这一局的存档就没了。', no: '不了', ok: '重开', danger: true })) return;
   localStorage.removeItem(LS_SAVE);
   if (S && S.runId) bookClear(S.runId).catch(() => { });
   S = null;
@@ -1884,7 +1992,7 @@ function importSave(file) {
     let pack;
     try { pack = JSON.parse(fr.result); } catch (_) { toast('这个文件读不出来'); return; }
     if (!pack || !pack.save || !pack.save.player) { toast('这不是这个游戏的存档'); return; }
-    if (S && !confirm(`导入「${pack.who || '别处的存档'}」？这台设备上现在这局会被盖掉。`)) return;
+    if (S && !await ask({ title: `导入「${pack.who || '别处的存档'}」？`, text: '这台设备上现在这局会被盖掉。', ok: '导入', danger: true })) return;
     try {
       localStorage.setItem(LS_SAVE, JSON.stringify(pack.save));
       for (const r of (pack.book || [])) { try { await bookPut(r); } catch (_) { } }

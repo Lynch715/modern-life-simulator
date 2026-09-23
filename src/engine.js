@@ -47,7 +47,20 @@ const TRACKS = {
   '表演':   { skill: '台风', ph: '站上一个像样的舞台，底下坐满人' },
   '教书':   { skill: '教学', ph: '教出一批真正被我改变过的人' },
   '公益':   { skill: '组织', ph: '把一件没人管的事管起来' },
-  '把家过好': { skill: '持家', ph: '有个踏实的小家，谁都不必再漂着' }
+  '把家过好': { skill: '持家', ph: '有个踏实的小家，谁都不必再漂着' },
+  '从政':   { skill: '政务', ph: '从基层干起，做到能真正管一方事的位置',
+    rule: '体制内的路：先考进去（公务员、选调、事业编），再一级一级往上走。升迁看资历、政绩、站队和机会，考不上、卡在一个位置上好多年都是常事。写真实的机关日子，不写官场爽文。' },
+  '体育':   { skill: '竞技', ph: '拿一个像样的冠军，名字写进成绩单',
+    rule: '22岁才正式走这条路，当职业运动员的门很窄：更现实的是业余赛、半职业联赛、教练、裁判、体育机构。伤病和年龄是硬约束，练坏了就是练坏了。' },
+  '捞偏门': { skill: '门道', ph: '在道上站稳，有自己的一摊和规矩',
+    rule: '这是一条灰色、违法的路：可以写主角被卷进去、一步步陷深、赚到快钱、结仇、被查、被抓、判刑坐牢，后果必须是真的，不许轻轻带过。只写人、事和代价，不写任何能照着做的具体手法——怎么骗、怎么做货、怎么洗钱这类细节一律虚写带过。' },
+  '行医':   { skill: '医术', ph: '成为一个病人会点名来找的医生',
+    rule: '规培、考证、熬资历是躲不过去的；医疗上的事写得真实克制，不给读者当诊疗建议。' },
+  '法律':   { skill: '法务', ph: '打赢一场所有人都说赢不了的官司' },
+  '做博主': { skill: '内容', ph: '做一个几十万人愿意追着看的账号' },
+  '投资':   { skill: '眼光', ph: '靠自己的判断攒下第一个一百万',
+    rule: '赚赔都要听引擎的判定，不许让主角靠预知或内幕暴富；亏起来是真亏，可以亏到借钱。' },
+  '回乡':   { skill: '农事', ph: '回老家把一片地、一个村子做起来' }
 };
 
 /* ---------- 日程 ---------- */
@@ -69,6 +82,28 @@ const DEF_SCHEDULE = {
   work: { '早': '睡觉', '白天': '主业', '晚上': '理想', '深夜': '睡觉' },
   rest: { '早': '睡觉', '白天': '身心', '晚上': '人情', '深夜': '睡觉' }
 };
+// 这阵子的重心：玩家只挑一个，引擎照着排工作日和周末的时段
+// w/r = [工作日晚上, 周末白天, 周末晚上]；工作日白天都是上班，早上和深夜都在睡
+const PACES = {
+  '两头兼顾': { w: '理想', r: ['身心', '人情'], say: '下班弄点自己的事，周末歇一天、见见人', gain: '样样都沾一点，样样都不快', story: '工作日下班后弄自己的事，周末休息、见朋友，日子不紧不松' },
+  '拼工作': { w: '主业', r: ['主业', '闲着'], say: '下了班接着干，周末也泡在活上', gain: '绩效和生意涨得快；人累，朋友和家里慢慢凉', story: '一门心思扑在工作上，天天加班，周末也在干活，顾不上别的' },
+  '搞理想': { w: '理想', r: ['理想', '理想'], say: '下班回来就弄自己的事，周末整天扑在上面', gain: '理想的功夫攒得快；朋友和家里顾不上', story: '下班和周末的时间几乎全给了自己想干成的那件事' },
+  '多走动': { w: '人情', r: ['人情', '人情'], say: '晚上和周末都在外面见人、吃饭、帮忙', gain: '关系往上走，嘴皮子练出来；自己的事停着', story: '下班和周末常在外面约人吃饭、帮忙、走动，人情上花心思' },
+  '顾家': { w: '顾家', r: ['顾家', '顾家'], say: '下班就回家，周末陪家里人', gain: '家里热乎、心里安稳；别的只保底', story: '下班就回家，周末都陪着家里人' },
+  '充电': { w: '学习', r: ['学习', '身心'], say: '晚上和周末上课、看书、考证', gain: '本事和脑子长得快；累，顾不上人', story: '下班和周末在上课、看书、备考，给自己充电' },
+  '歇一歇': { w: '闲着', r: ['身心', '闲着'], say: '上班之外什么都不干，睡够，出去走走', gain: '精力和身体回得快；什么都不涨', story: '上班之外什么都不干，好好睡觉、出去走走，让自己缓一缓' }
+};
+function setPace(S, name) {
+  const P = PACES[name] || PACES['两头兼顾'];
+  if (S.pace && S.pace !== name) S.paceFrom = { name: S.pace, day: S.stats ? S.stats.days : 0 };
+  S.pace = PACES[name] ? name : '两头兼顾';
+  S.schedule = {
+    work: { '早': '睡觉', '白天': '主业', '晚上': P.w, '深夜': '睡觉' },
+    rest: { '早': '睡觉', '白天': P.r[0], '晚上': P.r[1], '深夜': '睡觉' }
+  };
+  return S.pace;
+}
+function fixPace(S) { if (!S.pace || !PACES[S.pace]) setPace(S, '两头兼顾'); }
 
 /* ---------- 日期 ---------- */
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
@@ -101,11 +136,20 @@ const rnd = (rng, a, b) => a + Math.floor(rng() * (b - a + 1));
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 
 function fateInfo(r) {
-  if (r <= 3) return { label: '大凶', cls: 'bad', desc: '这几天走背字，事情横生变故' };
-  if (r <= 8) return { label: '不顺', cls: 'bad', desc: '不太顺当，有小挫折或小代价，收获打折' };
-  if (r <= 14) return { label: '平常', cls: '', desc: '按常理发展，不好不坏' };
-  if (r <= 18) return { label: '顺遂', cls: 'good', desc: '事情顺利，略有收获' };
-  return { label: '大吉', cls: 'great', desc: '意外之喜：贵人、机会、横财、被人看见，须与眼下的事相合' };
+  if (r <= 3) return { label: '大凶', cls: 'bad', short: '这几天走背字', desc: '这几天走背字，事情横生变故' };
+  if (r <= 8) return { label: '不顺', cls: 'bad', short: '磕磕绊绊', desc: '不太顺当，有小挫折或小代价，收获打折' };
+  if (r <= 14) return { label: '平常', cls: '', short: '不好不坏', desc: '按常理发展，不好不坏' };
+  if (r <= 18) return { label: '顺遂', cls: 'good', short: '事情顺手', desc: '事情顺利，略有收获' };
+  return { label: '大吉', cls: 'great', short: '撞上好事了', desc: '意外之喜：贵人、机会、横财、被人看见，须与眼下的事相合' };
+}
+// 天命落到身上的那一点：只动精力和口碑，大头还是交给剧情
+function applyFate(S, r) {
+  const p = S.player;
+  let en = 0, rep = 0;
+  if (r <= 3) en = -8; else if (r <= 8) en = -3; else if (r >= 19) { en = 6; rep = 1; } else if (r >= 15) en = 3;
+  if (en) p.energy = clamp(p.energy + en, 0, energyCap(S));
+  if (rep) p.信誉 = clamp(p.信誉 + rep, 0, 100);
+  return [en ? `精力${en > 0 ? '+' : ''}${en}` : '', rep ? `口碑+${rep}` : ''].filter(Boolean).join('　');
 }
 
 function fdm(S) { return FREEDOM[S.freedom] || FREEDOM['写实人生']; }
@@ -170,6 +214,7 @@ function newState(o) {
     home: { kind: '租', since: '', place: '' },
     family: { partner: null, kids: [], past: [] },
     retireAge: 60, endedOnce: [],
+    pace: '两头兼顾',
     schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
     ideal: { progress: 0, stages: [] },
     key: null,
@@ -285,6 +330,23 @@ function dayTick(S, rng) {
   return { ev, stop: null };
 }
 
+/* ---------- 明细账 ---------- */
+// 每笔进出记一行，按月归档；月底对不上的差额在账本里显示成「零碎」
+function acctKey(d) { return d.y + '-' + String(d.m).padStart(2, '0'); }
+function acct(S, item, amt, note, moneyBefore) {
+  amt = Math.round(num(amt));
+  if (!amt) return;
+  S.acct = S.acct || {};
+  const k = acctKey(S.date);
+  if (!S.acct[k]) {
+    const before = moneyBefore != null ? moneyBefore : S.player.money - amt;
+    S.acct[k] = { open: before, rows: [] };
+    const ks = Object.keys(S.acct).sort();
+    while (ks.length > 13) delete S.acct[ks.shift()];
+  }
+  S.acct[k].rows.push({ d: S.date.d, item, amt, note: note ? String(note).slice(0, 30) : '' });
+}
+
 /* ---------- 月度收支（挂在日历上） ---------- */
 function moneyTick(S, rng) {
   const L = S.ledger, p = S.player, d = S.date, ev = [];
@@ -304,20 +366,29 @@ function moneyTick(S, rng) {
     const loan = num(L.loan);
     if (loan) homeTick(S);
     const out = L.rent + loan + L.living + L.remit + kid;
+    const m0 = p.money;
     p.money -= out;
+    if (L.rent) acct(S, '房租', -L.rent, '', m0);
+    if (loan) acct(S, '房贷月供', -loan, '', m0);
+    acct(S, '吃穿用度', -L.living, '', m0);
+    if (kid) acct(S, '养孩子', -kid, '', m0);
+    if (L.remit) acct(S, '寄回家', -L.remit, '', m0);
     S.flags.monthNet -= out;
     ev.push({ t: '钱', s: `${L.rent ? `房租${L.rent}、` : ''}${loan ? `月供${loan}、` : ''}生活${L.living}${kid ? `、孩子${kid}` : ''}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
     if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
   }
   if (d.d === L.salaryDay && !S.job.out) {
     const inc = L.salary + L.subsidy;
+    const m0 = p.money;
     p.money += inc;
+    acct(S, '工资', L.salary, S.job.employer || '', m0);
+    if (L.subsidy) acct(S, '家里给的', L.subsidy, '', m0);
     S.flags.monthNet += inc;
     ev.push({ t: '钱', s: `发了${L.salary}${L.subsidy ? `，家里又打来${L.subsidy}` : ''}` });
     if (!S.flags.firstPay) { S.flags.firstPay = true; stop = { kind: '钱', detail: '第一笔自己挣的工资到账' }; }
   }
   if (d.d === L.salaryDay && S.job.out) {
-    if (L.subsidy) { p.money += L.subsidy; S.flags.monthNet += L.subsidy; ev.push({ t: '钱', s: `没有工资，家里打来${L.subsidy}` }); }
+    if (L.subsidy) { p.money += L.subsidy; acct(S, '家里给的', L.subsidy); S.flags.monthNet += L.subsidy; ev.push({ t: '钱', s: `没有工资，家里打来${L.subsidy}` }); }
     else ev.push({ t: '钱', s: '这个月没有工资' });
   }
   if (d.d === 28) {   // 月末看账
@@ -403,7 +474,7 @@ function peerTick(S, rng) {
   if (use && rng() < p0) {
     // 从此他是个能说上话的人，不再只是朋友圈里的名字
     if (!S.npcs.some(n => n.name === pr.name)) {
-      S.npcs.push({ name: pr.name, age: S.player.age, job: pr.note || '同期', rel: 38, tie: '同期',
+      S.npcs.push({ name: pr.name, age: S.player.age, job: pr.note || '同期', rel: 38, tie: '同学',
         care: '', note: (pr.track || []).slice(-2).join('，'), close: false, mem: [], lastSeen: S.stats.days });
     }
     pr.npc = true;
@@ -618,7 +689,7 @@ function applyTurn(S, d) {
     p.attrs[k] = Math.round(p.attrF[k]);
   }
   if (num(pc.energy)) p.energy = clamp(p.energy + cap('精力', pc.energy, 35), 0, energyCap(S));
-  if (num(pc.money)) p.money += cap('钱', pc.money, capMoney(S));
+  if (num(pc.money)) { const mv = cap('钱', pc.money, capMoney(S)); p.money += mv; acct(S, mv > 0 ? '额外进账' : '额外花销', mv, d.summary || ''); }
   if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + cap('行业口碑', pc.信誉, 8), 0, 100);
   if (num(pc.人品)) p.人品 = clamp(p.人品 + cap('做人', pc.人品, 8), 0, 100);
   if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + cap('理想的功夫', pc.idealProgress, 35));
@@ -674,7 +745,7 @@ function applyTurn(S, d) {
     const nn = S.npcs.find(x => x.name === who);
     if (nn) nn.lastSeen = S.stats.days;
   }
-  S.msgs = S.msgs.slice(-80);
+  S.msgs = S.msgs.slice(-240);
 
   for (const a of (d.appointments || []).slice(0, 3)) {
     if (!a || !a.title) continue;
@@ -740,6 +811,7 @@ function buyHouse(S, rng) {
   const ck = rollCheck(S, '谋划', 48, rng || Math.random);
   const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
   S.player.money -= (b.down - cut);
+  acct(S, '买房首付', -(b.down - cut));
   S.home = {
     kind: '买', since: shortDate(S.date), price: b.price - cut,
     loan: { left: b.loan, monthly: b.monthly, months: 360, paid: 0 }
@@ -780,6 +852,7 @@ function marry(S, cost) {
   P.stage = '结婚';
   P.marriedAt = shortDate(S.date);
   S.player.money -= num(cost);
+  acct(S, '办婚事', -num(cost));
   const n = S.npcs.find(x => x.name === P.name);
   if (n) { n.tie = '爱人'; n.rel = clamp(n.rel + 10, 0, 100); }
   return P;
@@ -791,11 +864,12 @@ function breakUp(S, why) {
   const wasMarried = P.stage === '结婚';
   S.family.past = (S.family.past || []).concat([P]).slice(-4);
   const n = S.npcs.find(x => x.name === P.name);
-  if (n) { n.tie = wasMarried ? '前妻/前夫' : '前任'; n.rel = clamp(n.rel - 30, 0, 100); }
+  if (n) { n.tie = wasMarried ? (S.player.gender === '女' ? '前夫' : '前妻') : '前任'; n.rel = clamp(n.rel - 30, 0, 100); }
   if (wasMarried) {
     // 分一半家当
     const half = Math.round(S.player.money * 0.42);
     S.player.money -= Math.max(0, half);
+    acct(S, '离婚分家当', -Math.max(0, half));
     S.family.partner = null;
     return { wasMarried, half };
   }
@@ -910,9 +984,9 @@ function keepGoing(S, years) {
 
 /* ================= 自立门户 ================= */
 const BIZ_KINDS = {
-  '小店':   { setupX: 8,  rentX: 1.6, baseX: 1.15, attr: '谋划', cap: 3, desc: '铺面、货、一个帮手，开门就要钱' },
-  '工作室': { setupX: 4,  rentX: 0.8, baseX: 0.95, attr: '专业', cap: 4, desc: '几个人一间屋，靠手艺接活' },
-  '小公司': { setupX: 14, rentX: 2.4, baseX: 1.65, attr: '谋划', cap: 5, desc: '要养人、要签合同、要交社保' }
+  '小店':   { setupX: 80,  rentX: 1.6, baseX: 1.35, attr: '谋划', cap: 3, desc: '铺面、货、一个帮手，开门就要钱' },
+  '工作室': { setupX: 40,  rentX: 0.8, baseX: 1.05, attr: '专业', cap: 4, desc: '几个人一间屋，靠手艺接活' },
+  '小公司': { setupX: 140, rentX: 2.4, baseX: 1.7, attr: '谋划', cap: 5, desc: '要养人、要签合同、要交社保' }
 };
 const XING = '王李张刘陈杨黄周吴徐孙马朱胡林郭何高罗郑梁谢宋唐许韩冯邓曹彭'.split('');
 const MING = ['杰','磊','敏','静','强','洋','艳','勇','军','丽','涛','明','超','秀','霞','平','刚','桂','文','辉','力','薇','娟','浩','鹏','宇','晨','菲','然','宁','川','舟','野','可','真','越','岚','昭','池','屿'];
@@ -923,10 +997,13 @@ function madeName(rng, used) {
   }
   return pick(rng, XING) + pick(rng, MING);
 }
+const BIZ_REV = 1;   // 总系数，留着以后整体调；各类店的差别在 BIZ_KINDS.baseX
 function bizBase(S) {
   const city = CITIES[S.city] || CITIES['新一线'];
   const K = BIZ_KINDS[S.biz ? S.biz.kind : '工作室'];
-  return Math.round(city.pay * K.baseX);
+  // 营业额按城市的铺面贵贱校准：本钱是照房租算的，营业额也得跟着房租走，不然一线城市开店永远回不了本
+  const cityK = Math.pow((city.rent / city.pay) / (1700 / 4800), 0.45);
+  return Math.round(city.pay * K.baseX * BIZ_REV * cityK);
 }
 function bizSetup(S, kind) {
   const city = CITIES[S.city] || CITIES['新一线'];
@@ -941,6 +1018,7 @@ function openBiz(S, o, rng) {
   const ck = rollCheck(S, K.attr, 46 + (kind === '小公司' ? 12 : kind === '小店' ? 4 : 0), rng);
   const city = CITIES[S.city] || CITIES['新一线'];
   S.player.money -= need;
+  acct(S, '开店本钱', -need, o.name || '');
   S.biz = {
     name: String(o.name || '没名字的店').slice(0, 14), kind,
     since: shortDate(S.date), sinceY: S.date.y,
@@ -979,6 +1057,7 @@ function fireBiz(S, i) {
   if (!s) return null;
   const pay = s.pay;          // 遣散
   S.player.money -= pay;
+  acct(S, '遣散', -pay, s.name);
   B.staff.splice(i, 1);
   B.rep = clamp(B.rep - 3, 0, 100);
   return { who: s.name, pay };
@@ -1010,7 +1089,11 @@ function bizMonth(S, rng) {
   const pay = B.staff.reduce((a, s) => a + s.pay, 0);
   const cost = B.rent + pay;
   const net = rev - cost;
+  const m0 = S.player.money;
   S.player.money += net;
+  acct(S, '店里营业额', rev, B.name, m0);
+  if (B.rent) acct(S, '店面租金', -B.rent, B.name, m0);
+  if (pay) acct(S, '店员工资', -pay, B.staff.map(s => s.name).join('、'), m0);
   B.rev = rev; B.cost = cost; B.net = net; B.lastTend = r2(B.tend); B.total += net; B.best = Math.max(B.best, net);
   B.tend = 0;
 
@@ -1042,7 +1125,10 @@ function closeBiz(S) {
   if (!B || B.dead) return null;
   const back = Math.round(B.setup * 0.3);
   const sever = B.staff.reduce((a, s) => a + s.pay, 0);
+  const m0 = S.player.money;
   S.player.money += back - sever;
+  acct(S, '关店回收', back, B.name, m0);
+  if (sever) acct(S, '遣散', -sever, B.name, m0);
   const out = { name: B.name, months: B.months, total: B.total, back, sever, staff: B.staff.map(s => s.name) };
   for (const s of B.staff) if (rng0() < 0.3) addRift(S, s.name, '店关了，欠他一个交代', '私怨', 18);
   B.dead = true; B.closedAt = shortDate(S.date);
@@ -1066,7 +1152,15 @@ const ERA = {
   '表演': ['小剧场一个接一个关', '有个综艺在海选', '票务平台改了抽成', '一个前辈退圈了'],
   '教书': ['政策又调了', '家长群里在传新说法', '有机构跑路了', '学校在招编外'],
   '公益': ['资助方换了方向', '一条相关新闻上了热搜', '登记手续变严', '有人捐了一笔'],
-  '把家过好': ['房价动了', '菜价涨得离谱', '老家那边在拆迁', '医保报销比例改了']
+  '把家过好': ['房价动了', '菜价涨得离谱', '老家那边在拆迁', '医保报销比例改了'],
+  '从政': ['上面来了巡视组', '单位换了一把手', '考录政策变了', '一项改革要落地'],
+  '体育': ['联赛改了赛制', '有赞助商撤了', '一个老将退役了', '全运会选拔开始了'],
+  '捞偏门': ['上面在严打', '道上一个大哥进去了', '有人反水了', '片区新来的所长不好说话'],
+  '行医': ['集采又砍了一轮价', '医院在查回扣', '规培政策变了', '一起医闹上了新闻'],
+  '法律': ['律所在裁员', '一部新法要施行', '一个大案开庭了', '法援的案子多了'],
+  '做博主': ['平台改了推荐', '一批账号被封了', '带货被查税', '一个同行一夜爆了'],
+  '投资': ['大盘跌了一个月', '降息了', '一家公司暴雷上了新闻', '有人靠一只票翻了身'],
+  '回乡': ['补贴政策下来了', '旱了一个夏天', '电商进了村', '村里的地被人盯上了']
 };
 function windTick(S, rng) {
   const ev = [];
@@ -1332,6 +1426,7 @@ function addDebt(S, who, amount, days) {
   const due = addDays(S.date, Math.max(15, num(days) || 60));
   S.debts.push({ who: String(who || '某人').slice(0, 12), amount: Math.round(num(amount)), left: Math.round(num(amount)), due, late: false });
   S.player.money += Math.round(num(amount));
+  acct(S, '借进来', Math.round(num(amount)), String(who || ''));
 }
 function debtTick(S) {
   const ev = [];
@@ -1358,6 +1453,7 @@ function payDebt(S, i, amount) {
   if (pay <= 0) return null;
   d.left -= pay;
   S.player.money -= pay;
+  acct(S, '还债', -pay, d.who);
   if (d.left <= 0) {
     const n = S.npcs.find(x => x.name === d.who);
     if (n) n.rel = clamp(n.rel + 6, 0, 100);
@@ -1635,6 +1731,7 @@ function settleKey(S) {
   if (K.cost > 0) {
     const money = Math.round(K.cost * 800 * f.cost);
     S.player.money -= money;
+    acct(S, '谈判让出去的', -money, K.scene || '');
     out.price.push(`让出去的折成钱约${money}`);
   }
   S.stats.keys = (S.stats.keys || 0) + 1;
@@ -1691,8 +1788,8 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 
 /* ---------- 导出 ---------- */
 const API = {
-  SAVE_VERSION, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, EVT_TAGS,
-  num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, fdm,
+  SAVE_VERSION, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
+  num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
