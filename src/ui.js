@@ -239,6 +239,8 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "messages":[{"from":"谁","text":"手机上收到的一条消息，像真的微信"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
+"newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
+"riftEased":["这一段里主角把梁子解开了的人名"],
 "newJob":null或{"employer":"新东家名字","title":"职位","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
 "options":["四个下一步的行动，每条12字内，具体、可执行、互相不同"],
 "nextStop":null,
@@ -271,7 +273,7 @@ function stateBlocks() {
 【志业阶梯】${E.ladderBlock(S)}
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}，${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
-${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
+${(S.rifts || []).filter(r => !r.done).length ? `【结下的梁子】${S.rifts.filter(r => !r.done).map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
 【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
 【名声】行业口碑${p.信誉}，做人${p.人品}
 【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
@@ -297,6 +299,7 @@ const STOP_WRITE = {
   '久': d => `这一段日子很太平。写出日子的质地（重复的通勤、便利店、群里没人说话），结尾给一点隐隐的不对劲或一个很小的苗头，别写成心灵鸡汤。`,
   '条件': d => `这一段结束在主角等的那件事上：${d}。`,
   '考核': d => `这一段结束在季度考核上：${d}。写清楚是谁跟他说的、在哪儿说的、原话大概什么样。结果不许改。`,
+  '裂痕': d => `这一段结束在一个跟主角有梁子的人身上：${d}。他可以是直接堵上门、打电话、找到单位去、或者把事捅到别人那儿——挑一个最难堪的方式。写到他把话撂下为止，别替主角解决。`,
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
 
@@ -312,7 +315,11 @@ function judgeBlock(j) {
   }
   if (j.focus) {
     const f = j.focus;
-    s += `- 投入结算：${f.what}，闷头做了${f.days}天，积累${f.progress}，判定【${f.success ? '做成了' : '没做成'}】${f.crit ? '（' + f.crit + '）' : ''}。做成了就写出成果的具体样子，没做成就写卡在哪。\n`;
+    if (f.heal) {
+      s += `- 养病结算：歇了${f.days}天，判定【${f.success ? '养回来了' : '没养利索'}】。${f.healed && f.healed.length ? `好了的：${f.healed.join('、')}。` : ''}${f.eased ? `连${f.eased}都松了些。` : ''}写他这些天怎么过的（在家、在医院、回老家都行），别写成休假散文，钱和活都还在那儿等着。\n`;
+    } else {
+      s += `- 投入结算：${f.what}，闷头做了${f.days}天，积累${f.progress}，判定【${f.success ? '做成了' : '没做成'}】${f.crit ? '（' + f.crit + '）' : ''}。做成了就写出成果的具体样子，没做成就写卡在哪。\n`;
+    }
   }
   if (j.stuck >= 55) s += `- ⚑ 引擎发现最近几段太像了（相似度${j.stuck}%），这一段必须打破：${j.nudge}。这是硬要求。\n`;
   if (!s) s += '- 本段没有预设判定。\n';
@@ -350,6 +357,7 @@ ${evText}
 - 人物说的话要像人说的。手机消息写进 messages，1-3 条，短。
 - 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
 - 新出现的人写 newNpcs（最多2人），已有的人有变化写 npcUpdates。
+- 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
 - options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
 ${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
 - 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
@@ -420,7 +428,7 @@ function beginChapter(head, sub, action, judge) {
     const bits = [];
     if (judge.fate) { const f = E.fateInfo(judge.fate); bits.push(`<span class="die ${f.cls}">天命 ${judge.fate} ${f.label}</span>`); }
     if (judge.check) bits.push(`<span class="die ${judge.check.success ? 'good' : 'bad'}">${esc(judge.check.attr)} ${judge.check.total}/${judge.check.need} ${judge.check.success ? '成' : '败'}</span>`);
-    if (judge.focus) bits.push(`<span class="die ${judge.focus.success ? 'good' : 'bad'}">投入${judge.focus.days}天 ${judge.focus.success ? '做成' : '没成'}</span>`);
+    if (judge.focus) bits.push(`<span class="die ${judge.focus.success ? 'good' : 'bad'}">${judge.focus.heal ? '养了' : '投入'}${judge.focus.days}天 ${judge.focus.heal ? (judge.focus.success ? '缓过来了' : '没养利索') : (judge.focus.success ? '做成' : '没成')}</span>`);
     dice = `<div class="dicebar">${bits.join('')}</div>`;
   }
   div.innerHTML = `<div class="chaphead"><span class="chapmark">${esc(head)}</span><span class="chaptime">${esc(sub)}</span></div>
@@ -720,7 +728,7 @@ function renderPanel() {
     box.innerHTML = `<h3>我</h3>
     <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div>
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
-      <div><b>精力</b><span>${p.energy}</span></div>
+      <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
       <div><b>做人</b><span>${p.人品}</span></div>
       <div><b>干了多久</b><span>${workedText(p.资历天 || 0)}</span></div>
@@ -742,7 +750,14 @@ function renderPanel() {
     </div>
     ${S.lastReview ? `<div class="card tip">上次考核：${esc(S.lastReview.kind)}——${esc(S.lastReview.text)}</div>` : ''}
     <h4>身上的毛病</h4><div class="card">${S.status.length ? S.status.map(s => `<div class="li"><b>${esc(s.name)}</b><span class="rel">还有${s.days}天</span><div class="tip">${esc(s.desc)}</div></div>`).join('') : '<div class="tip">没有</div>'}
-      ${S.chronic.length ? S.chronic.map(c => `<div class="li"><b>${esc(c.name)}</b><span class="rel bad">去不掉</span><div class="tip">${esc(c.desc)}</div></div>`).join('') : ''}</div>
+      ${S.chronic.length ? S.chronic.map(c => `<div class="li"><b>${esc(c.name)}</b><span class="rel${E.num(c.eased) ? '' : ' bad'}">${E.num(c.eased) ? '养得松了些' : '去不掉'}</span><div class="tip">${esc(c.desc)}｜压着精力上限，也压着判定</div></div>`).join('') : ''}</div>
+    <h4>梁子</h4>
+    <div class="card">${(S.rifts || []).filter(r => !r.done).length
+      ? S.rifts.filter(r => !r.done).map(r => `<div class="li"><b>${esc(r.who)}</b>
+          <span class="rel${r.heat >= 62 ? ' bad' : ''}">${r.heat >= 62 ? '快压不住了' : r.heat >= 35 ? '还没翻篇' : '快淡了'}</span>
+          <div class="tip">${esc(r.kind)}｜${esc(r.reason)}｜从${esc(r.since)}起${r.came ? `｜找过你${r.came}回` : ''}</div></div>`).join('')
+      : '<div class="tip">眼下没跟谁结梁子</div>'}
+      <div class="tip">钱还上、话说开、事办了，梁子自己会凉；不管它就一天天热起来，热到头人家就找上门了。</div></div>
     <h4>这一路</h4><div class="card">${S.history.slice(-14).reverse().map(h => `<div class="li"><span>${esc(h.date)}</span> ${esc(h.summary)}</div>`).join('') || '<div class="tip">还没开始</div>'}</div>
     <div class="btns"><button class="ghost" onclick="exportBook()">导出全本</button><button class="ghost" onclick="openSettings()">设置</button></div>`;
   }
@@ -1146,6 +1161,7 @@ function openFocus() {
   if (S.focus) { toast('手头这摊还没做完'); return; }
   mask('focusMask', true);
   $('fcWhat').value = '';
+  $('fcHeal').checked = S.status.length > 0;
   $('fcDays').value = 10;
   $('fcDaysN').textContent = '10';
 }
@@ -1153,10 +1169,12 @@ function doFocus() {
   const what = $('fcWhat').value.trim();
   if (!what) { toast('写清楚要闷头做什么'); return; }
   const days = Number($('fcDays').value) || 10;
-  const attr = guessAttr(what);
-  S.focus = { what, days, left: days, progress: 0, attr, ideal: /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
+  const heal = $('fcHeal').checked;
+  const attr = heal ? '体能' : guessAttr(what);
+  S.focus = { what, days, left: days, progress: 0, attr, heal,
+    ideal: !heal && /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
   mask('focusMask', false);
-  S.lastAction = `接下来这${days}天，闷头${what}`;
+  S.lastAction = heal ? `接下来这${days}天，先把身体养回来（${what}）` : `接下来这${days}天，闷头${what}`;
   saveGame();
   runSegment();
 }

@@ -110,6 +110,7 @@ function attrVal(S, name) {
   let v = num(p.attrs[name]);
   if (p.energy < 30) v -= Math.round((30 - p.energy) * 0.5);
   if (S.broke) v -= 6;
+  v -= Math.round(chronicLoad(S) * 2);
   v += fdm(S).check;
   return Math.round(v);
 }
@@ -158,7 +159,7 @@ function newState(o) {
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
     job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
-    debts: [],
+    debts: [], rifts: [], ailLog: {},
     schedule: { work: Object.assign({}, DEF_SCHEDULE.work), rest: Object.assign({}, DEF_SCHEDULE.rest) },
     ideal: { progress: 0, stages: [] },
     key: null,
@@ -176,7 +177,10 @@ function newState(o) {
 }
 
 /* ---------- 一天 ---------- */
+const HEAL_PLAN = { '早': '睡觉', '白天': '身心', '晚上': '闲着', '深夜': '睡觉' };
 function todayPlan(S) {
+  // 在养病就不上班：这几天的作息由不得你排
+  if (S.focus && S.focus.heal) return SLOTS.map(sl => ({ slot: sl, act: HEAL_PLAN[sl] }));
   const t = isRest(S.date) ? S.schedule.rest : S.schedule.work;
   return SLOTS.map(sl => ({ slot: sl, act: t[sl] || '闲着' }));
 }
@@ -211,18 +215,21 @@ function dayTick(S, rng) {
   }
   jobTick(S, plan);
 
-  if (S.focus) {   // 投入期间压榨自己
+  if (S.focus) {
     const f = S.focus;
-    const eff = 1 + (p.attrs[f.attr] || 20) / 80 + (p.energy > 60 ? 0.2 : -0.2);
-    f.progress = r2(f.progress + eff);
-    f.left--;
-    en -= 3;
+    if (f.heal) { f.left--; en += 4; }        // 养病：反过来往回补
+    else {                                     // 干活：投入期间压榨自己
+      const eff = 1 + (p.attrs[f.attr] || 20) / 80 + (p.energy > 60 ? 0.2 : -0.2);
+      f.progress = r2(f.progress + eff);
+      f.left--;
+      en -= 3;
+    }
   }
   for (const st of S.status) { en -= 3; st.days--; }
   const healed = S.status.filter(s => s.days <= 0);
   if (healed.length) { S.status = S.status.filter(s => s.days > 0); for (const h of healed) ev.push({ t: '身体', s: `${h.name}好了` }); }
 
-  p.energy = clamp(Math.round(p.energy + en), 0, 100);
+  p.energy = clamp(Math.round(p.energy + en), 0, energyCap(S));
 
   // 关系自己凉：越久没来往掉得越快，家里人和天天见面的慢一些
   for (const n of S.npcs) {
@@ -239,12 +246,14 @@ function dayTick(S, rng) {
   // 熬夜和低精力要还
   if (p.energy < 25 && rng() < 0.09 && !S.status.some(s => s.name === '感冒')) {
     S.status.push({ name: '感冒', desc: '扛不住了，嗓子先坏的', days: rnd(rng, 3, 6) });
-    return { ev, stop: { kind: '身体', detail: '撑不住病倒了' } };
+    const got = noteAil(S, '感冒');
+    return { ev, stop: { kind: '身体', detail: got ? '又病倒了，这回是老毛病了' : '撑不住病倒了' } };
   }
   if (S.flags.nightCnt >= 12 && !S.status.some(s => s.name === '失眠')) {
     S.flags.nightCnt = 0;
     S.status.push({ name: '失眠', desc: '作息彻底乱了，躺下就是睁着眼', days: rnd(rng, 8, 16) });
-    return { ev, stop: { kind: '身体', detail: '连着熬，睡不着了' } };
+    const got2 = noteAil(S, '失眠');
+    return { ev, stop: { kind: '身体', detail: got2 ? '又睡不着了，这回落下了' : '连着熬，睡不着了' } };
   }
 
   return { ev, stop: null };
@@ -391,6 +400,10 @@ function advance(S, opt) {
     events.push(...dt.ev);
     if (dt.stop) { stop = dt.stop; break; }
 
+    const rt = riftTick(S, rng);
+    events.push(...rt.ev);
+    if (rt.stop && S.flags.cool <= 0) { stop = rt.stop; break; }
+
     // 季度考核
     if (S.date.d === 26 && [3, 6, 9, 12].includes(S.date.m) && !S.job.out) {
       const rv = review(S, rng);
@@ -452,6 +465,24 @@ function advance(S, opt) {
 function settleFocus(S, rng) {
   const f = S.focus;
   if (!f) return null;
+  if (f.heal) {
+    S.focus = null;
+    const ck = rollCheck(S, '体能', Math.max(25, 62 - f.days * 1.2), rng || Math.random);
+    const healed = [];
+    const keep = [];
+    for (const st of S.status) {
+      if (ck.success || st.days <= f.days) healed.push(st.name); else { st.days = Math.max(1, st.days - Math.round(f.days * 0.7)); keep.push(st); }
+    }
+    S.status = keep;
+    S.player.energy = clamp(S.player.energy + Math.round(f.days * 1.6), 0, energyCap(S));
+    let eased = null;
+    if (ck.success && f.days >= 14 && (S.chronic || []).length) {
+      const c = S.chronic.reduce((a, b) => (num(a.eased) <= num(b.eased) ? a : b));
+      c.eased = num(c.eased) + 1;
+      eased = c.name;
+    }
+    return Object.assign({ what: f.what, days: f.days, heal: true, healed, eased }, ck);
+  }
   const need = f.need || (60 + f.days * 1.2);
   const ck = rollCheck(S, f.attr, need - Math.min(40, f.progress * 0.8), rng || Math.random);
   S.focus = null;
@@ -512,6 +543,11 @@ function applyTurn(S, d) {
       n.lastSeen = S.stats.days;
     }
   }
+  for (const r of (d.newRifts || []).slice(0, 2)) {
+    if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
+  }
+  for (const e of (d.riftEased || [])) easeRift(S, typeof e === 'string' ? e : e.who, 35);
+
   for (const m of (d.messages || []).slice(0, 4)) {
     if (!m || !m.text) continue;
     const who = String(m.from || '某人').slice(0, 12);
@@ -562,6 +598,81 @@ function applyConvo(S, name, res) {
 }
 
 
+
+
+/* ================= 梁子（结下的与找上门的） ================= */
+const RIFT_KINDS = {
+  '债主':   { rate: 1.15, word: '钱没还' },
+  '前东家': { rate: 0.45, word: '走得不体面' },
+  '竞对':   { rate: 0.6,  word: '抢一碗饭' },
+  '私怨':   { rate: 0.7,  word: '得罪了人' },
+  '甲方':   { rate: 0.85, word: '活没交代好' }
+};
+function addRift(S, who, reason, kind, heat) {
+  S.rifts = S.rifts || [];
+  who = String(who || '某人').slice(0, 12);
+  const k = RIFT_KINDS[kind] ? kind : '私怨';
+  const has = S.rifts.find(r => r.who === who && !r.done);
+  if (has) {
+    has.heat = clamp(has.heat + (num(heat) || 20), 0, 100);
+    has.reason = String(reason || has.reason).slice(0, 40);
+    return has;
+  }
+  const r = { who, reason: String(reason || RIFT_KINDS[k].word).slice(0, 40), kind: k,
+    heat: clamp(num(heat) || 25, 0, 100), since: shortDate(S.date), done: false, came: 0 };
+  S.rifts.push(r);
+  S.rifts = S.rifts.slice(-8);
+  return r;
+}
+function easeRift(S, who, amount) {
+  const r = (S.rifts || []).find(x => x.who === who && !x.done);
+  if (!r) return null;
+  r.heat = clamp(r.heat - (num(amount) || 25), 0, 100);
+  if (r.heat <= 8) { r.done = true; r.endedAt = shortDate(S.date); }
+  return r;
+}
+function riftTick(S, rng) {
+  const ev = [];
+  let stop = null;
+  for (const r of (S.rifts || [])) {
+    if (r.done) continue;
+    let rate = RIFT_KINDS[r.kind].rate * 0.55;
+    if (r.kind === '债主' && !(S.debts || []).some(d => d.who === r.who && d.left > 0)) rate = -0.8;  // 钱还上了自己会凉
+    r.heat = clamp(r.heat + rate, 0, 100);
+    if (r.heat <= 6) { r.done = true; r.endedAt = shortDate(S.date); ev.push({ t: '人情', s: `跟${r.who}那点事算过去了` }); }
+  }
+  // 同一个人不会隔三差五堵你，给他二十天的间隔
+  const hot = (S.rifts || []).filter(r => !r.done && r.heat >= 62 && S.stats.days - num(r.lastCame) >= 20);
+  if (hot.length && rng() < 0.035) {
+    const r = pick(rng, hot);
+    r.came++;
+    r.lastCame = S.stats.days;
+    r.heat = clamp(r.heat - 30, 0, 100);
+    stop = { kind: '裂痕', detail: `${r.who}（${r.kind}）找上门来了：${r.reason}`, who: r.who, riftKind: r.kind };
+  }
+  return { ev, stop };
+}
+
+/* ================= 老毛病 ================= */
+function ailCount(S, name) {
+  S.ailLog = S.ailLog || {};
+  return num(S.ailLog[name]);
+}
+// 同一个毛病犯到第三回，就落下病根了
+function noteAil(S, name) {
+  S.ailLog = S.ailLog || {};
+  const n = (num(S.ailLog[name]) || 0) + 1;
+  S.ailLog[name] = n;
+  if (n >= 3 && !S.chronic.some(c => c.name === '老' + name)) {
+    S.chronic.push({ name: ('老' + name).slice(0, 8), desc: `${name}犯过${n}回，落下了`, eased: 0 });
+    return true;
+  }
+  return false;
+}
+function chronicLoad(S) {
+  return (S.chronic || []).reduce((a, c) => a + Math.max(0, 1 - num(c.eased) * 0.34), 0);
+}
+function energyCap(S) { return Math.round(100 - chronicLoad(S) * 7); }
 
 /* ================= 单位与饭碗 ================= */
 const LEVELS = [
@@ -628,7 +739,7 @@ function review(S, rng) {
     J.mood = -8;
     out.kind = '约谈'; out.text = '被叫去谈话，说下个季度再看看';
   } else {
-    J.out = true; J.title = '待业'; S.ledger.salary = 0;
+    J.out = true; J.was = J.employer; J.title = '待业'; S.ledger.salary = 0;
     out.kind = '裁员'; out.text = '这个季度轮到你，让你走人';
   }
   return out;
@@ -639,6 +750,7 @@ function quitJob(S) {
   J.out = true; J.was = J.employer; J.title = '待业'; J.perf = 0; J.mood = 0;
   S.ledger.salary = 0;
   S.player.信誉 = clamp(S.player.信誉 - 1, 0, 100);
+  if (J.mood < 0 || num(J.perf) < 12) addRift(S, J.was || '原来那家', '走的时候没处理干净', '前东家', 22);
   return { kind: '辞职', text: `从${J.was || '原来那家'}出来了，下个月起没有工资` };
 }
 // 新饭碗（LLM 报的）
@@ -674,6 +786,7 @@ function debtTick(S) {
       const n = S.npcs.find(x => x.name === d.who);
       if (n) n.rel = clamp(n.rel - 12, 0, 100);
       ev.push({ t: '钱', s: `欠${d.who}的${d.left}到期了` });
+      addRift(S, d.who, `欠他${d.left}元没还`, '债主', 35);
       stop = { kind: '钱', detail: `欠${d.who}的${d.left}元到期了，还不上` };
     }
   }
@@ -691,6 +804,7 @@ function payDebt(S, i, amount) {
     const n = S.npcs.find(x => x.name === d.who);
     if (n) n.rel = clamp(n.rel + 6, 0, 100);
     d.late = false;
+    easeRift(S, d.who, 60);
   }
   return { who: d.who, pay, left: d.left };
 }
@@ -918,6 +1032,7 @@ function settleKey(S) {
     }
   } else if (K.result === '谈崩') {
     S.player.信誉 = clamp(S.player.信誉 - 2, 0, 100);
+    if (K.round >= 4) addRift(S, K.opp.name, `${K.scene}那回谈崩了`, K.kind === 'job' ? '竞对' : '私怨', 18);
     S.player.energy = clamp(S.player.energy - Math.round(10 * f.cost), 0, 100);
     out.price.push('灰头土脸');
   }
@@ -972,6 +1087,7 @@ const API = {
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, growAttr,
   simRatio, stuckLevel, pickNudge,
+  RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
   LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,
   METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
   startKey, keyRound, settleKey

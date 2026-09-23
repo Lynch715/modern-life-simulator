@@ -210,6 +210,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   color:var(--ink);font-size:13px;padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .range{width:100%;accent-color:var(--gold)}
+.chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);width:auto}
+.chk input{width:16px;height:16px;accent-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -296,7 +298,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
     <h2>闷头做一件事</h2>
     <div class="frow col"><label>做什么</label><input id="fcWhat" maxlength="24" placeholder="把小说的前三章写完 / 备考 / 装修店面"/></div>
     <div class="frow"><label>投入</label><input class="range" id="fcDays" type="range" min="3" max="60" value="10"/><span id="fcDaysN" style="width:34px;text-align:right">10</span>天</div>
-    <div class="hint">这些天里你基本只顾这一件事，精力会掉，中间可能被人或事打断。到点了引擎判一次成败。</div>
+    <div class="frow"><label>养病</label><label class="chk"><input type="checkbox" id="fcHeal"/> 这一段是歇着养身体，不是干活</label></div>
+    <div class="hint">这些天里你基本只顾这一件事，精力会掉，中间可能被人或事打断。到点了引擎判一次成败。<br>勾了养病就反过来：不涨本事，但能把身上的毛病压下去，歇够两周还有机会松一松老毛病。</div>
     <div class="btns"><button class="ghost" id="fcClose">算了</button><button class="primary" id="fcGo">开始</button></div>
   </div></div>
 </div>

@@ -277,6 +277,39 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   console.log('面完之后：', await pg.evaluate(() => JSON.stringify({ job: S.player.job, 东家: S.job.employer, 月薪: S.ledger.salary, 失业: S.job.out })));
 
+  // 梁子：欠钱过期 → 结梁子 → 找上门 → 还清就凉
+  const rift = await pg.evaluate(() => {
+    ENGINE.addDebt(S, '赵鹏', 2000, 1);
+    S.date = ENGINE.addDays(S.date, 3);
+    const r1 = ENGINE.debtTick(S);
+    const before = JSON.parse(JSON.stringify(S.rifts));
+    S.rifts[0].heat = 80;
+    let came = null;
+    for (let i = 0; i < 200 && !came; i++) { const t = ENGINE.riftTick(S, Math.random); if (t.stop) came = t.stop.detail; }
+    S.player.money = 5000;
+    ENGINE.payDebt(S, S.debts.findIndex(d => d.who === '赵鹏'), 2000);
+    saveGame(); renderPanel();
+    return { 过期: r1.stop && r1.stop.detail, 结下: before.map(x => x.who + '/' + x.kind), 找上门: came, 还清后: S.rifts.map(x => x.who + ':' + Math.round(x.heat)) };
+  });
+  console.log('梁子：', JSON.stringify(rift, null, 0));
+
+  // 养病
+  await pg.evaluate(() => { S.status = [{ name: '感冒', desc: 'x', days: 4 }, { name: '腰伤', desc: 'y', days: 30 }]; S.chronic = [{ name: '老失眠', desc: 'z', eased: 0 }]; saveGame(); rebuildTop(); });
+  await pg.click('#focusBtn');
+  await pg.fill('#fcWhat', '回老家歇一阵');
+  await pg.evaluate(() => { document.getElementById('fcHeal').checked = true; document.getElementById('fcDays').value = 20; });
+  await pg.click('#fcGo');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  const heal = await pg.evaluate(() => ({ 毛病: S.status.map(x => x.name + x.days + '天'), 精力: S.player.energy, 上限: ENGINE.energyCap(S), 骰子条: document.querySelectorAll('.chapter:last-child .die')[document.querySelectorAll('.chapter:last-child .die').length - 1].textContent }));
+  console.log('养病：', JSON.stringify(heal));
+
+  await pg.click('.tab[data-t="me"]');
+  await pg.waitForTimeout(150);
+  const me = (await pg.textContent('#panelBody')).replace(/\s+/g, ' ');
+  console.log('我·梁子：', (me.match(/梁子.{0,60}/) || [''])[0]);
+  await pg.screenshot({ path: 'test/shot-10-rift.png' });
+  await pg.click('#panelClose');
+
   // 改作息
   await pg.click('.tab[data-t="today"]');
   await pg.selectOption('#sc_work_深夜', '理想');
