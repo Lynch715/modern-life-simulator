@@ -375,6 +375,7 @@ function judgeBlock(j) {
 
 function segPrompt(seg) {
   const { from, to, days, events, stop } = seg.adv;
+  if (seg.quick) return quickPrompt(seg);
   const evText = events.length
     ? events.slice(-14).map(e => `[${e.t}] ${e.s}`).join('\n')
     : '（没什么值得记的）';
@@ -410,6 +411,33 @@ ${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段
 - 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
 
 只输出一个合法 JSON，不要任何别的字。格式：
+${SCHEMA}`;
+}
+
+// 就地办一件事：只写这一两天
+function quickPrompt(seg) {
+  const { from, to, events } = seg.adv;
+  const ap = seg.adv.stop && seg.adv.stop.kind !== '就地' ? seg.adv.stop : null;
+  return `${worldRules()}
+
+${stateBlocks()}
+
+【主角这就要做的事】${S.lastAction}
+
+【本段引擎判定（不可更改）】
+${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。数值按引擎认的那个来。\n` : ''}
+【这两天里引擎记下的】${events.length ? events.slice(-6).map(e => `[${e.t}] ${e.s}`).join('；') : '（没什么）'}
+【时间】${E.shortDate(from)} 到 ${E.shortDate(to)}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
+
+要求：
+- **只写这一两天，就写他去做「${S.lastAction}」这件事**。250-380 字。
+- 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
+- 写具体：去了哪儿、见了谁、花了多少钱、对方原话大概是什么、最后手里多了什么少了什么。
+- 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
+- ${ap ? `收尾接上撞见的那件事：${ap.detail}。` : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
+- options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
+
+只输出一个合法 JSON：
 ${SCHEMA}`;
 }
 
@@ -554,13 +582,23 @@ function renderOptions(opts) {
   };
   $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter') $('goBtn').click(); });
   $('focusBtn').onclick = openFocus;
+  const sk = document.createElement('div');
+  sk.className = 'act-row2';
+  sk.innerHTML = `<button class="skip" id="skipBtn">往下过日子　<i>跑到有事发生为止</i></button>`;
+  box.appendChild(sk);
+  $('skipBtn').onclick = skipAhead;
 }
 
 /* ================= 一段推进 ================= */
 async function doAction(action) {
   if (busy || !S || S.over) return;
   S.lastAction = action;
-  await runSegment();
+  await runSegment({ quick: true });     // 自己动手做的事，就写这一两天
+}
+async function skipAhead() {
+  if (busy || !S || S.over) return;
+  S.lastAction = null;
+  await runSegment({ skip: true });      // 日子往下过，跑到有事为止
 }
 
 function makeJudge(action) {
@@ -572,8 +610,10 @@ function makeJudge(action) {
   return j;
 }
 
-async function runSegment() {
+async function runSegment(opt) {
   if (busy) return;
+  opt = opt || {};
+  const quick = !!opt.quick && !!S.lastAction;
   const rng = Math.random;
   const judge = makeJudge(S.lastAction);
 
@@ -586,7 +626,7 @@ async function runSegment() {
 
   // 投入中的事，跑之前先记一下
   const focusing = !!S.focus;
-  const adv = E.advance(S, { rng, maxDays: 35 });
+  const adv = E.advance(S, { rng, maxDays: quick ? 1 : 35, quiet: quick });
   if (focusing && adv.stop.kind === '投入') judge.focus = E.settleFocus(S, rng);
   if (adv.stop.kind === '运') judge.fate = adv.stop.fate;
   else judge.fate = E.d20(rng);
@@ -596,8 +636,8 @@ async function runSegment() {
   S.seg++;
   S.stats.segs++;
   const head = adv.stop.kind === '年终' ? `${adv.to.y}年` : adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
-  setBusy(true, adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……');
-  beginChapter(head, adv.stop.kind === '年终' ? '年终' : `${adv.days}天`, S.lastAction || '', adv.stop.kind === '年终' ? null : judge);
+  setBusy(true, quick ? '正在记下这一天……' : adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……');
+  beginChapter(head, adv.stop.kind === '年终' ? '年终' : quick ? '' : `${adv.days}天`, S.lastAction || '', adv.stop.kind === '年终' ? null : judge);
   renderOptions([]);
   S.pending = { action: S.lastAction, stop: adv.stop };
   saveGame();
@@ -610,7 +650,7 @@ async function runSegment() {
   }
   const isYear = adv.stop.kind === '年终';
   try {
-    const prompt = isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge });
+    const prompt = isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge, quick });
     const d = await llmJSON(prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
@@ -1229,7 +1269,7 @@ function endConvo(goOn) {
   $('chat').classList.remove('on');
   saveGame();
   rebuildTop();
-  if (goOn && said.length) { S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment(); }
+  if (goOn && said.length) { S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment({ quick: true }); }
 }
 
 
@@ -1323,7 +1363,7 @@ function doBuyHouse() {
   S.lastAction = `付了首付，把房子买下来了${r.cut ? `（砍下来${r.cut}）` : ''}`;
   saveGame(); rebuildTop();
   toast(`首付${r.down}，往后每月供${r.monthly}`);
-  runSegment();
+  runSegment({ quick: true });
 }
 function askLove(name) {
   const n = S.npcs.find(x => x.name === name);
@@ -1345,7 +1385,7 @@ function doBreak() {
   closePanel();
   S.lastAction = r.wasMarried ? `跟${P.name}把证退了，家当分了一半` : `跟${P.name}分了`;
   saveGame(); rebuildTop();
-  runSegment();
+  runSegment({ quick: true });
 }
 function doWantKid() {
   const r = E.wantKid(S, Math.random);
@@ -1354,7 +1394,7 @@ function doWantKid() {
   closePanel();
   S.lastAction = '要孩子这件事定下来了';
   saveGame();
-  runSegment();
+  runSegment({ quick: true });
 }
 
 /* ================= 结局 ================= */
@@ -1477,7 +1517,7 @@ function askOpenBiz(kind) {
   S.lastAction = `把${kind}「${name}」开起来了${r.ck.success ? '' : '（开头就不太顺）'}`;
   saveGame();
   toast(`花了${r.need}，口碑起手${r.rep}`);
-  runSegment();
+  runSegment({ quick: true });
 }
 function openHire() {
   const B = S.biz;
@@ -1524,7 +1564,7 @@ function doCloseBiz() {
   S.lastAction = `把「${r.name}」关了`;
   saveGame(); rebuildTop();
   toast(`开了${r.months}个月，一共${r.total >= 0 ? '赚' : '亏'}${Math.abs(r.total)}`);
-  runSegment();
+  runSegment({ quick: true });
 }
 
 /* ================= 年终 ================= */
@@ -1565,7 +1605,7 @@ function doQuit() {
   saveGame();
   closePanel();
   toast(r.text);
-  runSegment();
+  runSegment({ quick: true });
 }
 function doPay(i) {
   const d = (S.debts || [])[i];

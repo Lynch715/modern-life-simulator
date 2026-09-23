@@ -452,6 +452,7 @@ function pickTag(S, rng) {
 function advance(S, opt) {
   opt = opt || {};
   const rng = opt.rng || Math.random;
+  const quiet = !!opt.quiet;          // 就地办事的短段：只认躲不开的事，别拿闲事打断
   const maxDays = opt.maxDays || 35;
   const from = S.date;
   const events = [];
@@ -494,7 +495,7 @@ function advance(S, opt) {
 
     const wd = windTick(S, rng);
     events.push(...wd.ev);
-    if (wd.stop && S.flags.cool <= 0) { stop = wd.stop; break; }
+    if (wd.stop && !quiet && S.flags.cool <= 0) { stop = wd.stop; break; }
 
     const fm = familyTick(S, rng);
     events.push(...fm.ev);
@@ -502,7 +503,7 @@ function advance(S, opt) {
 
     const rt = riftTick(S, rng);
     events.push(...rt.ev);
-    if (rt.stop && S.flags.cool <= 0) { stop = rt.stop; break; }
+    if (rt.stop && !quiet && S.flags.cool <= 0) { stop = rt.stop; break; }
 
     // 季度考核
     if (S.date.d === 26 && [3, 6, 9, 12].includes(S.date.m) && !S.job.out) {
@@ -534,27 +535,27 @@ function advance(S, opt) {
     }
 
     const nt = npcTick(S, rng);
-    if (nt.stop && S.flags.cool <= 0) { stop = nt.stop; break; }
+    if (nt.stop && !quiet && S.flags.cool <= 0) { stop = nt.stop; break; }
 
     const pe = peerTick(S, rng);
     events.push(...pe.ev);
-    if (pe.stop && S.flags.cool <= 0) { stop = pe.stop; break; }
+    if (pe.stop && !quiet && S.flags.cool <= 0) { stop = pe.stop; break; }
 
     // 天命：偶尔掷一把，大吉大凶才停
-    if (S.flags.cool <= 0 && rng() < 0.022) {
+    if (!quiet && S.flags.cool <= 0 && rng() < 0.022) {
       const f = d20(rng);
       if (f <= 3 || f >= 18) { stop = { kind: '运', detail: fateInfo(f).label, fate: f }; break; }
     }
 
     // 随机事件
-    if (S.flags.cool <= 0 && rng() < evtChance(S)) {
+    if (!quiet && S.flags.cool <= 0 && rng() < evtChance(S)) {
       stop = { kind: '事', detail: pickTag(S, rng) };
       break;
     }
   }
 
-  if (!stop) stop = { kind: '久', detail: '这么些天过去，日子太静了' };
-  S.flags.cool = 2;
+  if (!stop) stop = quiet ? { kind: '就地', detail: '' } : { kind: '久', detail: '这么些天过去，日子太静了' };
+  if (!quiet) S.flags.cool = 2;
   S.stats.stops[stop.kind] = (S.stats.stops[stop.kind] || 0) + 1;
   if (S.focus && S.focus.left <= 0) { /* 交给 UI 结算 */ }
 

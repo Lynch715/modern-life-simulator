@@ -146,14 +146,20 @@ const SEG = n => ({
   console.log('开局：', p0, '|', await pg.textContent('#topMoney'));
   await pg.screenshot({ path: 'test/shot-1-boot.png' });
 
-  // 连点四段
+  // 自己动手做四件事：每件只该过一天
   for (let i = 0; i < 4; i++) {
+    const before = await pg.evaluate(() => ENGINE.dateStr(S.date));
     await pg.click('#acts .act-btn');
     await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
     const d = await pg.textContent('#topDate');
-    const head = await pg.$$eval('.chapmark', els => els[els.length - 1].textContent);
-    console.log(`第${i + 1}段：${head}  → ${d}`);
+    console.log(`做第${i + 1}件事：${before.slice(5)} → ${d.slice(5)}`);
   }
+  // 再点「往下过日子」，这才该跳一大截
+  const b1 = await pg.evaluate(() => S.stats.days);
+  await pg.click('#skipBtn');
+  await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
+  const b2 = await pg.evaluate(() => ({ d: S.stats.days, head: document.querySelectorAll('.chapmark')[document.querySelectorAll('.chapmark').length - 1].textContent }));
+  console.log(`往下过日子：跳了 ${b2.d - b1} 天，章头「${b2.head}」`);
   await pg.screenshot({ path: 'test/shot-2-run.png' });
 
   // 投入
