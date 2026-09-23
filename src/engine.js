@@ -164,7 +164,7 @@ function newState(o) {
       remit: org.remit, subsidy: org.subsidy, salary: pay,
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
-    job: { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
+    job: { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
     debts: [], rifts: [], ailLog: {}, moments: [], momentId: 0,
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
     home: { kind: '租', since: '', place: '' },
@@ -188,7 +188,12 @@ function newState(o) {
 
 // 老存档补齐：开局那会儿没记单位名
 function fixJob(S) {
-  if (!S.job) S.job = { employer: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false };
+  if (!S.job) S.job = { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false };
+  // 老存档：岗位和职级以前搅在一起，拆出来
+  if (S.job.post === undefined) {
+    const t = String(S.job.title || '');
+    S.job.post = LEVELS.some(x => x.t === t) ? '' : t;
+  }
   if (!S.job.employer && !S.job.out && S.player && S.player.job) {
     const m = String(S.player.job).match(/^(.{2,10}?)(的)?(实习|助理|专员|编辑|设计|运营|职员|工程师|学徒|服务员|销售)?$/);
     S.job.employer = (m && m[1]) ? m[1] : String(S.player.job).slice(0, 10);
@@ -1271,7 +1276,7 @@ function review(S, rng) {
     J.lv = Math.max(1, lv);
     S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay);
     J.title = LEVELS[J.lv].t;
-    if (J.employer) S.player.job = `${J.employer}的${J.title}`;
+    if (J.employer) S.player.job = `${J.employer}的${J.post || J.title}`;
     out.kind = '转正'; out.text = `转正了，月薪${S.ledger.salary}`;
     return out;
   }
@@ -1279,7 +1284,7 @@ function review(S, rng) {
     J.lv = lv + 1;
     S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay * (0.95 + rng() * 0.15));
     J.title = LEVELS[J.lv].t;
-    if (J.employer) S.player.job = `${J.employer}的${J.title}`;
+    if (J.employer) S.player.job = `${J.employer}的${J.post || J.title}`;
     out.kind = '升职'; out.text = `提了${LEVELS[J.lv].t}，月薪${S.ledger.salary}`;
   } else if (score >= need) {
     const up = Math.round(S.ledger.salary * (0.04 + rng() * 0.06));
@@ -1310,14 +1315,15 @@ function takeJob(S, o) {
   const J = S.job;
   J.out = false;
   J.employer = String(o.employer || J.employer || '新东家').slice(0, 16);
-  J.title = String(o.title || '正式').slice(0, 10);
+  J.post = String(o.title || o.post || J.post || '').slice(0, 10);
+  J.title = LEVELS[clamp(num(o.lv) || 1, 0, LEVELS.length - 1)].t;
   J.lv = clamp(num(o.lv) || Math.max(1, num(J.lv)), 0, LEVELS.length - 1);
   J.probation = !!o.probation;
   J.perf = 0; J.mood = 0; J.quarters = 0;
   S.ledger.base = Math.max(1000, num(o.salary) ? Math.round(num(o.salary) / LEVELS[J.lv].pay) : S.ledger.base);
   S.ledger.salary = num(o.salary) ? Math.round(num(o.salary)) : Math.round(S.ledger.base * LEVELS[J.lv].pay);
-  S.player.job = `${J.employer}的${J.title}`;
-  return { kind: '新工作', text: `${J.employer}，${J.title}，月薪${S.ledger.salary}` };
+  S.player.job = `${J.employer}的${J.post || J.title}`;
+  return { kind: '新工作', text: `${J.employer}，${J.post || J.title}，月薪${S.ledger.salary}` };
 }
 
 /* ---------- 欠的钱 ---------- */

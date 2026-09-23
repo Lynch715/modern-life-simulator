@@ -283,7 +283,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "milestoneClaim":[],
 "newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
 "riftEased":["这一段里主角把梁子解开了的人名"],
-"newJob":null或{"employer":"新东家名字","title":"职位","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
+"newJob":null或{"employer":"新东家名字","title":"岗位（干什么的，比如「编辑助理」「后厨」「客户经理」）","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
 "options":["四个下一步的行动，每条12字内，具体、可执行、互相不同"],
 "nextStop":null,
 "gameOver":false,"ending":null}`;
@@ -314,7 +314,7 @@ function stateBlocks() {
 【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）
 【志业阶梯】${E.ladderBlock(S)}
 【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
-【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}，${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
+【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
 ${(S.rifts || []).filter(r => !r.done).length ? `【结下的梁子】${S.rifts.filter(r => !r.done).map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
 ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}【家】${(() => {
     const H = S.home || {}; const P = E.partnerOf(S); const kids = (S.family && S.family.kids || []).filter(k => !k.unborn);
@@ -479,7 +479,7 @@ function bootPrompt(o) {
 
 另外给出：
 - employer：他上班那家单位的名字（8字内，虚构，比如"明河设计""云榆文化"）
-- title：他在那儿的身份（6字内，比如"实习""助理"）
+- title：他在那儿干的岗位（6字内，比如"剪辑助理""跟单""服务员"，别写成"实习"这种级别）
 - place：他现在住的地方（比如"城西老小区的合租次卧"）
 - npcs：3个他身边现在就有的人（室友/同事/家里人/老同学都行），要有名字、年龄、干什么的、跟他什么关系、在意什么
 - peers：5个跟他同期毕业的人（名字 + 一句话现在在干嘛），这些人以后会自己往前走
@@ -773,8 +773,12 @@ async function startNew() {
       if (t) updateChapterNarrative(t);
     });
     updateChapterNarrative(d.narrative);
-    if (d.employer) { S.job.employer = String(d.employer).slice(0, 10); S.job.title = String(d.title || '实习').slice(0, 6); }
-    S.player.job = d.employer ? `${S.job.employer}的${S.job.title}` : (d.job || S.player.job);
+    if (d.employer) {
+      S.job.employer = String(d.employer).slice(0, 10);
+      S.job.post = String(d.title || '实习').slice(0, 8);
+      S.job.title = E.LEVELS[0].t;
+    }
+    S.player.job = d.employer ? `${S.job.employer}的${S.job.post}` : (d.job || S.player.job);
     S.place = d.place || '';
     S.home = { kind: '租', since: E.shortDate(S.date), place: S.place };
     S.ideal.stages = E.normLadder(d.ladder);
@@ -896,6 +900,7 @@ function renderPanel() {
          <div class="btns"><button class="ghost" onclick="askJob()">去面一场</button></div>`
       : `<div class="lines">
           <div><b>单位</b><span>${esc(S.job.employer || S.player.job || '—')}</span></div>
+          <div><b>岗位</b><span>${esc(S.job.post || '没名目')}</span></div>
           <div><b>职级</b><span>${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（试用期）' : ''}</span></div>
           <div><b>月薪</b><span>${L.salary}</span></div>
           <div><b>下次考核</b><span>${E.nextReview(S)}天后</span></div>

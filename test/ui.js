@@ -12,7 +12,7 @@ const sse = obj => {
 const BOOT = {
   narrative: '七月一日，城西老小区六楼，没有电梯。你把两个行李箱拖上去的时候，T恤已经能拧出水。\n次卧十平米，窗户对着别人家的空调外机。房东说这价格在这一片算良心，你信了，因为你也没得选。\n下午三点，你去那家小设计公司报到。前台指了指角落一张桌子，说以后你坐这儿。',
   summary: '搬进合租次卧，第一天上班',
-  employer: '明河设计', title: '实习',
+  employer: '明河设计', title: '设计助理',
   place: '城西老小区的合租次卧',
   scene: { location: '城西老小区的合租次卧', unresolved: ['押一付三还差两千', '实习期三个月没合同', '家里问什么时候回去考编'] },
   npcs: [
@@ -290,7 +290,7 @@ const SEG = n => ({
   await pg.evaluate(() => { S.ideal.progress = 200; saveGame(); rebuildTop(); renderOptions(S.lastOptions); });
   await pg.click('.tab[data-t="me"]');
   await pg.waitForTimeout(150);
-  console.log('事业卡：', ((await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/事业.{0,70}/) || ['(没找到)'])[0]);
+  console.log('事业卡：', ((await pg.textContent('#panelBody')).replace(/\s+/g, ' ').match(/事业.{0,60}/) || ['(没找到)'])[0]);
   await pg.screenshot({ path: 'test/shot-7-job.png' });
   await pg.click('button:has-text("谈加薪")');
   await pg.waitForSelector('#key.on', { timeout: 15000 });
