@@ -758,18 +758,19 @@ function applyTurn(S, d) {
 
   addNpcs(S, d.newNpcs, d.npcMax || 2);
 
+  const memo = {};
   for (const u of (d.npcUpdates || [])) {
     const n = S.npcs.find(x => x.name === u.name);
     if (!n) continue;
     if (num(u.rel)) n.rel = clamp(r2(n.rel + num(u.rel)), 0, 100);
     if (u.tie) n.tie = String(u.tie).slice(0, 12);
     if (u.note) n.note = String(u.note).slice(0, 50);
-    if (u.mem) {
-      const line = String(u.mem).slice(0, 40);
-      n.mem = n.mem || [];
-      if (n.mem[n.mem.length - 1] !== line) n.mem = n.mem.concat([line]).slice(-6);
-      n.lastSeen = S.stats.days;
-    }
+    if (u.mem) { npcMem(S, n, u.mem); memo[n.name] = 1; n.lastSeen = S.stats.days; }
+  }
+  // 剧情里点到名、模型又没给他记一笔的，引擎替他记下这一段是怎么回事——不然过两天他就忘了
+  if (d.narrative && d.summary) for (const n of S.npcs) {
+    if (memo[n.name] || !n.name || String(d.narrative).indexOf(n.name) < 0) continue;
+    npcMem(S, n, `${d.summary}${S.lastAction ? `（那回主角在：${String(S.lastAction).slice(0, 20)}）` : ''}`);
   }
   for (const r of (d.newRifts || []).slice(0, 1)) {
     if (r && r.who) addRift(S, r.who, r.reason, r.kind, num(r.heat) || 22);
@@ -777,12 +778,12 @@ function applyTurn(S, d) {
   for (const e of (d.riftEased || [])) easeRift(S, typeof e === 'string' ? e : e.who, 35);
 
   for (const mo of (d.moments || []).slice(0, 2)) {
-    if (mo && mo.who && mo.text) addMoment(S, mo.who, mo.text, 'npc');
+    if (mo && mo.who && mo.text) addMoment(S, whoIs(S, mo.who), mo.text, 'npc');
   }
 
   for (const m of (d.messages || []).slice(0, 4)) {
     if (!m || !m.text) continue;
-    const who = String(m.from || '某人').slice(0, 12);
+    const who = whoIs(S, String(m.from || '某人').slice(0, 12));
     S.msgs.push({ from: who, text: String(m.text).slice(0, 120), date: shortDate(S.date), kind: 'chat', read: false });
     const nn = S.npcs.find(x => x.name === who);
     if (nn) nn.lastSeen = S.stats.days;
@@ -804,7 +805,7 @@ function applyTurn(S, d) {
   for (const r of (d.resolvedInfo || [])) S.unresolved = S.unresolved.filter(u => u !== r);
 
   if (d.summary) {
-    S.history.push({ seg: S.seg, date: shortDate(S.date), summary: String(d.summary).slice(0, 40) });
+    S.history.push({ seg: S.seg, date: shortDate(S.date), summary: String(d.summary).slice(0, 40), act: S.lastAction ? String(S.lastAction).slice(0, 40) : '' });
     S.history = S.history.slice(-120);
   }
   if (d.narrative) {
@@ -817,16 +818,38 @@ function applyTurn(S, d) {
 }
 
 /* ---------- 一场聊天的结算 ---------- */
+// 模型常把发件人写成「妈妈」「房东」这种称呼，这里对回通讯录里那个人的真名
+const WHO_KEY = { '妈': '妈妈', '妈妈': '妈妈', '老妈': '妈妈', '母亲': '妈妈', '母子': '妈妈', '母女': '妈妈', '妈妈（家里人）': '妈妈',
+  '爸': '爸爸', '爸爸': '爸爸', '老爸': '爸爸', '父亲': '爸爸', '父子': '爸爸', '父女': '爸爸', '雇主': '老板', '老板': '老板', '领导': '老板', '同期': '同学' };
+const whoKey = t => { t = String(t || '').trim(); return WHO_KEY[t] || t; };
+function whoIs(S, who) {
+  who = String(who || '').trim();
+  if (!who || S.npcs.some(n => n.name === who)) return who;
+  const k = whoKey(who);
+  const hit = S.npcs.filter(n => whoKey(n.tie) === k || whoKey(n.name) === k
+    || (n.tie === '家里人' && (k === '妈妈' || k === '爸爸') && whoKey(n.name) === k));
+  if (hit.length) return hit.sort((a, b) => b.rel - a.rel)[0].name;
+  return who;
+}
+// 老存档：已经收到的消息和朋友圈，发件人对回真名
+function fixWho(S) {
+  for (const m of (S.msgs || [])) m.from = whoIs(S, m.from);
+  for (const m of (S.moments || [])) if (m.who) m.who = whoIs(S, m.who);
+}
+// 人物记事：带日子，留最近 16 条
+function npcMem(S, n, text) {
+  const line = `${shortDate(S.date)} ${String(text).replace(/\s+/g, '').slice(0, 60)}`;
+  n.mem = n.mem || [];
+  const last = n.mem[n.mem.length - 1] || '';
+  if (last.slice(last.indexOf(' ') + 1) === line.slice(line.indexOf(' ') + 1)) return;
+  n.mem = n.mem.concat([line]).slice(-16);
+}
 function applyConvo(S, name, res) {
   const n = S.npcs.find(x => x.name === name);
   if (!n) return;
   if (num(res.rel)) n.rel = clamp(r2(n.rel + num(res.rel)), 0, 100);
   n.lastSeen = S.stats.days;
-  if (res.mem) {
-    const line = String(res.mem).slice(0, 40);
-    n.mem = n.mem || [];
-    if (n.mem[n.mem.length - 1] !== line) n.mem = n.mem.concat([line]).slice(-6);
-  }
+  if (res.mem) npcMem(S, n, `聊过：${res.mem}`);
   if (res.note) n.note = String(res.note).slice(0, 50);
 }
 
@@ -1831,7 +1854,7 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
-  num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
+  npcMem, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,

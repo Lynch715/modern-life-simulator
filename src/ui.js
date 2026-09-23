@@ -309,7 +309,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得"}],
 "newNpcs":[{"name":"","age":0,"job":"","tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
-"messages":[{"from":"谁","text":"手机上收到的一条消息，像真的微信"}],
+"messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信"}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
@@ -1308,16 +1308,13 @@ function showNpc(name) {
 function openThread(from) {
   for (const m of S.msgs) if (m.from === from) m.read = true;
   saveGame();
-  const n = S.npcs.find(x => x.name === from);
-  if (n) { openConvo(from); return; }
-  // 没进通讯录的（房东、同期的朋友圈之类）只能看
-  const ms = S.msgs.filter(m => m.from === from).slice(-8);
-  $('npcBox').innerHTML = `<h2>${esc(from)}</h2>
-    <div class="tip" style="margin-top:-10px">${(S.peers || []).some(p => p.name === from) ? '同学' : ''}</div>
-    <div class="card" style="margin-top:14px">${ms.map(m => `<div class="li"><span>${esc(m.date)}</span> ${esc(m.text)}</div>`).join('')}</div>
-    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">知道了</button></div>`;
-  mask('npcMask', true);
-  renderPanel();
+  if (!S.npcs.some(x => x.name === from)) {
+    // 还没进通讯录的人（同学、房东之类）给你发了消息：直接加进来，点开就能回
+    const peer = (S.peers || []).find(p => p.name === from);
+    E.addNpcs(S, [{ name: from, tie: peer ? '同学' : (/^(房东|老板|领导|同事|室友|邻居|快递|中介|物业)$/.test(from) ? from : ''),
+      job: peer ? (peer.note || '') : '', note: peer ? (peer.note || '') : '给你发过消息', rel: peer ? 30 : 18, close: false }], 1);
+  }
+  openConvo(from);
 }
 
 /* ---- 私聊 ---- */
@@ -1443,7 +1440,7 @@ async function convoTurn(say, judge) {
   setBusy(false);
   saveGame();
 }
-function endConvo(goOn) {
+function endConvo(goOn, toPanel) {
   const c = S.convo;
   if (!c) { $('chat').classList.remove('on'); return; }
   const n = S.npcs.find(x => x.name === c.name);
@@ -1466,7 +1463,7 @@ function endConvo(goOn) {
   saveGame();
   rebuildTop();
   const back = convoFrom; convoFrom = '';
-  if (!goOn && back) gotoTab(back);           // 点返回：回到刚才那个面板
+  if (toPanel && back) gotoTab(back);         // 只有点返回键才回刚才那个面板；被别的界面收起时不回
   if (goOn && said.length) { S.actTyped = false; S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment({ quick: true }); }
 }
 
@@ -2000,6 +1997,7 @@ function loadGame() {
   if (!S || !S.player) return false;
   E.fixJob(S);
   E.fixPace(S);
+  E.fixWho(S);
   $('story').innerHTML = S.chapters.join('');
   if (S.runId) bookAll(S.runId).then(rows => {
     if (!rows || rows.length <= S.chapters.length) return;
@@ -2112,7 +2110,7 @@ function boot() {
   $('keyEnd').onclick = keyFinish;
   $('chatSend').onclick = convoSend;
   $('chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') convoSend(); });
-  $('chatBack').onclick = () => endConvo(false);
+  $('chatBack').onclick = () => endConvo(false, true);
   $('chatDone').onclick = () => endConvo(true);
   // 输入框拿到焦点时浏览器会把整个壳子顶上去，这里按回去
   $('app').addEventListener('scroll', () => { const a = $('app'); a.scrollTop = 0; a.scrollLeft = 0; }, { passive: true });

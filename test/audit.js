@@ -280,6 +280,16 @@ const SEG = n => ({
   const relAfter = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); const n = s.npcs.find(x => x.name === '赵鹏'); return { rel: n.rel, mem: n.mem, lastSeen: n.lastSeen, day: s.stats.days }; });
   console.log('聊完之后的赵鹏：', JSON.stringify(relAfter));
 
+  // 不在通讯录里的人发来消息：点开也要能直接聊
+  await pg.click('.tab[data-t="phone"]');
+  await pg.waitForTimeout(150);
+  await pg.click('.thread:has-text("房东")');
+  await pg.waitForTimeout(200);
+  console.log('点开房东：', await pg.evaluate(() => `${document.getElementById('chat').classList.contains('on') ? '进了对话框（对）' : '没进对话框（不对）'}｜历史${document.querySelectorAll('#chatBody .bub').length}条｜通讯录里${S.npcs.some(n => n.name === '房东') ? '有' : '没有'}他`));
+  await pg.click('#chatBack');
+  await pg.waitForTimeout(150);
+  await pg.click('#panelClose');
+
   // 从手机点进聊天，点返回应该回到手机
   await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);

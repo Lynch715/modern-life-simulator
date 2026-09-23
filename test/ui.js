@@ -236,6 +236,16 @@ const SEG = n => ({
   const relAfter = await pg.evaluate(() => { const s = JSON.parse(localStorage.getItem('mls_save')); const n = s.npcs.find(x => x.name === '赵鹏'); return { rel: n.rel, mem: n.mem, lastSeen: n.lastSeen, day: s.stats.days }; });
   console.log('聊完之后的赵鹏：', JSON.stringify(relAfter));
 
+  // 不在通讯录里的人发来消息：点开也要能直接聊
+  await pg.click('.tab[data-t="phone"]');
+  await pg.waitForTimeout(150);
+  await pg.click('.thread:has-text("房东")');
+  await pg.waitForTimeout(200);
+  console.log('点开房东：', await pg.evaluate(() => `${document.getElementById('chat').classList.contains('on') ? '进了对话框（对）' : '没进对话框（不对）'}｜历史${document.querySelectorAll('#chatBody .bub').length}条｜通讯录里${S.npcs.some(n => n.name === '房东') ? '有' : '没有'}他`));
+  await pg.click('#chatBack');
+  await pg.waitForTimeout(150);
+  await pg.click('#panelClose');
+
   // 从手机点进聊天，点返回应该回到手机
   await pg.click('.tab[data-t="phone"]');
   await pg.waitForTimeout(150);
@@ -559,7 +569,7 @@ const SEG = n => ({
   await pg.waitForTimeout(800);
   if (!(await pg.$('.act-btn'))) {
     console.log('刷新后没按钮：', await pg.evaluate(() => ({
-      有存档: !!localStorage.getItem('mls_save'),
+      有存档: !!localStorage.getItem('mls_save'), 键: Object.keys(localStorage).join(','), 地址: location.href.slice(-30),
       存档KB: Math.round((localStorage.getItem('mls_save') || '').length / 1024),
       S有没有: !!window.S, over: window.S && S.over, opts: window.S && S.lastOptions,
       开局弹窗: document.getElementById('startMask').className, acts: document.getElementById('acts').innerHTML.slice(0, 80)
