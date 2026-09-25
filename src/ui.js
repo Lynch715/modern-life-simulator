@@ -2117,6 +2117,12 @@ function boot() {
   $('setClose').onclick = () => mask('setMask', false);
   $('setRestart').onclick = restart;
   $('setExport').onclick = exportSave;
+  $('wxCopy').onclick = () => {
+    const no = $('wxNo').textContent;
+    const done = () => toast('微信号已复制：' + no);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(no).then(done, () => toast('复制没成，手动记一下：' + no));
+    else toast('手动记一下：' + no);
+  };
   $('setImport').onclick = () => $('setFile').click();
   $('setFile').onchange = e => { importSave(e.target.files[0]); e.target.value = ''; };
   $('fcGo').onclick = doFocus;

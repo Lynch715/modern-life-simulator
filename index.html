@@ -418,6 +418,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
     <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
     <div class="btns"><button class="ghost" id="setExport">导出存档</button><button class="ghost" id="setImport">导入存档</button></div>
     <div class="hint">存档是一个文件，带着它换设备接着玩（章节全本也在里面）。导入会盖掉这台设备上现在这局。</div>
+    <div class="frow" style="margin-top:6px"><label>反馈</label><span style="flex:1;font-size:13px">微信 <b id="wxNo">lynchrrr</b></span><button class="ghost sm" id="wxCopy">复制</button></div>
+    <div class="hint">遇到 bug、有想法、想聊聊，都可以加我。备注一句"生活模拟器"就行。</div>
     <input type="file" id="setFile" accept=".json,application/json" style="display:none"/>
     <div class="btns"><button class="ghost" id="instOpen">装到桌面</button><button class="ghost" id="setRestart">重开一局</button></div>
   </div></div>
@@ -4460,6 +4462,12 @@ function boot() {
   $('setClose').onclick = () => mask('setMask', false);
   $('setRestart').onclick = restart;
   $('setExport').onclick = exportSave;
+  $('wxCopy').onclick = () => {
+    const no = $('wxNo').textContent;
+    const done = () => toast('微信号已复制：' + no);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(no).then(done, () => toast('复制没成，手动记一下：' + no));
+    else toast('手动记一下：' + no);
+  };
   $('setImport').onclick = () => $('setFile').click();
   $('setFile').onchange = e => { importSave(e.target.files[0]); e.target.value = ''; };
   $('fcGo').onclick = doFocus;
