@@ -155,6 +155,9 @@ console.log('—— 引擎 ——');
         { type: 'quit', text: '辞职', diff: '普通', attr: '表达' }, { type: 'spend', text: '请赵鹏吃饭', amount: 200, diff: '顺手' }],
         days: 1, limits: ['别替我答应任何事'], style: [], stopWhen: null }) });
     }
+    if (post.includes('这一轮写谁会接主角刚发的这句')) {
+      return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse({ cs: [{ who: '孙姐', to: '', text: '行 周六来', rel: 1 }], deal: [{ who: '孙姐', kind: '对方答应', what: '周六来家里吃饭', inDays: 4 }, { who: '外人', kind: '对方答应', what: '不该记' }] }) });
+    }
     if (post.includes('拉的微信群')) {
       groupCalls++; lastGroup = post;
       const body = { replies: [{ who: '赵鹏', text: '收到' }, { who: '孙姐', text: '谢谢老板' }, { who: '外人', text: '不该出现' }], gist: '群里抢红包', deal: [], summary: '群聊' };
@@ -308,6 +311,17 @@ console.log('—— 引擎 ——');
   await pg.waitForTimeout(200);
   ok(await pg.evaluate(() => document.getElementById('npcMask').classList.contains('on') && document.getElementById('npcBox').textContent.includes('周德贵') && !document.getElementById('chat').classList.contains('on')), '点头像打开名片，不进聊天');
   await pg.evaluate(() => { mask('npcMask', false); closePanel(); });
+
+  // 朋友圈接进世界
+  await pg.evaluate(() => { const m = E.addMoment(S, '孙姐', '新买了个锅', 'npc'); window.__mid = m.id; });
+  await pg.evaluate(() => { doComment(window.__mid, ''); });
+  await pg.waitForSelector('#askMask.on'); await pg.fill('#askIn', '周六去你家蹭饭'); await pg.click('#askOk'); await idle();
+  const mw = await pg.evaluate(() => ({ pl: S.pledges.map(p => p.who + p.what), hist: S.history.slice(-1)[0].summary }));
+  ok(mw.pl.includes('孙姐周六来家里吃饭') && !mw.pl.some(t => t.includes('不该记')), '朋友圈里说定的事进承诺表', mw.pl.join('｜'));
+  ok(/朋友圈：在孙姐那条底下说「周六去你家蹭饭」，孙姐回「行 周六来」/.test(mw.hist), '朋友圈来回进往事提要', mw.hist);
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  ok(/【朋友圈近况/.test(lastSeg) && /孙姐发：「新买了个锅」｜底下：主角：周六去你家蹭饭/.test(lastSeg), '写故事时带着朋友圈近况');
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();

@@ -3621,6 +3621,15 @@ function waitBlock() {
   return L.length ? `【主角在等的】${L.map(w => w.type === 'money' ? `存款到${w.n}` : w.type === 'npc' ? `${w.who}回话` : `${w.label || '到日子'}`).join('；')}\n` : '';
 }
 
+// 最近几天跟主角有关的朋友圈：他发的、他留过言的、底下提到他的
+function momentsBlock() {
+  const me = S.player.name;
+  const L = (S.moments || []).filter(m => S.stats.days - E.num(m.day) <= 5 &&
+    (m.who === me || m.cs.some(c => c.who === me || c.to === me) || String(m.text).indexOf(me) >= 0)).slice(-5);
+  if (!L.length) return '';
+  return `【朋友圈近况（这几天跟主角有关的，剧情要接得上，碰上了可以自然带一句，别为了提它硬编情节）】\n${L.map(m =>
+    `${m.date} ${m.who === me ? '主角' : m.who}发：「${m.text}」${m.cs.length ? `｜底下：${m.cs.slice(-6).map(c => `${c.who === me ? '主角' : c.who}${c.to ? '回复' + (c.to === me ? '主角' : c.to) : ''}：${c.text}`).join('；')}` : ''}`).join('\n')}\n`;
+}
 function stateBlocks() {
   const p = S.player, L = S.ledger;
   const M = memBlocks();
@@ -3658,7 +3667,7 @@ ${npc}
 【同期的人在做什么】
 ${peers}
 【未了的事】${S.unresolved.join('；') || '暂时没有'}
-${pledgeBlock()}${waitBlock()}
+${pledgeBlock()}${waitBlock()}${momentsBlock()}
 【往事提要】
 ${M.sums}
 【最近发生的】
@@ -5274,6 +5283,16 @@ function momThread(m) {
   return m.cs.map(c => `${tag(c.who)}${c.to ? ' 回复 ' + tag(c.to) : ''}：${c.text}`).join('\n') || '（还没人留言）';
 }
 // 主角留言 / 回复某人之后，底下谁来接
+// 朋友圈里说定的事，跟聊天里说定的一样进承诺表
+function momDeals(list, ok) {
+  for (const dl of (Array.isArray(list) ? list : []).slice(0, 2)) {
+    const x = E.sanitizeGroup({ deal: [dl] }, [...ok]).deal[0];
+    if (!x) continue;
+    const who = E.whoIs(S, x.who);
+    if (E.addPledge(S, { who, what: x.what, kind: x.kind, inDays: x.inDays }))
+      toast(`记下了：${x.kind === '主角答应' ? '你答应' + who : x.kind === '对方答应' ? who + '答应你' : '你回绝了' + who}「${x.what}」`);
+  }
+}
 async function doComment(id, to) {
   const m = (S.moments || []).find(x => x.id === id);
   if (!m || busy) return;
@@ -5308,8 +5327,10 @@ ${momPeople(cand)}
 - to 写他回复的是谁（通常是主角，也可以是底下别的人）。
 - rel 是这一来一回让他跟主角近了还是远了，-2 到 2。
 
-只输出一个合法 JSON：{"cs":[{"who":"","to":"","text":"","rel":0}]}`, null, { maxTokens: 500, temperature: 1.05 });
-    const ok = new Set(cand);
+- 这一来一回里要是真说定了什么（答应来借住、约了吃饭、答应帮忙），写进 deal；只是嘴上开玩笑的不算。
+
+只输出一个合法 JSON：{"cs":[{"who":"","to":"","text":"","rel":0}],"deal":[{"who":"跟主角说定事的那个人","kind":"主角答应|对方答应|主角拒绝","what":"具体的事（20字内）","inDays":几天内办，没期限填0}]}`, null, { maxTokens: 600, temperature: 1.05 });
+    const ok = new Set(cand), replied = [];
     for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 2)) {
       const w = c && E.whoIs(S, String(c.who || '').trim());
       if (!w || !ok.has(w) || !c.text) continue;
@@ -5317,7 +5338,11 @@ ${momPeople(cand)}
       E.commentMoment(S, id, w, String(c.text).slice(0, 60), toW === w ? '' : toW);
       const n = S.npcs.find(x => x.name === w);
       if (n) { E.momentRel(S, n, E.num(c.rel)); n.lastSeen = S.stats.days; E.npcMem(S, n, `朋友圈里主角说「${txt.slice(0, 16)}」，他回「${String(c.text).slice(0, 16)}」`); }
+      replied.push(`${w}回「${String(c.text).slice(0, 16)}」`);
     }
+    momDeals(d.deal, ok);
+    S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `朋友圈：在${m.who === S.player.name ? '自己' : m.who}那条底下${to ? '回' + to : ''}说「${txt.slice(0, 16)}」${replied.length ? '，' + replied.join('，') : '，没人回'}` });
+    S.history = S.history.slice(-120);
     saveGame(); renderPanel();
   } catch (e) { toast(e.message || '没人回'); }
   setBusy(false);
@@ -5338,7 +5363,7 @@ async function postMoment() {
   const mm = E.addMoment(S, S.player.name, v, 'me');
   saveGame(); renderPanel();
   const cand = momAudience(v);
-  if (!cand.length) return;
+  if (!cand.length) { S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `朋友圈：发了「${v.slice(0, 20)}」，没人看见` }); saveGame(); return; }
   setBusy(true, '发出去了……');
   try {
     const d = await llmJSON(`${worldRules()}
@@ -5354,7 +5379,9 @@ ${momPeople(cand.map(n => n.name))}
 - 留言的人之间认识的，可以互相接一句（to 写回复谁），不回复别人就把 to 留空。
 - rel 是他看了这条之后跟主角近了还是远了，-2 到 2。
 
-只输出一个合法 JSON：{"likes":["名字"],"cs":[{"who":"谁","to":"","text":"留言","rel":0}]}`, null, { maxTokens: 600, temperature: 1.08 });
+- 底下要是真有人跟主角说定了什么（约饭、要来串门），写进 deal；开玩笑的不算。
+
+只输出一个合法 JSON：{"likes":["名字"],"cs":[{"who":"谁","to":"","text":"留言","rel":0}],"deal":[{"who":"","kind":"主角答应|对方答应|主角拒绝","what":"","inDays":0}]}`, null, { maxTokens: 700, temperature: 1.08 });
     const ok = new Set(cand.map(n => n.name));
     for (const l of (Array.isArray(d.likes) ? d.likes : []).slice(0, 8)) if (ok.has(E.whoIs(S, String(l).trim()))) E.addLiker(S, mm, String(l).trim());
     for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 3)) {
@@ -5365,6 +5392,9 @@ ${momPeople(cand.map(n => n.name))}
       const n = S.npcs.find(x => x.name === w);
       if (n) { E.momentRel(S, n, E.num(c.rel)); E.npcMem(S, n, `朋友圈看见主角发「${v.slice(0, 16)}」，留言「${String(c.text).slice(0, 16)}」`); }
     }
+    momDeals(d.deal, ok);
+    S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `朋友圈：发了「${v.slice(0, 20)}」${mm.cs.length ? `，${mm.cs.slice(0, 2).map(c => c.who + '回' + String(c.text).slice(0, 10)).join('，')}` : '，没人留言'}` });
+    S.history = S.history.slice(-120);
     saveGame(); renderPanel();
   } catch (e) { toast(e.message || '没人理你'); }
   setBusy(false);
