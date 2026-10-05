@@ -1,0 +1,21 @@
+/* 可视视口回归：node test/layout.js。真实界面另用应用内浏览器验收。 */
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const source = fs.readFileSync(require('path').join(__dirname, '../src/ui.js'), 'utf8');
+const fn = source.slice(source.indexOf('function fitViewport()'), source.indexOf('// 面板停在底栏上面'));
+const props = {}, root = { style: { setProperty: (k, v) => props[k] = v }, dataset: {} };
+const vv = { height: 852, offsetTop: 0, scale: 1 };
+const context = { window: { innerHeight: 852, visualViewport: vv }, document: { documentElement: root, activeElement: { tagName: 'BODY' } } };
+vm.createContext(context); vm.runInContext(fn, context);
+const fit = () => vm.runInContext('fitViewport()', context);
+fit(); assert.equal(props['--view-h'], '852px'); assert.equal(root.dataset.keyboard, 'false');
+context.document.activeElement.tagName = 'INPUT'; vv.height = 480; vv.offsetTop = 59;
+fit(); assert.equal(props['--view-h'], '480px'); assert.equal(props['--view-top'], '59px'); assert.equal(root.dataset.keyboard, 'true');
+vv.height = 852; vv.offsetTop = 0; context.document.activeElement.tagName = 'BODY';
+fit(); assert.equal(props['--view-h'], '852px'); assert.equal(props['--view-top'], '0px'); assert.equal(root.dataset.keyboard, 'false');
+vv.scale = 2; vv.height = 200; fit(); assert.equal(props['--view-h'], '852px');
+context.window.visualViewport = null; context.window.innerHeight = 568;
+fit(); assert.equal(props['--view-h'], '568px'); assert.equal(props['--view-top'], '0px');
+assert(!source.includes('function fixViewport('));
+const html = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8');
+assert(html.includes(fn.trim()), '构建文件必须同步包含视口修复');
+console.log('PASS：正常视口、键盘打开/关闭、偏移、缩放保护、旧浏览器回退、构建同步');
