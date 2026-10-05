@@ -2705,35 +2705,49 @@ async function exportBook() {
 }
 
 /* ================= 启动 ================= */
-// 使用可视视口，避免屏幕尺寸、布局视口和键盘区域混算。
-function fitViewport() {
-  const root = document.documentElement, vv = window.visualViewport;
-  // 捏合缩放不改变布局，避免缩放时反复重排。
-  if (vv && Math.abs(vv.scale - 1) > 0.02) return;
-  const height = vv ? vv.height : window.innerHeight;
-  if (!(height > 0)) return;
-  root.style.setProperty('--view-h', height + 'px');
-  root.style.setProperty('--view-top', (vv ? vv.offsetTop : 0) + 'px');
-  const editing = /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '');
-  root.dataset.keyboard = String(!!(editing && vv && window.innerHeight - height > 100));
+// 装到桌面的模式：页面高度按整块屏幕算
+function fitStandalone() {
+  const sa = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!sa) return;
+  const root = document.documentElement;
+  root.classList.add('pwa');
+  const portrait = !window.matchMedia || matchMedia('(orientation: portrait)').matches;
+  const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+  root.style.setProperty('--app-h', Math.max(window.innerHeight, portrait ? long : short) + 'px');
 }
+// 装到桌面后，iOS 偶尔按比屏幕宽的尺寸排版再整页缩小（底下就空一截）：发现了就按屏幕宽度重设视口
+function fixViewport() {
+  const sa = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!sa) return;
+  const portrait = !window.matchMedia || matchMedia('(orientation: portrait)').matches;
+  const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+  const vm = document.querySelector('meta[name=viewport]');
+  if (vm && innerWidth > w + 2) { vm.setAttribute('content', `width=${w}, initial-scale=1, viewport-fit=cover`); document.documentElement.dataset.vpfix = innerWidth + '>' + w; }
+}
+// 安装信息用脚本挂上去（跟武侠、修仙一样），不在页面头里写死 manifest 链接：
+// iOS 26 认到写死的 manifest 会按另一套方式开桌面应用，页面高度算矮，底下空一截
+(function manifest() {
+  try {
+    const abs = p => new URL(p, location.href).href;
+    const mf = {
+      name: '现代生活模拟器', short_name: '现代生活', lang: 'zh-CN',
+      description: '接入你自己的大模型，在一座虚构的城市里从22岁开始，把想干成的事一点点干起来。',
+      start_url: location.pathname + location.search, scope: location.pathname.replace(/[^/]*$/, ''),
+      display: 'standalone', orientation: 'portrait', background_color: '#0f1116', theme_color: '#0f1116',
+      icons: [{ src: abs('icon/icon-192.png'), sizes: '192x192', type: 'image/png' }, { src: abs('icon/icon-512.png'), sizes: '512x512', type: 'image/png' },
+        { src: abs('icon/maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' }]
+    };
+    const l = document.createElement('link'); l.rel = 'manifest';
+    l.href = URL.createObjectURL(new Blob([JSON.stringify(mf)], { type: 'application/manifest+json' }));
+    document.head.appendChild(l);
+  } catch (_) { }
+})();
 // 面板停在底栏上面
 function fitTabs() { const t = $('tabs'); if (t) document.documentElement.style.setProperty('--tabsH', t.offsetHeight + 'px'); }
 function boot() {
   applySkin();
-  fitViewport();
   fitTabs();
-  const fitLayout = () => requestAnimationFrame(() => { fitViewport(); fitTabs(); });
-  window.addEventListener('resize', fitLayout);
-  window.addEventListener('pageshow', fitLayout);
-  window.addEventListener('orientationchange', fitLayout);
-  document.addEventListener('focusin', fitLayout);
-  document.addEventListener('focusout', fitLayout);
-  if (window.visualViewport) {
-    visualViewport.addEventListener('resize', fitLayout);
-    visualViewport.addEventListener('scroll', fitLayout);
-  }
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fitTabs).observe($('tabs'));
+  window.addEventListener('resize', fitTabs);
   // iOS 上 user-scalable 会被忽略，这里再挡一道
   document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
   document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
