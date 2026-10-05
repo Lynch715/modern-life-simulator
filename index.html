@@ -1974,7 +1974,14 @@ const whoKey = t => { t = String(t || '').trim(); return WHO_KEY[t] || t; };
 function whoIs(S, who) {
   who = String(who || '').trim();
   if (!who || S.npcs.some(n => n.name === who)) return who;
-  const k = whoKey(who);
+  // 「周德胜（房东）」「房东周德胜」这种：括号去掉、名字包在里面的，都认回通讯录里那个人
+  const base = who.replace(/[（(][^）)]*[）)]/g, '').replace(/\s+/g, '').trim();
+  if (base && base !== who && S.npcs.some(n => n.name === base)) return base;
+  const TITLE = /^(房东|老板|领导|同事|室友|邻居|阿姨|叔叔|大姐|大哥|姐|哥|老师|师傅|总|经理|主管|HR|hr|同学|表姐|表哥|医生|中介)$/;
+  const inside = S.npcs.filter(n => n.name && n.name.length >= 2 && who.indexOf(n.name) >= 0 && TITLE.test(base.replace(n.name, '')))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+  if (inside) return inside.name;
+  const k = whoKey(base || who);
   const hit = S.npcs.filter(n => whoKey(n.tie) === k || whoKey(n.name) === k
     || (n.tie === '家里人' && (k === '妈妈' || k === '爸爸') && whoKey(n.name) === k));
   if (hit.length) return hit.sort((a, b) => b.rel - a.rel)[0].name;
@@ -1982,6 +1989,15 @@ function whoIs(S, who) {
 }
 // 老存档：已经收到的消息和朋友圈，发件人对回真名
 function fixWho(S) {
+  // 通讯录里「周德胜（房东）」和「周德胜」两条：并成一个，记忆合在一起
+  for (const n of S.npcs.slice()) {
+    const base = String(n.name).replace(/[（(][^）)]*[）)]/g, '').trim();
+    const keep = base && base !== n.name && S.npcs.find(x => x !== n && x.name === base);
+    if (!keep) continue;
+    keep.mem = (keep.mem || []).concat(n.mem || []).slice(-16);
+    keep.rel = Math.max(num(keep.rel), num(n.rel));
+    S.npcs.splice(S.npcs.indexOf(n), 1);
+  }
   for (const m of (S.msgs || [])) m.from = whoIs(S, m.from);
   for (const m of (S.moments || [])) if (m.who) m.who = whoIs(S, m.who);
 }
@@ -3015,7 +3031,8 @@ function guessGender(given, tie, job, name) {
 function addNpcs(S, list, max) {
   for (const n of (list || []).slice(0, max || 2)) {
     if (!n || !n.name) continue;
-    if (S.npcs.some(x => x.name === n.name)) continue;
+    n.name = String(n.name).replace(/[（(][^）)]*[）)]/g, '').trim() || n.name;
+    if (S.npcs.some(x => x.name === n.name || x.name === whoIs(S, n.name))) continue;
     S.npcs.push({
       name: String(n.name).slice(0, 12), age: num(n.age) || 0,
       job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
