@@ -857,6 +857,7 @@ async function runSegment(opt) {
   const floor = E.num(E.fdm(S).fateFloor);
   if (floor) judge.fate = Math.max(floor, judge.fate);          // 言出法随这一档不走背字
   judge.fateFx = E.applyFate(S, judge.fate);
+  rebuildTop();                 // 日子和钱已经动了，顶栏马上跟上，别等故事写完
 
   S.seg++;
   S.stats.segs++;
@@ -2290,8 +2291,21 @@ async function exportBook() {
 }
 
 /* ================= 启动 ================= */
+// 装到桌面的模式：页面高度按整块屏幕算
+function fitStandalone() {
+  const sa = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!sa) return;
+  const root = document.documentElement;
+  root.classList.add('pwa');
+  const portrait = !window.matchMedia || matchMedia('(orientation: portrait)').matches;
+  const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+  root.style.setProperty('--app-h', Math.max(window.innerHeight, portrait ? long : short) + 'px');
+}
 function boot() {
   applySkin();
+  fitStandalone();
+  window.addEventListener('resize', fitStandalone);
+  window.addEventListener('orientationchange', () => setTimeout(fitStandalone, 300));
   // iOS 上 user-scalable 会被忽略，这里再挡一道
   document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
   document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
