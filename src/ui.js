@@ -310,7 +310,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","intimate":false}],
 "newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信","pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"}（这人真给主角打钱时才填，数目对得上他的家底）}],
-"moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
+"moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关","likes":["点赞的人，只能是【认识的人】里跟他也认识的"],"cs":[{"who":"底下留言的人（【认识的人】里跟他也认识的，不能是主角）","to":"回复谁，没有就空","text":"留言，十五字内"}]}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
 "together":"这一段里主角跟谁明确确定了恋爱关系（说开了、答应了、在一起了）就写那人名字，没有就写空字符串",
@@ -406,7 +406,8 @@ ${M.recents}`;
 }
 
 const STOP_WRITE = {
-  '约': d => `这一段收在赴约的当口：${d}。写到主角刚到、事情要开始，不要把结果写出来。`,
+  '约': d => `这一段收在约好的那天早上：${d}。写这几天怎么过的，最后停在他想起今天有这件事（对方也可以发一句提醒）。不许写他已经去了，去不去由玩家定。`,
+  '承诺': d => `这一段收在说好的那件事到期的那天早上：${d}。写这几天怎么过的，最后停在他想起这件事、对方也许发来一句提醒。不许写他去没去，去不去由玩家定。`,
   '事': d => E.fdm(S).fiat
     ? `这一段结束在一件冒出来的事上，类别是【${d}】。这一局里这种事往好里写：机会、贵人、意外之财、有人主动找上门帮忙。写到这件好事刚砸到他头上为止。`
     : `这一段结束在一件突然冒出来的事上，类别是【${d}】。你来决定具体是什么事，要具体、可信、跟主角眼下的处境有关系。写到事情刚砸下来、主角还没来得及反应。`,
@@ -557,7 +558,7 @@ ${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的
 - 写具体：去了哪儿、见了谁、花了多少钱、最后手里多了什么少了什么。
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**只要碰上人，就得让他开口说话，用引号写原话**，这一段至少两处直接对白。没有人的时候可以不写对话，但别整段白描。
 - 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
-- ${ap ? `收尾接上撞见的那件事：${ap.detail}。` : limitAsks().length ? '结尾停在玩家限制的那个地方，把选择留给主角。' : styleAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
+- ${ap && ap.promise ? `收尾停在他想起今天约了这件事：${ap.detail}。不许写他去没去，去不去由玩家定。` : ap ? `收尾接上撞见的那件事：${ap.detail}。` : limitAsks().length ? '结尾停在玩家限制的那个地方，把选择留给主角。' : styleAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
 - options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
 - 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
 
@@ -728,6 +729,13 @@ function renderOptions(opts) {
     box.appendChild(tip);
     return;
   }
+  if (S.promiseAsk) {
+    const pr = S.promiseAsk;
+    box.innerHTML = `<div class="promise"><div class="prhd">${esc(pr.date || '')}　${pr.type === 'pledge' ? '说好的事到期了' : '约好的日子到了'}</div>
+      <div class="prtx">${esc(pr.type === 'pledge' ? `你答应${pr.who}：${pr.what}` : pr.title)}</div>
+      <div class="prbtns"><button class="primary" onclick="promiseGo()">${pr.kind === '面试' ? '去面试' : '去办'}</button><button class="ghost" onclick="promiseDelay()">改期</button><button class="ghost" onclick="promiseBreak()">不去了</button></div></div>`;
+    return;
+  }
   if (S.interview) {
     const b = document.createElement('button');
     b.className = 'act-btn'; b.textContent = `去面试：${S.interview.title}`;
@@ -799,6 +807,7 @@ function parsePrompt(act) {
 }
 async function doAction(action, typed) {
   if (busy || !S || S.over) return;
+  if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
   let plan;
   if (typed) {
@@ -818,6 +827,7 @@ async function doAction(action, typed) {
 }
 async function skipAhead() {
   if (busy || !S || S.over) return;
+  if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
   S.lastAction = null; S.actTyped = false; S.plan = null;
   await runSegment({ skip: true });      // 日子往下过，跑到有事为止
@@ -877,7 +887,8 @@ async function runSegment(opt) {
     prompt: isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge, quick }),
     isYear, head, sub, action: S.lastAction || '', judge: isYear ? null : judge,
     busyText: quick ? '正在记下这一天……' : adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……',
-    apptKind: adv.stop.apptKind || null, apptTitle: adv.stop.kind === '约' ? adv.stop.detail : ''
+    apptKind: adv.stop.apptKind || null, apptTitle: adv.stop.kind === '约' ? adv.stop.detail : '',
+    promise: adv.stop.promise || null
   };
   saveGame();
   beginChapter(head, sub, S.pending.action, S.pending.judge);
@@ -910,7 +921,8 @@ async function writePending() {
     S.pending = null;
     S.plan = null;
     S.lastAction = null; S.actTyped = false;
-    if (P.apptKind === '面试') S.interview = { title: P.apptTitle || '一场面试' };
+    if (P.promise) S.promiseAsk = Object.assign({ date: E.shortDate(S.date) }, P.promise);
+    else if (P.apptKind === '面试') S.interview = { title: P.apptTitle || '一场面试' };
     S.lastOptions = (d.options && d.options.length) ? d.options : ['接着过日子', '找人聊聊', '琢磨一下理想那件事', '出去走走'];
     await finishChapter();
     rebuildTop();
@@ -935,6 +947,40 @@ async function retryPending() {
 }
 
 const guessAttr = E.guessAttr;
+
+// 到期提醒卡的三个按钮
+async function promiseGo() {
+  const pr = S.promiseAsk;
+  if (!pr || busy) return;
+  S.promiseAsk = null;
+  E.keepPromise(S, pr);
+  if (pr.kind === '面试') { S.interview = { title: pr.title }; saveGame(); askJob(); return; }
+  const what = pr.type === 'pledge' ? pr.what : pr.title;
+  S.lastAction = `去办说好的事：${what}`;
+  S.actTyped = false;
+  S.plan = { steps: [{ type: pr.who ? 'meet' : 'other', who: pr.who || undefined, text: String(what).slice(0, 30), diff: '顺手', attr: E.guessAttr(what) }], limits: [], style: [], days: 1, stopWhen: null, parsed: true };
+  saveGame();
+  await runSegment({ quick: true });
+}
+async function promiseDelay() {
+  const pr = S.promiseAsk;
+  if (!pr || busy) return;
+  const v = await ask({ title: '往后推几天？', text: pr.who ? `${pr.who}那边会有点不痛快。` : '', input: { value: '3', number: true }, ok: '就推这么多' });
+  if (v === null) return;
+  const dt = E.delayPromise(S, pr, Number(v));
+  S.promiseAsk = null;
+  toast(`改到${dt.m}月${dt.d}日了`);
+  saveGame(); renderOptions(S.lastOptions); renderPanel();
+}
+async function promiseBreak() {
+  const pr = S.promiseAsk;
+  if (!pr || busy) return;
+  if (!await ask({ title: '真不去了？', text: pr.who ? `${pr.who}会记着这件事。` : '错过就错过了。', no: '再想想', ok: '不去了', danger: true })) return;
+  E.breakPromise(S, pr);
+  S.promiseAsk = null;
+  toast(pr.who ? `放了${pr.who}鸽子` : '没去');
+  saveGame(); rebuildTop(); renderOptions(S.lastOptions); renderPanel();
+}
 
 /* ================= 开局 ================= */
 function renderStart() {
@@ -1908,6 +1954,13 @@ function faceOf(name) {
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return { ch: name.slice(0, 1), hue: h % 360 };
 }
+function momCs(m) {
+  if (!m.cs.length) return '';
+  return `<div class="momcs">${m.cs.map((c, i) => {
+    const mine = c.who === S.player.name;
+    return `<div class="mc${mine ? '' : ' tap'}"${mine ? '' : ` onclick="doComment('${m.id}','${esc(c.who)}')"`}><b>${esc(c.who)}</b>${c.to ? `<i>回复</i><b>${esc(c.to)}</b>` : ''}：${esc(c.text)}</div>`;
+  }).join('')}</div>`;
+}
 function renderMoments() {
   const ms = (S.moments || []).slice().reverse();
   for (const m of (S.moments || [])) m.read = true;
@@ -1916,58 +1969,96 @@ function renderMoments() {
     <div class="mompost"><input id="momIn" placeholder="说点什么…" maxlength="60"/><button class="act-go" onclick="postMoment()">发</button></div>
     ${ms.length ? ms.map(m => {
       const mine = m.who === S.player.name;
+      const lk = (m.likers || []).slice();
+      if (m.liked && !mine) lk.unshift(S.player.name);
+      const more = Math.max(0, E.num(m.likes) - lk.length);
+      const likeLine = lk.length || more ? `<div class="momlike">♥ ${lk.map(esc).join('、')}${lk.length && more ? ` 等${E.num(m.likes)}人` : !lk.length ? `${more}人` : ''}</div>` : '';
       return `<div class="mom">
         ${faceHtml(S, m.who, '', m.y)}
         <div class="mombody">
           <div class="momwho">${esc(m.who)}${mine ? '<em>我</em>' : ''}</div>
           <div class="momtext">${esc(m.text)}</div>
           <div class="momfoot"><span>${esc(m.date)}</span>
-            <button class="${m.liked ? 'on' : ''}" onclick="doLike('${m.id}')">${m.liked ? '已赞' : '赞'} ${m.likes}</button>
-            ${mine ? '' : `<button onclick="doComment('${m.id}')">留言</button>`}</div>
-          ${m.cs.length ? `<div class="momcs">${m.cs.map(c => `<div><b>${esc(c.who)}</b>：${esc(c.text)}</div>`).join('')}</div>` : ''}
+            ${mine ? '' : `<button class="${m.liked ? 'on' : ''}" onclick="doLike('${m.id}')">${m.liked ? '已赞' : '赞'}</button>`}
+            <button onclick="doComment('${m.id}','')">留言</button></div>
+          ${likeLine || m.cs.length ? `<div class="momsoc">${likeLine}${momCs(m)}</div>` : ''}
         </div></div>`;
     }).join('') : '<div class="card tip">还没人发东西</div>'}
+    <div class="tip">点别人的留言可以直接回复他。</div>
   </div>`;
 }
 function doLike(id) {
   E.likeMoment(S, id);
   saveGame(); renderPanel();
 }
-async function doComment(id) {
+// 朋友圈里的人：身份、跟主角的关系、记得什么
+function momPeople(names) {
+  return names.map(w => S.npcs.find(n => n.name === w)).filter(Boolean).map(n =>
+    `- ${n.name}：${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
+}
+function momThread(m) {
+  return m.cs.map(c => `${c.who}${c.to ? ' 回复 ' + c.to : ''}：${c.text}`).join('\n') || '（还没人留言）';
+}
+// 主角留言 / 回复某人之后，底下谁来接
+async function doComment(id, to) {
   const m = (S.moments || []).find(x => x.id === id);
   if (!m || busy) return;
-  const txt = await ask({ title: `给${m.who}留一句`, quote: m.text, input: { placeholder: '说点什么', max: 60 }, ok: '留言' });
+  if (to === S.player.name) to = '';
+  const txt = await ask({ title: to ? `回复${to}` : `在${m.who === S.player.name ? '自己的' : m.who + '的'}朋友圈底下留言`, quote: m.text, input: { placeholder: '说点什么', max: 60 }, ok: '发' });
   if (!txt) return;
-  E.commentMoment(S, id, S.player.name, txt);
+  E.commentMoment(S, id, S.player.name, txt, to || (m.who !== S.player.name ? '' : ''));
   saveGame(); renderPanel();
-  const n = S.npcs.find(x => x.name === m.who);
-  if (!n) { toast('他不一定看得见'); return; }
+  const cand = [...new Set([to, m.who, ...m.cs.slice(-6).map(c => c.who)])].filter(w => w && w !== S.player.name && S.npcs.some(n => n.name === w)).slice(0, 4);
+  if (!cand.length) return;
   setBusy(true, '对面在看……');
   try {
-    const d = await llmJSON(`${convoHead(n)}
+    const d = await llmJSON(`${worldRules()}
 
-${n.name}在朋友圈发了一条：「${m.text}」
-${S.player.name}在底下留言：「${txt}」
-${m.cs.length > 1 ? `这条底下还有别人的留言：${m.cs.slice(0, -1).map(c => c.who + '说' + c.text).join('；')}` : ''}
+${m.who === S.player.name ? `主角${S.player.name}自己` : m.who}在朋友圈发了一条：「${m.text}」（${m.date}）
+【底下的留言（按先后）】
+${momThread(m)}
 
-写${n.name}回他这一句。要求：一句话，十五个字以内，像真人在朋友圈底下回复——可以敷衍、可以玩笑、可以只回两个字。不许长篇大论，不许旁白。
+【主角刚发的】${S.player.name}${to ? ' 回复 ' + to : ''}：「${txt}」
 
-只输出一个合法 JSON：{"reply":"","rel":-2到4的整数}`, null, { maxTokens: 400, temperature: 1.05 });
-    E.commentMoment(S, id, n.name, d.reply || '嗯');
-    const add = E.num(d.rel) || 1;
-    n.rel = Math.max(0, Math.min(100, Math.round((n.rel + add) * 100) / 100));
-    n.lastSeen = S.stats.days;
+【可能接话的人】
+${momPeople(cand)}
+
+这一轮写谁会接主角刚发的这句。要求：
+- 从【可能接话的人】里挑零到两个人。被回复的人和发帖的人最可能接，但关系远、不想搭理、或者这句话不值得回的，可以不回（cs 留空）。
+- 接的话要针对主角刚发的这句，不许重复底下已有的话，十五字以内，像真人在朋友圈底下回复：玩笑、敷衍、一个表情、顺嘴问一句都行。
+- to 写他回复的是谁（通常是主角，也可以是底下别的人）。
+- rel 是这一来一回让他跟主角近了还是远了，-2 到 2。
+
+只输出一个合法 JSON：{"cs":[{"who":"","to":"","text":"","rel":0}]}`, null, { maxTokens: 500, temperature: 1.05 });
+    const ok = new Set(cand);
+    for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 2)) {
+      const w = c && E.whoIs(S, String(c.who || '').trim());
+      if (!w || !ok.has(w) || !c.text) continue;
+      const toW = c.to ? E.whoIs(S, String(c.to).trim()) : S.player.name;
+      E.commentMoment(S, id, w, String(c.text).slice(0, 60), toW === w ? '' : toW);
+      const n = S.npcs.find(x => x.name === w);
+      if (n) { E.momentRel(S, n, E.num(c.rel)); n.lastSeen = S.stats.days; E.npcMem(S, n, `朋友圈里主角说「${txt.slice(0, 16)}」，他回「${String(c.text).slice(0, 16)}」`); }
+    }
     saveGame(); renderPanel();
-  } catch (e) { toast(e.message || '没回上'); }
+  } catch (e) { toast(e.message || '没人回'); }
   setBusy(false);
+}
+// 主角发朋友圈：挑能看见、会搭理的人
+function momAudience(text) {
+  return S.npcs.filter(n => n.rel >= 15).map(n => {
+    const gap = S.stats.days - (n.lastSeen || 0);
+    let sc = E.num(n.rel) + Math.max(0, 20 - gap) * 0.6 + (isKin(n.tie) ? 6 : 0);
+    if (text.indexOf(n.name) >= 0 || (callName(n) && text.indexOf(callName(n)) >= 0)) sc += 60;
+    return { n, sc };
+  }).sort((a, b) => b.sc - a.sc).slice(0, 8).map(x => x.n);
 }
 async function postMoment() {
   const v = ($('momIn').value || '').trim();
   if (!v || busy) return;
   $('momIn').value = '';
-  E.addMoment(S, S.player.name, v, 'me');
+  const mm = E.addMoment(S, S.player.name, v, 'me');
   saveGame(); renderPanel();
-  const cand = S.npcs.filter(n => n.rel >= 25).slice(0, 8);
+  const cand = momAudience(v);
   if (!cand.length) return;
   setBusy(true, '发出去了……');
   try {
@@ -1976,13 +2067,25 @@ async function postMoment() {
 ${S.player.name}在朋友圈发了一条：「${v}」
 
 【能看见的人】
-${cand.map(n => `${n.name}（${n.tie}${n.job ? '，' + n.job : ''}，跟他关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）`).join('\n')}
+${momPeople(cand.map(n => n.name))}
 
-挑其中 1-3 个人在底下留言。要求：每条十五字以内，像真人在朋友圈底下说话——可以是玩笑、可以是敷衍的表情、可以答非所问、可以顺嘴提一件别的事。关系远的人可以不吭声。不许所有人都夸他。
+写这条朋友圈底下的动静。要求：
+- likes：谁点了赞（顺手点个赞的人，关系近的、刚联系过的更可能）。
+- cs：一到三条留言。每条十五字以内，像真人在朋友圈底下说话——玩笑、敷衍的表情、答非所问、顺嘴提一件别的事都行，要对得上他的身份和他记得的事。不许所有人都夸。关系远的可以只点赞或者不吭声。
+- 留言的人之间认识的，可以互相接一句（to 写回复谁），不回复别人就把 to 留空。
+- rel 是他看了这条之后跟主角近了还是远了，-2 到 2。
 
-只输出一个合法 JSON：{"cs":[{"who":"谁","text":"留言"}]}`, null, { maxTokens: 500, temperature: 1.08 });
-    const mm = S.moments[S.moments.length - 1];
-    for (const c of (d.cs || []).slice(0, 3)) if (c && c.who && c.text) E.commentMoment(S, mm.id, c.who, c.text);
+只输出一个合法 JSON：{"likes":["名字"],"cs":[{"who":"谁","to":"","text":"留言","rel":0}]}`, null, { maxTokens: 600, temperature: 1.08 });
+    const ok = new Set(cand.map(n => n.name));
+    for (const l of (Array.isArray(d.likes) ? d.likes : []).slice(0, 8)) if (ok.has(E.whoIs(S, String(l).trim()))) E.addLiker(S, mm, String(l).trim());
+    for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 3)) {
+      const w = c && E.whoIs(S, String(c.who || '').trim());
+      if (!w || !ok.has(w) || !c.text) continue;
+      const toW = c.to ? E.whoIs(S, String(c.to).trim()) : '';
+      E.commentMoment(S, mm.id, w, String(c.text).slice(0, 60), toW && toW !== w && (ok.has(toW) || toW === S.player.name) ? toW : '');
+      const n = S.npcs.find(x => x.name === w);
+      if (n) { E.momentRel(S, n, E.num(c.rel)); E.npcMem(S, n, `朋友圈看见主角发「${v.slice(0, 16)}」，留言「${String(c.text).slice(0, 16)}」`); }
+    }
     saveGame(); renderPanel();
   } catch (e) { toast(e.message || '没人理你'); }
   setBusy(false);
@@ -2361,6 +2464,7 @@ function openBorrow() {
 /* ================= 投入 ================= */
 function openFocus() {
   if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
+  if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.focus) { toast('手头这摊还没做完'); return; }
   mask('focusMask', true);
   $('fcWhat').value = '';

@@ -647,7 +647,10 @@ function advance(S, opt) {
 
     // 约好的事
     const ap = S.appts.find(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done);
-    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '' }; break; }
+    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '', promise: { type: 'appt', title: ap.title, kind: ap.kind || '', who: apptWho(S, ap) } }; break; }
+    // 主角答应别人的事，到了日子：停下来问他去不去
+    const pl = (S.pledges || []).find(x => !x.done && !x.asked && x.kind === '主角答应' && x.due && daysBetween(S.date, x.due) === 0);
+    if (pl) { pl.asked = true; stop = { kind: '承诺', detail: `答应${pl.who}的「${pl.what}」`, promise: { type: 'pledge', who: pl.who, what: pl.what, title: `答应${pl.who}：${pl.what}` } }; break; }
 
     // 自设的停下条件
     const sw = checkStopWhen(S);
@@ -1125,7 +1128,7 @@ function donePledge(S, what) {
 function pledgeTick(S) {
   const ev = [];
   for (const p of (S.pledges || [])) {
-    if (p.done || !p.due || daysBetween(S.date, p.due) > 0) continue;
+    if (p.done || !p.due || daysBetween(S.date, p.due) >= 0) continue;     // 当天由停点去问，过了日子还没办才算失约
     p.done = true;
     if (p.kind === '主角答应') {
       ev.push({ t: '人情', s: `答应${p.who}的「${p.what}」到日子了，没办` });
@@ -1136,6 +1139,48 @@ function pledgeTick(S) {
   }
   S.pledges = (S.pledges || []).filter(x => !x.done);
   return { ev };
+}
+
+/* ---------- 到期的约定：去、改期、不去 ---------- */
+function apptWho(S, ap) {
+  const t = String(ap.title || '');
+  const n = S.npcs.slice().sort((a, b) => b.name.length - a.name.length).find(x => x.name && t.indexOf(x.name) >= 0);
+  return n ? n.name : '';
+}
+function findPromisePledge(S, pr) { return (S.pledges || []).find(x => !x.done && x.who === pr.who && x.what === pr.what) || null; }
+function keepPromise(S, pr) {
+  if (!pr) return null;
+  if (pr.type === 'pledge') { const p = findPromisePledge(S, pr); if (p) p.done = true; S.pledges = (S.pledges || []).filter(x => !x.done); }
+  const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
+  if (n) n.lastSeen = S.stats.days;
+  return pr;
+}
+function breakPromise(S, pr) {
+  if (!pr) return null;
+  const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
+  const what = pr.what || pr.title;
+  if (pr.type === 'pledge') {
+    const p = findPromisePledge(S, pr); if (p) p.done = true;
+    S.pledges = (S.pledges || []).filter(x => !x.done);
+    if (n) addRift(S, n.name, `说好的「${String(what).slice(0, 16)}」没去`, '私怨', 20);
+  }
+  if (n) { n.rel = clamp(r2(n.rel - (pr.type === 'pledge' ? 5 : 3)), 0, 100); npcMem(S, n, `说好的「${String(what).slice(0, 20)}」，主角没去`); }
+  S.history.push({ seg: S.seg, date: shortDate(S.date), summary: `爽约：${String(what).slice(0, 30)}` });
+  return pr;
+}
+function delayPromise(S, pr, days) {
+  days = clamp(Math.round(num(days)) || 1, 1, 60);
+  if (!pr) return null;
+  const dt = addDays(S.date, days);
+  const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
+  if (pr.type === 'pledge') {
+    const p = findPromisePledge(S, pr);
+    if (p) { p.due = dt; p.asked = false; }
+  } else {
+    S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title: pr.title, kind: pr.kind || '', done: false });
+  }
+  if (n) { n.rel = clamp(r2(n.rel - 1), 0, 100); npcMem(S, n, `「${String(pr.what || pr.title).slice(0, 20)}」主角说改到${dt.m}月${dt.d}日`); }
+  return dt;
 }
 
 /* ---------- 投入结算 ---------- */
@@ -1206,7 +1251,9 @@ function sanitizeTurn(d) {
     name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
     tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close) }));
   o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120), pay: sanitizePay(x.pay) }));
-  o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80) }));
+  o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80),
+    cs: T.arr(x.cs, 2).map(T.obj).filter(c => c && c.who && c.text).map(c => ({ who: T.str(c.who, 12), to: T.str(c.to, 12), text: T.str(c.text, 60) })),
+    likes: T.arr(x.likes, 6).map(v => T.str(v, 12)).filter(Boolean) }));
   o.appointments = T.arr(d.appointments, 3).map(T.obj).filter(x => x && x.title).map(x => ({ title: T.str(x.title, 30), inDays: T.num(x.inDays, 1, 120), kind: T.str(x.kind, 8) }));
   o.milestoneClaim = T.arr(d.milestoneClaim, 3).map(x => T.str(typeof x === 'object' && x ? x.title : x, 40)).filter(Boolean);
   o.together = typeof d.together === 'string' ? T.str(d.together, 12) : '';
@@ -1336,8 +1383,14 @@ function applyTurn(S, d) {
   for (const e of (d.riftEased || [])) easeRift(S, typeof e === 'string' ? e : e.who, 35);
 
   for (const mo of (d.moments || []).slice(0, 2)) {
-    if (mo && mo.who && mo.text) addMoment(S, whoIs(S, mo.who), mo.text, 'npc');
+    if (!mo || !mo.who || !mo.text) continue;
+    const m = addMoment(S, whoIs(S, mo.who), mo.text, 'npc');
+    if (!m) continue;
+    const known = w => w === S.player.name || S.npcs.some(n => n.name === w);
+    for (const c of (mo.cs || [])) { const w = whoIs(S, c.who); if (w !== S.player.name && known(w)) commentMoment(S, m.id, w, c.text, c.to && known(whoIs(S, c.to)) ? whoIs(S, c.to) : ''); }
+    for (const l of (mo.likes || [])) addLiker(S, m, l);
   }
+
 
   for (const m of (d.messages || []).slice(0, 4)) {
     if (!m || !m.text) continue;
@@ -1860,6 +1913,23 @@ function yearDiff(S) {
 }
 
 /* ================= 朋友圈 ================= */
+// 朋友圈里给的好脸色换关系：每人每天合计最多 2
+function momentRel(S, n, amt) {
+  if (!n) return 0;
+  if (n.momDay !== S.stats.days) { n.momDay = S.stats.days; n.momGain = 0; }
+  const g = clamp(num(amt), -3, Math.max(0, 2 - num(n.momGain)));
+  if (g > 0) n.momGain = num(n.momGain) + g;
+  n.rel = clamp(r2(n.rel + g), 0, 100);
+  return g;
+}
+function addLiker(S, m, who) {
+  if (!m) return;
+  m.likers = m.likers || [];
+  const w = whoIs(S, who);
+  if (!w || w === m.who || m.likers.includes(w) || !S.npcs.some(n => n.name === w)) return;
+  m.likers.push(w);
+  m.likes = num(m.likes) + 1;
+}
 function addMoment(S, who, text, kind) {
   S.moments = S.moments || [];
   const t = String(text || '').slice(0, 140);
@@ -1869,7 +1939,7 @@ function addMoment(S, who, text, kind) {
     who: String(who || '某人').slice(0, 12),
     text: t, kind: kind || 'npc',
     date: shortDate(S.date), day: S.stats.days, y: S.date.y,
-    likes: rnd(Math.random, 0, 6), liked: false, cs: [], read: false
+    likes: rnd(Math.random, 0, kind === 'me' ? 0 : 4), likers: [], liked: false, cs: [], read: false
   };
   S.moments.push(m);
   S.moments = S.moments.slice(-60);
@@ -1878,17 +1948,18 @@ function addMoment(S, who, text, kind) {
 function likeMoment(S, id) {
   const m = (S.moments || []).find(x => x.id === id);
   if (!m || m.liked) return null;
-  m.liked = true; m.likes++;
-  const n = S.npcs.find(x => x.name === m.who);
-  if (n) n.rel = clamp(r2(n.rel + 1), 0, 100);
+  m.liked = true; m.likes = num(m.likes) + 1;
+  momentRel(S, S.npcs.find(x => x.name === m.who), 1);
   return m;
 }
-function commentMoment(S, id, who, text) {
+function commentMoment(S, id, who, text, to) {
   const m = (S.moments || []).find(x => x.id === id);
-  if (!m) return null;
-  m.cs.push({ who: String(who).slice(0, 12), text: String(text).slice(0, 80) });
-  m.cs = m.cs.slice(-6);
-  return m;
+  if (!m || !text) return null;
+  const c = { who: String(who).slice(0, 12), text: String(text).slice(0, 80), day: S.stats.days };
+  if (to && to !== who) c.to = String(to).slice(0, 12);
+  m.cs.push(c);
+  m.cs = m.cs.slice(-14);
+  return c;
 }
 function unreadMoments(S) { return (S.moments || []).filter(m => !m.read).length; }
 
@@ -2467,7 +2538,7 @@ const API = {
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
-  addMoment, likeMoment, commentMoment, unreadMoments,
+  addMoment, likeMoment, commentMoment, unreadMoments, momentRel, addLiker,
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
   housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,
@@ -2481,6 +2552,7 @@ const API = {
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
   stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
+  apptWho, keepPromise, breakPromise, delayPromise,
   sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

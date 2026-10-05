@@ -111,10 +111,13 @@ const SEG = n => ({
     else if (post.includes('这场是怎么打下来的')) { body = post.includes('面试') ? KEY_JOB : post.includes('把话挑明') ? LOVE : KEY_END; }
     else if (post.includes('写这一局的结尾')) { body = END; }
     else if (post.includes('写一篇 320-450 字的年终小结')) { body = YEAR; }
-    else if (post.includes('在朋友圈发了一条') && post.includes('挑其中')) {
-      body = { cs: [{ who: '赵鹏', text: '哥们 慢点搬' }, { who: '孙姐', text: '明天别迟到啊' }] };
+    else if (post.includes('写这条朋友圈底下的动静')) {
+      body = { likes: ['赵鹏', '孙姐', '不认识的人'], cs: [{ who: '赵鹏', text: '哥们 慢点搬', rel: 1 }, { who: '孙姐', to: '赵鹏', text: '你也别光看着', rel: 1 }, { who: '外人', text: '不该出现' }] };
     }
-    else if (post.includes('在朋友圈发了一条')) { body = { reply: '可不是嘛', rel: 2 }; }
+    else if (post.includes('这一轮写谁会接主角刚发的这句')) {
+      const who = (JSON.parse(post).messages[1].content.match(/【可能接话的人】\n- ([^：]+)：/) || [])[1] || '孙姐';
+      body = { cs: [{ who, to: '', text: '可不是嘛', rel: 2 }] };
+    }
     else if (post.includes('你现在扮演的是')) {
       convoCalls++;
       if (post.includes('引擎判定（不可更改）')) {
@@ -173,6 +176,7 @@ const SEG = n => ({
   let shotN = 0;
   pg.screenshot = async (o) => { await pg.evaluate(() => window.__check && window.__check()); return _shot(o); };
   pg.snap = async (name) => { await pg.waitForTimeout(250); return pg.screenshot({ path: `audit/z${String(++shotN).padStart(2,'0')}-${name}.png`, fullPage: false }); };
+  const unblock = () => pg.evaluate(() => { if (S && S.promiseAsk) { E.keepPromise(S, S.promiseAsk); S.promiseAsk = null; renderOptions(S.lastOptions); } });
   await pg.goto('file://' + path.join(__dirname, '..', 'index.html'));
   await pg.waitForSelector('#startMask.on'); await pg.snap('start');
   await pg.fill('#sName', '沈昭');
@@ -194,21 +198,21 @@ const SEG = n => ({
   // 自己动手做四件事：每件只该过一天
   for (let i = 0; i < 4; i++) {
     const before = await pg.evaluate(() => ENGINE.dateStr(S.date));
-    await pg.click('#acts .act-btn');
+    await unblock(); await pg.click('#acts .act-btn');
     await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
     const d = await pg.textContent('#topDate');
     console.log(`做第${i + 1}件事：${before.slice(5)} → ${d.slice(5)}`);
   }
   // 再点「往下过日子」，这才该跳一大截
   const b1 = await pg.evaluate(() => S.stats.days);
-  await pg.click('#skipBtn');
+  await unblock(); await pg.click('#skipBtn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const b2 = await pg.evaluate(() => ({ d: S.stats.days, head: document.querySelectorAll('.chapmark')[document.querySelectorAll('.chapmark').length - 1].textContent }));
   console.log(`往下过日子：跳了 ${b2.d - b1} 天，章头「${b2.head}」`);
   await pg.screenshot({ path: 'audit/shot-2-run.png' });
 
   // 投入
-  await pg.click('#focusBtn');
+  await unblock(); await pg.click('#focusBtn');
   await pg.snap('focus'); await pg.fill('#fcWhat', '把前三章写完');
   await pg.click('#fcGo');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
@@ -249,6 +253,10 @@ const SEG = n => ({
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 15000 });
   const mine = await pg.evaluate(() => { const m = S.moments[S.moments.length - 1]; return { who: m.who, text: m.text, 底下: m.cs.map(c => c.who + ':' + c.text) }; });
   console.log('自己发的那条：', JSON.stringify(mine));
+  const lk = await pg.evaluate(() => { const m = S.moments[S.moments.length - 1]; return { likers: m.likers, cs: m.cs, html: document.querySelector('.mom .momsoc') ? document.querySelector('.mom .momsoc').textContent : '' }; });
+  console.log('点赞和回复：', JSON.stringify(lk));
+  if (lk.likers.includes('不认识的人') || lk.cs.some(c => c.who === '外人')) ISS['朋友圈混进了不认识的人'] = 1;
+  if (!/孙姐回复赵鹏/.test(lk.html)) ISS['朋友圈回复没显示回复谁'] = 1;
   await pg.screenshot({ path: 'audit/moments.png' });
   await pg.click('.phoneseg .seg:has-text("通讯录")');
   await pg.waitForTimeout(150);
@@ -435,7 +443,7 @@ const SEG = n => ({
 
   // 养病
   await pg.evaluate(() => { S.focus = null; S.status = [{ name: '感冒', desc: 'x', days: 4 }, { name: '腰伤', desc: 'y', days: 30 }]; S.chronic = [{ name: '老失眠', desc: 'z', eased: 0 }]; saveGame(); rebuildTop(); });
-  await pg.click('#focusBtn');
+  await unblock(); await pg.click('#focusBtn');
   await pg.fill('#fcWhat', '回老家歇一阵'); await pg.click('#fcHeal'); await pg.snap('focus-heal'); await pg.click('#fcHeal');
   await pg.evaluate(() => { document.getElementById('fcHeal').checked = true; document.getElementById('fcDays').value = 20; });
   await pg.click('#fcGo');
@@ -481,7 +489,7 @@ const SEG = n => ({
 
   // 年终
   await pg.evaluate(() => { S.date = { y: 2026, m: 12, d: 30 }; saveGame(); });
-  await pg.click('#acts .act-btn');
+  await unblock(); await pg.click('#acts .act-btn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   const yr = await pg.evaluate(() => ({
     年: (S.years || []).map(y => y.y + '：' + y.summary),
@@ -570,12 +578,12 @@ const SEG = n => ({
   // 结局 + 接着过
   const lines4 = await pg.evaluate(() => { S.player.age = 60; saveGame(); return ENGINE.endingScore(S); });
   console.log('四条线：', JSON.stringify(lines4));
-  await pg.click('#acts .act-btn');
+  await unblock(); await pg.click('#acts .act-btn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   const ended = await pg.evaluate(() => ({ over: S.over, title: S.endTitle, 条: [...document.querySelectorAll('.endblock .kbar span')].map(x => x.textContent), 按钮: [...document.querySelectorAll('#acts .act-btn')].map(b => b.textContent) }));
   console.log('结局：', JSON.stringify(ended));
   await pg.screenshot({ path: 'audit/shot-14-end.png' });
-  await pg.click('#acts .act-btn');
+  await unblock(); await pg.click('#acts .act-btn');
   await pg.waitForFunction(() => !document.getElementById('busy').classList.contains('on'), null, { timeout: 20000 });
   console.log('接着过：', await pg.evaluate(() => `over=${S.over}　退休线${S.retireAge}岁　还在走到 ${ENGINE.dateStr(S.date)}`));
 

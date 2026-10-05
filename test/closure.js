@@ -105,6 +105,31 @@ console.log('—— 引擎 ——');
   ok(!S2.pledges.length, '办掉的事销账');
 }
 
+{ // 13 到期的约定
+  const S = mk(); E.addPledge(S, { who: '赵鹏', what: '帮他搬家', kind: '主角答应', inDays: 4 });
+  const a = E.advance(S, { maxDays: 35, rng: E.mkRng(2) });
+  ok(a.stop.kind === '承诺' && a.days === 4 && a.stop.promise.who === '赵鹏', '答应的事到期那天停下来', `${a.days}天 ${a.stop.detail}`);
+  const dt = E.delayPromise(S, a.stop.promise, 3);
+  const b2 = E.advance(S, { maxDays: 35, rng: E.mkRng(3) });
+  ok(b2.stop.kind === '承诺' && b2.days === 3, '改期以后到新日子再停', `${b2.days}天`);
+  E.breakPromise(S, b2.stop.promise);
+  ok(!S.pledges.length && S.rifts.some(r => r.who === '赵鹏'), '不去了：销账、留裂痕');
+  const S2 = mk(); S2.appts.push(Object.assign(E.addDays(S2.date, 2), { title: '孙姐介绍的人：见面', kind: '约', done: false }));
+  const c = E.advance(S2, { maxDays: 35, quiet: true });
+  ok(c.stop.kind === '约' && c.stop.promise.who === '孙姐', '约好的事也停，认得出是跟谁', c.stop.promise.who);
+}
+
+{ // 14 朋友圈
+  const S = mk(); const n = S.npcs.find(x => x.name === '赵鹏'); const r0 = n.rel;
+  for (let i = 0; i < 5; i++) E.momentRel(S, n, 2);
+  ok(n.rel - r0 === 2, '朋友圈涨关系每人每天最多2', `${r0}→${n.rel}`);
+  E.applyTurn(S, { moments: [{ who: '孙姐', text: '加班到十点', likes: ['赵鹏', '路人甲'], cs: [{ who: '赵鹏', text: '辛苦', to: '' }, { who: '路人乙', text: '不该出现' }, { who: '测', text: '主角不该被代写' }] }] });
+  const m = S.moments[S.moments.length - 1];
+  ok(m.likers.join() === '赵鹏' && m.cs.length === 1 && m.cs[0].who === '赵鹏', '别人的朋友圈只认通讯录里的人，不替主角留言', JSON.stringify([m.likers, m.cs.map(c => c.who)]));
+  const c = E.commentMoment(S, m.id, '孙姐', '你也是', '赵鹏');
+  ok(c.to === '赵鹏', '留言记下回复谁');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -255,6 +280,24 @@ console.log('—— 引擎 ——');
   await pg.click('#chatDone'); await idle();
   await pg.click('.tab[data-t="phone"]'); await shot('5-phone'); await pg.evaluate(() => openMakeGroup()); await shot('6-make-group'); await pg.evaluate(() => mask('npcMask', false));
   ok(await pg.evaluate(() => S.groups[0].msgs.length >= 3 && S.npcs.find(n => n.name === '孙姐').mem.some(m => /一家人/.test(m))), '退出群聊，消息和要点都留下了');
+
+  // 到期提醒卡
+  await pg.evaluate(() => { closePanel(); S.pledges = []; S.rifts = []; E.addPledge(S, { who: '孙姐', what: '帮她带份材料', kind: '主角答应', inDays: 2 }); S.flags.cool = 0; renderOptions(S.lastOptions); });
+  await pg.click('#skipBtn'); await idle();
+  const pc = await pg.evaluate(() => ({ ask: !!S.promiseAsk, card: !!document.querySelector('#acts .promise'), skip: !!document.getElementById('skipBtn') }));
+  ok(pc.ask && pc.card && !pc.skip, '往下过日子碰上到期的事：停下来推一张卡，别的按钮收起');
+  ok(/不许写他去没去/.test(lastSeg), '那一段只写到那天早上');
+  await shot('7-promise');
+  await pg.reload(); await pg.waitForSelector('#acts .promise', { timeout: 15000 });
+  ok(true, '刷新以后卡还在');
+  await pg.click('.prbtns button:has-text("不去了")'); await pg.click('#askOk'); await pg.waitForTimeout(200);
+  const pb = await pg.evaluate(() => ({ ask: !!S.promiseAsk, rift: S.rifts.some(r => r.who === '孙姐'), skip: !!document.getElementById('skipBtn') }));
+  ok(!pb.ask && pb.rift && pb.skip, '点不去了：留裂痕，按钮回来');
+  await pg.evaluate(() => { E.addPledge(S, { who: '赵鹏', what: '陪他去医院', kind: '主角答应', inDays: 1 }); });
+  await pg.click('#skipBtn'); await idle();
+  const segs0 = segCalls;
+  await pg.click('.prbtns button:has-text("去办")'); await idle();
+  ok(segCalls === segs0 + 1 && /去办说好的事：陪他去医院/.test(lastSeg) && await pg.evaluate(() => !S.pledges.some(p => p.what === '陪他去医院')), '点去办：当天去做，承诺销账');
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();
