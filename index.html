@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover,shrink-to-fit=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#101218"/>
 <title>现代生活模拟器</title>
 <link rel="icon" href="favicon.ico" sizes="any"/>
@@ -405,6 +405,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .momcs .mc i{font-style:normal;color:var(--dim2);margin:0 2px}
 .momcs .mc.tap{cursor:pointer}
 .momcs .mc.tap:active{background:var(--sel)}
+.facetap{display:contents}
+#chatFace{cursor:pointer}
+/* 视口不锁缩放以后，iOS 点进小于 16px 的输入框会自动放大：输入框一律 16px */
+@supports (-webkit-touch-callout:none){input,select,textarea{font-size:16px!important}}
 </style>
 </head>
 <body>
@@ -4401,11 +4405,11 @@ function renderPanel() {
     box.innerHTML = head + `<button class="ghost sm gmake" onclick="openMakeGroup()">＋ 发起群聊</button><div class="msgs">${groups}${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
         return `<div class="thread" onclick="openThread('${esc(r.name)}')">
-          ${faceHtml(S, r.name, 'sm')}
+          <span class="facetap" onclick="event.stopPropagation();openCard('${esc(r.name)}')">${faceHtml(S, r.name, 'sm')}</span>
           <div class="thbody">
             <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
-            <div class="mtext one">${r.last ? (r.last.me ? '我：' : '') + esc(r.last.text || '') + (r.last.payId ? ((p => p ? `[${p.kind}${p.state === '待收' ? '·没领' : ''}]` : '')(E.findPay(S, r.last.payId))) : '') : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
+            ${r.last ? `<div class="mtext one">${(r.last.me ? '我：' : '') + esc(r.last.text || '') + (r.last.payId ? ((p => p ? `[${p.kind}${p.state === '待收' ? '·没领' : ''}]` : '')(E.findPay(S, r.last.payId))) : '')}</div>` : ''}
             ${r.npc && gap >= 20 ? `<div class="tip"><u>${gap}天没联系了</u></div>` : ''}
           </div></div>`;
       }).join('') || '<div class="card tip">通讯录还是空的</div>'}</div>
@@ -4777,6 +4781,15 @@ function showNpc(name) {
       : ''}`;
   mask('npcMask', true);
 }
+// 点头像看名片：只在消息里出现过、还没进通讯录的人，先补进来
+function openCard(name) {
+  if (!S.npcs.some(x => x.name === name)) {
+    const peer = (S.peers || []).find(p => p.name === name);
+    E.addNpcs(S, [{ name, tie: peer ? '同学' : (/^(房东|老板|领导|同事|室友|邻居|快递|中介|物业)$/.test(name) ? name : ''), job: peer ? (peer.note || '') : '', note: peer ? (peer.note || '') : '给你发过消息', rel: peer ? 30 : 18, close: false }], 1);
+    saveGame();
+  }
+  showNpc(name);
+}
 function openThread(from) {
   for (const m of S.msgs) if (m.from === from) m.read = true;
   saveGame();
@@ -4896,12 +4909,14 @@ function renderConvo() {
   if (g) {
     $('chatName').innerHTML = `${esc(g.name)} <i class="tapcard">${g.members.length + 1}人</i>`;
     $('chatFace').innerHTML = `<div class="face" style="--h:200">群</div>`;
+    $('chatFace').onclick = null;
     $('chatName').onclick = () => toast(`群里有：${g.members.join('、')}`);
     $('chatSub').textContent = g.members.join('、');
   } else {
     const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
     $('chatName').innerHTML = `${esc(n.name)} <i class="tapcard">名片</i>`;
     $('chatFace').innerHTML = faceHtml(S, n.name, '');
+    $('chatFace').onclick = () => showNpc(n.name);
     $('chatName').onclick = () => showNpc(n.name);
     $('chatSub').textContent = callName(n);
   }
@@ -5758,7 +5773,7 @@ function diagText() {
     const q = el.getBoundingClientRect();
     if (q.width && q.right > wr + 1) { wr = q.right; wide = (el.id ? '#' + el.id : el.tagName.toLowerCase() + (typeof el.className === 'string' && el.className ? '.' + el.className.split(' ')[0] : '')) + Math.round(q.right); }
   }
-  return `屏幕读数 ${screen.width}×${screen.height}｜排版${innerWidth}｜页宽${document.documentElement.scrollWidth}｜缩放${window.visualViewport ? visualViewport.scale.toFixed(2) : '-'}｜最宽${wide || '无'}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}`;
+  return `屏幕读数 ${screen.width}×${screen.height}｜排版${innerWidth}｜页宽${document.documentElement.scrollWidth}｜缩放${window.visualViewport ? visualViewport.scale.toFixed(2) : '-'}｜最宽${wide || '无'}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}｜${document.documentElement.dataset.vpfix ? '重设过' + document.documentElement.dataset.vpfix : '没重设'}`;
 }
 function openSettings() {
   mask('setMask', true);
@@ -5922,12 +5937,22 @@ function fitStandalone() {
   const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
   root.style.setProperty('--app-h', Math.max(window.innerHeight, portrait ? long : short) + 'px');
 }
+// 装到桌面后，iOS 偶尔按比屏幕宽的尺寸排版再整页缩小（底下就空一截）：发现了就按屏幕宽度重设视口
+function fixViewport() {
+  const sa = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!sa) return;
+  const portrait = !window.matchMedia || matchMedia('(orientation: portrait)').matches;
+  const w = portrait ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height);
+  const vm = document.querySelector('meta[name=viewport]');
+  if (vm && innerWidth > w + 2) { vm.setAttribute('content', `width=${w}, initial-scale=1, viewport-fit=cover`); document.documentElement.dataset.vpfix = innerWidth + '>' + w; }
+}
 // 面板停在底栏上面
 function fitTabs() { const t = $('tabs'); if (t) document.documentElement.style.setProperty('--tabsH', t.offsetHeight + 'px'); }
 function boot() {
   applySkin();
+  fixViewport();
   fitTabs();
-  window.addEventListener('resize', fitTabs);
+  window.addEventListener('resize', () => { fixViewport(); fitTabs(); });
   // iOS 上 user-scalable 会被忽略，这里再挡一道
   document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
   document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });

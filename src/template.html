@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover,shrink-to-fit=no"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#101218"/>
 <title>现代生活模拟器</title>
 <link rel="icon" href="favicon.ico" sizes="any"/>
@@ -405,6 +405,10 @@ html,body{max-width:100%;overflow-x:hidden}
 .momcs .mc i{font-style:normal;color:var(--dim2);margin:0 2px}
 .momcs .mc.tap{cursor:pointer}
 .momcs .mc.tap:active{background:var(--sel)}
+.facetap{display:contents}
+#chatFace{cursor:pointer}
+/* 视口不锁缩放以后，iOS 点进小于 16px 的输入框会自动放大：输入框一律 16px */
+@supports (-webkit-touch-callout:none){input,select,textarea{font-size:16px!important}}
 </style>
 </head>
 <body>

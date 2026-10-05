@@ -299,6 +299,16 @@ console.log('—— 引擎 ——');
   await pg.click('.prbtns button:has-text("去办")'); await idle();
   ok(segCalls === segs0 + 1 && /去办说好的事：陪他去医院/.test(lastSeg) && await pg.evaluate(() => !S.pledges.some(p => p.what === '陪他去医院')), '点去办：当天去做，承诺销账');
 
+  // 通讯录：没消息就不写，点头像看名片
+  await pg.evaluate(() => { closePanel(); E.addNpcs(S, [{ name: '周德贵', tie: '房东', note: '穿拖鞋，收钱爽快', rel: 20 }], 1); });
+  await pg.click('.tab[data-t="phone"]'); await pg.waitForTimeout(300);
+  const row = await pg.evaluate(() => { const r = [...document.querySelectorAll('.thread')].find(x => x.textContent.includes('周德贵')); return r ? { txt: r.textContent, mt: !!r.querySelector('.mtext') } : null; });
+  ok(row && !row.mt && !/拖鞋/.test(row.txt), '没消息的人不写他的情况', row && row.txt.replace(/\s+/g, ''));
+  await pg.evaluate(() => [...document.querySelectorAll('.thread')].find(x => x.textContent.includes('周德贵')).querySelector('.facetap .face, .facetap img').click());
+  await pg.waitForTimeout(200);
+  ok(await pg.evaluate(() => document.getElementById('npcMask').classList.contains('on') && document.getElementById('npcBox').textContent.includes('周德贵') && !document.getElementById('chat').classList.contains('on')), '点头像打开名片，不进聊天');
+  await pg.evaluate(() => { mask('npcMask', false); closePanel(); });
+
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();
   done();
