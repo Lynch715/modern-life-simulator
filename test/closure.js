@@ -1,6 +1,6 @@
 /* 指令闭环自测：node test/closure.js
    前半段只跑引擎；后半段开真页面、接口用假的，测请求失败后的重试和读档 */
-const E = require('../src/engine.js');
+const E = require("../src/engine.js");
 const path = require('path');
 
 let bad = 0;
@@ -117,10 +117,11 @@ console.log('—— 引擎 ——');
     ladder: [{ name: '先写出来', milestones: [{ title: '写完一个短篇', metric: '投入', need: 50, scene: '提案', gate: '投稿' }] }] };
   const SEG = n => ({ narrative: `第${n}段。“行。”赵鹏说。`, summary: `第${n}段`, scene: { location: '城西次卧', unresolved: [] }, playerChanges: { money: -20 }, options: ['甲', '乙', '丙', '丁'], gameOver: false });
   const b = await chromium.launch();
-  const pg = await b.newPage({ viewport: { width: 375, height: 740 } });
+  const pg = await b.newPage({ viewport: { width: 393, height: 852 }, deviceScaleFactor: 2 });
+  const shot = async n => { if (process.env.SHOT) { await pg.waitForTimeout(300); await pg.screenshot({ path: `${process.env.SHOT}/${n}.png` }); } };
   const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
-  let segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '';
+  let groupCalls = 0, lastGroup = '', segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '', convoCalls = 0, lastConvo = '';
   await pg.route('**/chat/completions', async route => {
     const post = route.request().postData() || '';
     if (post.includes('指令解析器')) {
@@ -128,6 +129,23 @@ console.log('—— 引擎 ——');
       return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse({ steps: [
         { type: 'quit', text: '辞职', diff: '普通', attr: '表达' }, { type: 'spend', text: '请赵鹏吃饭', amount: 200, diff: '顺手' }],
         days: 1, limits: ['别替我答应任何事'], style: [], stopWhen: null }) });
+    }
+    if (post.includes('拉的微信群')) {
+      groupCalls++; lastGroup = post;
+      const body = { replies: [{ who: '赵鹏', text: '收到' }, { who: '孙姐', text: '谢谢老板' }, { who: '外人', text: '不该出现' }], gist: '群里抢红包', deal: [], summary: '群聊' };
+      return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(body) });
+    }
+    if (post.includes('你现在扮演的是')) {
+      convoCalls++; lastConvo = post;
+      const say = (JSON.parse(post).messages[1].content.match(/【主角刚发的这句——你这一轮要回的就是它】(.*)/) || [])[1] || '';
+      let body = { reply: '回：' + say, mood: '平常', rel: 3, gist: '一路聊着', ask: null, deal: [], cold: convoCalls > 3, summary: '聊天' };
+      if (post.includes('引擎判定（不可更改）')) body = { reply: '行 借你', mood: '爽快', rel: 1, ask: null, deal: [], cold: false, summary: '借钱' };
+      else if (say.includes('借我')) body = { reply: '这句不该出现', mood: '', rel: 0, ask: { what: '借两千', kind: 'borrow', attr: '表达', need: 20, money: 2000, days: 30 }, deal: [], summary: '借钱' };
+      else if (say.includes('[给你转账') && say.includes('不要')) body = { reply: '你留着吧 我不要', mood: '推', rel: 0, ask: null, deal: [], refund: true, summary: '退回' };
+      else if (say.includes('[给你')) body = { reply: '谢了啊', mood: '高兴', rel: 1, ask: null, deal: [], summary: '收钱' };
+      else if (say.includes('给我点钱')) body = { reply: '拿着', mood: '大方', rel: 0, ask: null, deal: [], pay: { kind: '红包', amount: 1000000, note: '别乱花' }, summary: '给钱' };
+      else if (say.includes('来住')) body = { reply: '那我周五搬过来', mood: '高兴', rel: 2, ask: null, deal: [{ kind: '主角答应', what: '让她来借住两天', inDays: 5 }], summary: '借住' };
+      return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(body) });
     }
     if (post.includes('请铸造开局')) return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(BOOT) });
     if (failNext > 0) { failNext--; return route.fulfill({ status: 503, body: '{"error":{"message":"忙"}}' }); }
@@ -168,6 +186,75 @@ console.log('—— 引擎 ——');
   const after = await pg.evaluate(() => ({ days: S.stats.days, seg: S.seg, pending: !!S.pending }));
   ok(!after.pending && after.days === mid.days && after.seg === mid.seg, '重试不再推进日子', `${mid.days}→${after.days}`);
   ok(/天命骰：/.test(lastSeg) && lastSeg.includes(`天命骰：${mid.fate}`), '重试用的是原来那颗骰子');
+
+  // 聊天：一直能聊，接的是刚发的那句，求人只回一条，说定的事记下来
+  await pg.evaluate(() => openConvo('赵鹏'));
+  const send = async t => { await pg.fill('#chatIn', t); await pg.click('#chatSend'); await idle(); };
+  for (let i = 1; i <= 12; i++) await send('第' + i + '句话');
+  const cv = await pg.evaluate(() => ({ ta: S.convo.lines.filter(l => l.who === 'ta').length, sys: S.convo.lines.filter(l => l.who === 'sys').map(l => l.text), last: S.convo.lines.filter(l => l.who === 'ta').pop().text, rel: S.convo.rel, dis: document.getElementById('chatIn').disabled }));
+  ok(cv.ta === 12 && !cv.dis, '聊了12句，句句有回，输入框没锁', `回了${cv.ta}句`);
+  ok(cv.last === '回：第12句话', '回的是刚发的那句', cv.last);
+  ok(!cv.sys.some(t => /聊得差不多/.test(t)) && cv.sys.filter(t => /不太想聊/.test(t)).length === 1, '不想聊的提示只出一次，没有"聊得差不多了"', JSON.stringify(cv.sys));
+  ok(cv.rel === 12, '一场聊天关系最多动12', `rel=${cv.rel}`);
+  ok(/你已经说过/.test(lastConvo) && /要点/.test(lastConvo), '提示词带着说过的话和要点');
+  const n0 = await pg.evaluate(() => S.convo.lines.filter(l => l.who === 'ta').length);
+  await send('能借我两千吗');
+  const ak = await pg.evaluate(() => ({ ta: S.convo.lines.filter(l => l.who === 'ta').map(l => l.text), sys: S.convo.lines.filter(l => l.who === 'sys').map(l => l.text) }));
+  ok(ak.ta.length === n0 + 1 && !ak.ta.includes('这句不该出现'), '开口求人只回一条', ak.ta.slice(-1)[0]);
+  ok(ak.sys.some(t => /^求他：借两千/.test(t)), '判定那行写明求的是什么');
+  await send('你来住吧');
+  const pl = await pg.evaluate(() => (S.pledges || []).map(p => p.kind + p.who + p.what));
+  ok(pl.some(t => /主角答应赵鹏让她来借住两天/.test(t)), '聊天里说定的事进了承诺表', pl.join('｜'));
+  await pg.click('#chatDone'); await idle();
+  ok(await pg.evaluate(() => (S.npcs.find(n => n.name === '赵鹏').mem || []).some(m => /一路聊着/.test(m))), '聊完记住了要点');
+
+  // 底栏常驻
+  await pg.click('.tab[data-t="home"]'); await pg.waitForTimeout(350);
+  const lay = await pg.evaluate(() => { const p = document.getElementById('panel').getBoundingClientRect(), t = document.getElementById('tabs').getBoundingClientRect(); return { pb: Math.round(p.bottom), tt: Math.round(t.top), on: document.querySelector('.tab.on').dataset.t }; });
+  await shot('1-home-tabs');
+  ok(lay.pb <= lay.tt + 1 && lay.on === 'home', '面板停在底栏上面，底栏标着当前面板', JSON.stringify(lay));
+  await pg.click('.tab[data-t="book"]'); await pg.waitForTimeout(350);
+  ok(await pg.evaluate(() => curTab === 'book' && document.getElementById('panel').classList.contains('on')), '点别的图标直接切过去');
+  await pg.click('.tab[data-t="book"]'); await pg.waitForTimeout(350);
+  ok(await pg.evaluate(() => !curTab), '再点当前图标就收起');
+
+  // 转账、红包
+  await pg.evaluate(() => { S.debts = []; E.addDebt(S, '赵鹏', 300, 30); openConvo('赵鹏'); });
+  const m0 = await pg.evaluate(() => S.player.money);
+  const pay = async (kind, v) => { await pg.click('#chatPlus'); await pg.click(`#plusMenu button:has-text("${kind}")`); await pg.fill('#askIn', v); await pg.click('#askOk'); await idle(); };
+  await pay('转账', '500 房租');
+  const t1 = await pg.evaluate(() => ({ m: S.player.money, debt: (S.debts || []).filter(d => d.left > 0).length, book: Object.values(S.ledger.book || {}).length, cards: document.querySelectorAll('#chatBody .paycard').length }));
+  ok(m0 - t1.m === 500 && t1.debt === 0 && t1.cards >= 1, '转账扣钱、先冲欠条、聊天里有转账卡片', `扣${m0 - t1.m}`);
+  ok(await pg.evaluate(() => S.pays.filter(p => p.from === '我').pop().toDebt === 300), '500里300算还债、200算转账');
+  await pay('转账', '200 不要也得要');
+  const t2 = await pg.evaluate(() => S.player.money);
+  ok(t2 === t1.m, '对方退回，钱回到账上', `${t1.m}→${t2}`);
+  await send('给我点钱');
+  const t3 = await pg.evaluate(() => { const p = S.pays.filter(p => p.to === '我').pop(); return { amt: p.amount, st: p.state, m: S.player.money, btn: !!document.querySelector('.paybtns button') }; });
+  await shot('2-chat-pending');
+  ok(t3.st === '待收' && t3.m === t2 && t3.btn && t3.amt < 1000000, '对方给的钱先挂着、被额度截了', `给${t3.amt}`);
+  await pg.click('.paybtns button'); await pg.waitForTimeout(200);
+  const t4 = await pg.evaluate(() => S.player.money);
+  await shot('3-chat-pay');
+  ok(t4 - t2 === t3.amt, '点了才入账');
+  ok(await pg.evaluate(() => { const L = Object.values(S.acct || {}); return JSON.stringify(S).includes('收到赵鹏的红包') && JSON.stringify(S).includes('转账给赵鹏'); }), '账本记上了');
+  await pg.click('#chatDone'); await idle();
+
+  // 群
+  await pg.evaluate(() => { const g = E.makeGroup(S, ['赵鹏', '孙姐', '妈'], '一家人'); openGroup(g.id); });
+  await send('晚上吃啥');
+  const g1 = await pg.evaluate(() => S.convo.lines.filter(l => l.who === 'ta').map(l => l.from + ':' + l.text));
+  ok(g1.length === 2 && !g1.join().includes('外人'), '群里多人回话，不在群里的人说不了话', g1.join('｜'));
+  const gm0 = await pg.evaluate(() => S.player.money);
+  await pg.click('#chatPlus'); await shot('4a-plus');
+  await pg.click('#plusMenu button:has-text("发红包")'); await pg.fill('#askIn', '100 抢'); await pg.click('#askOk'); await idle();
+  const g2 = await pg.evaluate(() => { const p = S.pays.filter(p => p.group).pop(); return { sum: p.split.reduce((a, x) => a + x.amount, 0), n: p.split.length, m: S.player.money }; });
+  await shot('4-group');
+  ok(g2.sum === 100 && g2.n === 3 && gm0 - g2.m === 100, '群红包拆给三个人，加起来正好100');
+  ok(/引擎分好了/.test(lastGroup), '群里知道谁抢了多少');
+  await pg.click('#chatDone'); await idle();
+  await pg.click('.tab[data-t="phone"]'); await shot('5-phone'); await pg.evaluate(() => openMakeGroup()); await shot('6-make-group'); await pg.evaluate(() => mask('npcMask', false));
+  ok(await pg.evaluate(() => S.groups[0].msgs.length >= 3 && S.npcs.find(n => n.name === '孙姐').mem.some(m => /一家人/.test(m))), '退出群聊，消息和要点都留下了');
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();

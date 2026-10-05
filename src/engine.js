@@ -595,6 +595,8 @@ function advance(S, opt) {
 
     // 一年到头，别的什么都往后排
     if (S.date.m === 12 && S.date.d === 31) {
+      const yp = newYearPackets(S);
+      if (yp.length) events.push({ t: '家里', s: `${yp.map(p => p.from).join('、')}发了过年红包` });
       stop = { kind: '年终', detail: `${S.date.y}年过完了` };
       break;
     }
@@ -909,6 +911,163 @@ function runSteps(S, plan, rng) {
   return { results: out, long };
 }
 
+/* ---------- 手机上的钱：转账、红包 ---------- */
+// 所有收付都挂在 S.pays 里，聊天记录只存编号
+function payList(S) { if (!S.pays) S.pays = []; return S.pays; }
+function newPay(S, o) {
+  S.payId = num(S.payId) + 1;
+  const p = Object.assign({ id: S.payId, date: shortDate(S.date), day: S.stats.days, note: '' }, o);
+  payList(S).push(p);
+  S.pays = S.pays.slice(-300);
+  return p;
+}
+function findPay(S, id) { return payList(S).find(p => p.id === id) || null; }
+// 别人给你：拿得出多少
+function giftCap(S, n) { return Math.max(100, Math.round(lendCap(S, n) * 0.5 / 100) * 100); }
+function npcByName(S, name) { return S.npcs.find(x => x.name === whoIs(S, name)) || null; }
+// 给钱换关系：看钱占月薪多少，红包多一点，一次最多 6，同一个人一天只算第一笔
+function giftRel(S, n, amount, kind) {
+  if (!n || n.giftDay === S.stats.days) return 0;
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const g = clamp(Math.round(amount / city.pay * (kind === '红包' ? 14 : 10)), 1, 6);
+  n.rel = clamp(r2(n.rel + g), 0, 100);
+  n.giftDay = S.stats.days;
+  return g;
+}
+// 主角给某人转账 / 发红包
+function payOut(S, name, amount, kind, note) {
+  amount = Math.round(num(amount));
+  kind = kind === '红包' ? '红包' : '转账';
+  const n = npcByName(S, name);
+  const who = n ? n.name : String(name || '').slice(0, 12);
+  if (amount <= 0) return { ok: false, why: '金额不对' };
+  if (S.player.money < amount) return { ok: false, why: `账上只有${S.player.money}` };
+  if (kind === '红包' && amount > 20000) return { ok: false, why: '红包一次最多两万' };
+  S.player.money -= amount;
+  let debt = '';
+  let toDebt = 0;
+  if (kind === '转账') {
+    const i = (S.debts || []).findIndex(d => d.who === who && d.left > 0);
+    if (i >= 0) {
+      const d = S.debts[i];
+      toDebt = Math.min(amount, d.left);
+      d.left -= toDebt;
+      if (d.left <= 0) { d.late = false; easeRift(S, who, 60); if (n) n.rel = clamp(n.rel + 6, 0, 100); }
+      debt = d.left > 0 ? `算还债，还欠${d.left}` : '欠条清了';
+    }
+  }
+  if (toDebt) acct(S, '还债', -toDebt, who);
+  if (amount - toDebt > 0) acct(S, kind === '红包' ? `给${who}发红包` : `转账给${who}`, -(amount - toDebt), String(note || '').slice(0, 20));
+  const gain = toDebt >= amount ? 0 : giftRel(S, n, amount - toDebt, kind);
+  if (n) { npcMem(S, n, `主角${kind === '红包' ? '发了红包' : '转了'}${amount}元${note ? '（' + String(note).slice(0, 16) + '）' : ''}${debt ? '，' + debt : ''}`); n.lastSeen = S.stats.days; }
+  const p = newPay(S, { from: '我', to: who, kind, amount, note: String(note || '').slice(0, 30), state: '已付', toDebt, gain });
+  return { ok: true, pay: p, debt, gain };
+}
+// 对方把主角给的钱推回来（还债那部分不退）
+function payBack(S, id) {
+  const p = findPay(S, id);
+  if (!p || p.from !== '我' || p.state !== '已付') return null;
+  const back = p.amount - num(p.toDebt);
+  if (back <= 0) return null;
+  S.player.money += back;
+  acct(S, `${p.to}退回`, back, p.kind);
+  const n = npcByName(S, p.to);
+  if (n && p.gain) n.rel = clamp(r2(n.rel - p.gain), 0, 100);
+  p.state = '退回';
+  return p;
+}
+// 别人给主角：先挂着，点了才入账
+function payIn(S, name, amount, kind, note, src) {
+  const n = npcByName(S, name);
+  const who = n ? n.name : String(name || '').slice(0, 12);
+  amount = Math.round(num(amount));
+  if (amount <= 0 || !who) return null;
+  let cap = n ? giftCap(S, n) : 500;
+  // 同一个人当天给的合计不超过他的额度
+  const today = payList(S).filter(p => p.from === who && p.day === S.stats.days && p.state !== '退还').reduce((a, p) => a + p.amount, 0);
+  cap = Math.max(0, cap - today);
+  // 一段故事里从消息进来的钱也有总数
+  if (src === 'msg') {
+    S.flags.payInSeg = S.flags.payInSeg && S.flags.payInSeg.seg === S.seg ? S.flags.payInSeg : { seg: S.seg, sum: 0 };
+    cap = Math.min(cap, Math.max(0, Math.round(capMoney(S) * 0.5) - S.flags.payInSeg.sum));
+  }
+  const got = Math.min(amount, cap);
+  if (got <= 0) return null;
+  if (src === 'msg') S.flags.payInSeg.sum += got;
+  return newPay(S, { from: who, to: '我', kind: kind === '红包' ? '红包' : '转账', amount: got, asked: amount, note: String(note || '').slice(0, 30), state: '待收' });
+}
+function claimPay(S, id, take) {
+  const p = findPay(S, id);
+  if (!p || p.to !== '我' || p.state !== '待收') return null;
+  const n = npcByName(S, p.from);
+  if (take) {
+    S.player.money += p.amount;
+    acct(S, `收到${p.from}的${p.kind}`, p.amount, p.note);
+    p.state = '已收';
+    if (n) npcMem(S, n, `给主角${p.kind === '红包' ? '发了红包' : '转了'}${p.amount}元，主角收了`);
+  } else {
+    p.state = '退还';
+    if (n) { n.rel = clamp(r2(n.rel - (p.kind === '红包' ? 1 : 0.5)), 0, 100); npcMem(S, n, `给主角的${p.amount}元${p.kind}被退回来了`); }
+  }
+  return p;
+}
+// 过年：关系过得去的家里人发个红包
+const KIN_RE = /家里人|妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅|姑/;
+function newYearPackets(S) {
+  const org = ORIGINS[S.origin] || ORIGINS['普通家庭'];
+  const base = org.money >= 30000 ? 2000 : org.money >= 8000 ? 800 : 300;
+  const out = [];
+  for (const n of S.npcs) {
+    if (!KIN_RE.test(String(n.tie || '') + n.name) || num(n.rel) < 40) continue;
+    const p = payIn(S, n.name, base, '红包', '过年了', 'year');
+    if (!p) continue;
+    S.msgs.push({ from: n.name, text: '过年了 拿着', date: shortDate(S.date), kind: 'chat', read: false, payId: p.id });
+    out.push(p);
+  }
+  return out;
+}
+
+/* ---------- 群 ---------- */
+function groupList(S) { if (!S.groups) S.groups = []; return S.groups; }
+function makeGroup(S, members, name) {
+  const ms = [...new Set((members || []).map(m => whoIs(S, m)).filter(m => S.npcs.some(n => n.name === m)))].slice(0, 8);
+  if (ms.length < 2) return null;
+  S.groupId = num(S.groupId) + 1;
+  const g = { id: 'g' + S.groupId, name: String(name || '').trim().slice(0, 14) || ms.slice(0, 3).join('、') + (ms.length > 3 ? '…' : ''), members: ms, msgs: [], gist: '', since: shortDate(S.date) };
+  groupList(S).push(g);
+  return g;
+}
+// 拼手气：每人至少 1 元，加起来正好是总数
+function splitPacket(amount, k, rng) {
+  rng = rng || Math.random;
+  amount = Math.round(num(amount)); k = Math.max(1, Math.round(num(k)));
+  if (amount < k) return null;
+  const w = Array.from({ length: k }, () => 0.2 + rng());
+  const sw = w.reduce((a, b) => a + b, 0);
+  const out = w.map(x => 1 + Math.floor((amount - k) * x / sw));
+  let rest = amount - out.reduce((a, b) => a + b, 0);
+  for (let i = 0; rest > 0; i = (i + 1) % k, rest--) out[i]++;
+  return out;
+}
+function groupPacket(S, g, amount, note, rng) {
+  amount = Math.round(num(amount));
+  if (!g || amount <= 0) return { ok: false, why: '金额不对' };
+  if (S.player.money < amount) return { ok: false, why: `账上只有${S.player.money}` };
+  if (amount < g.members.length) return { ok: false, why: `${g.members.length}个人，至少得${g.members.length}块` };
+  if (amount > 20000) return { ok: false, why: '红包一次最多两万' };
+  const parts = splitPacket(amount, g.members.length, rng);
+  S.player.money -= amount;
+  acct(S, `在「${g.name}」发红包`, -amount, String(note || '').slice(0, 20));
+  const got = g.members.map((m, i) => {
+    const n = npcByName(S, m);
+    let gain = 0;
+    if (n && n.giftDay !== S.stats.days) { gain = clamp(Math.round(parts[i] / ((CITIES[S.city] || CITIES['新一线']).pay) * 14), 0, 2); n.rel = clamp(n.rel + gain, 0, 100); n.giftDay = S.stats.days; }
+    return { who: m, amount: parts[i], gain };
+  }).sort((a, b) => b.amount - a.amount);
+  const p = newPay(S, { from: '我', to: g.name, group: g.id, kind: '红包', amount, note: String(note || '').slice(0, 30), state: '已抢完', split: got });
+  return { ok: true, pay: p, split: got };
+}
+
 /* ---------- 自设的停下条件 ---------- */
 function stopList(S) {
   if (!S.stopWhen) S.stopWhen = [];
@@ -1046,7 +1205,7 @@ function sanitizeTurn(d) {
   o.newNpcs = T.arr(d.newNpcs, 6).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
     tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close) }));
-  o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120) }));
+  o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120), pay: sanitizePay(x.pay) }));
   o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80) }));
   o.appointments = T.arr(d.appointments, 3).map(T.obj).filter(x => x && x.title).map(x => ({ title: T.str(x.title, 30), inDays: T.num(x.inDays, 1, 120), kind: T.str(x.kind, 8) }));
   o.milestoneClaim = T.arr(d.milestoneClaim, 3).map(x => T.str(typeof x === 'object' && x ? x.title : x, 40)).filter(Boolean);
@@ -1071,11 +1230,28 @@ function sanitizeStop(v) {
   if (o.type === 'npc' && o.who) return { type: 'npc', who: T.str(o.who, 12) };
   return null;
 }
+function sanitizePay(v) {
+  const o = T.obj(v);
+  if (!o || !(num(o.amount) > 0)) return null;
+  return { kind: o.kind === '红包' ? '红包' : '转账', amount: Math.round(T.num(o.amount, 1, 1e7)), note: T.str(o.note, 30) };
+}
+function sanitizeGroup(d, members) {
+  d = T.obj(d) || {};
+  const ok = new Set(members || []);
+  return {
+    replies: T.arr(d.replies, 3).map(T.obj).filter(x => x && x.who && x.text && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 200) })),
+    gist: T.str(d.gist, 80), summary: T.str(d.summary, 30),
+    deal: T.arr(d.deal, 2).map(T.obj).filter(x => x && x.what && x.who && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', what: T.str(x.what, 40), inDays: T.num(x.inDays, 0, 365) }))
+  };
+}
 function sanitizeConvo(d) {
   d = T.obj(d) || {};
   const a = T.obj(d.ask);
   return {
-    reply: T.str(d.reply, 300) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -8, 8),
+    reply: T.str(d.reply, 300) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -3, 3),
+    gist: T.str(d.gist, 80), cold: T.bool(d.cold) || T.bool(d.end),
+    pay: sanitizePay(d.pay), refund: T.bool(d.refund),
+    deal: T.arr(d.deal, 2).map(T.obj).filter(x => x && x.what).map(x => ({ kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', what: T.str(x.what, 40), inDays: T.num(x.inDays, 0, 365) })),
     ask: a && a.what ? { what: T.str(a.what, 40), kind: ASK_KINDS.includes(a.kind) ? a.kind : (num(a.money) > 0 ? 'borrow' : 'favor'),
       attr: ATTRS.includes(a.attr) ? a.attr : '表达', need: T.num(a.need, 20, 90) || 60, money: T.num(a.money, 0, 1e9), days: T.num(a.days, 0, 720) } : null,
     end: T.bool(d.end), summary: T.str(d.summary, 30)
@@ -1166,7 +1342,12 @@ function applyTurn(S, d) {
   for (const m of (d.messages || []).slice(0, 4)) {
     if (!m || !m.text) continue;
     const who = whoIs(S, String(m.from || '某人').slice(0, 12));
-    S.msgs.push({ from: who, text: String(m.text).slice(0, 120), date: shortDate(S.date), kind: 'chat', read: false });
+    const msg = { from: who, text: String(m.text).slice(0, 120), date: shortDate(S.date), kind: 'chat', read: false };
+    if (m.pay && m.pay.amount > 0) {
+      const py = payIn(S, who, m.pay.amount, m.pay.kind, m.pay.note || m.text, 'msg');
+      if (py) { msg.payId = py.id; if (py.amount < py.asked) cut.push(`${who}的${py.kind}你写了${py.asked}，引擎只认${py.amount}`); }
+    }
+    S.msgs.push(msg);
     const nn = S.npcs.find(x => x.name === who);
     if (nn) nn.lastSeen = S.stats.days;
   }
@@ -2299,7 +2480,8 @@ const API = {
   startKey, keyRound, settleKey,
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
-  stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick
+  stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
+  sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 root.ENGINE = API;

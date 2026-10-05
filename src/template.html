@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover,shrink-to-fit=no"/>
 <meta name="theme-color" content="#101218"/>
 <title>现代生活模拟器</title>
 <link rel="icon" href="favicon.ico" sizes="any"/>
@@ -366,6 +366,35 @@ html.pwa body{bottom:auto;height:var(--app-h,100lvh)}
   #acts{padding:5px 12px 4px}
   .skip{padding:6px 6px}
 }
+/* 不许页面横向撑宽：iOS 碰到超宽内容会把整页缩小 */
+html,body{max-width:100%;overflow-x:hidden}
+#app{max-width:min(520px,100vw)}
+/* 底栏常驻：面板停在它上面 */
+#tabs{position:relative;z-index:22}
+#panel{bottom:var(--tabsH,56px)}
+/* 聊天里的钱 */
+#chatPlus{flex:none;width:36px;border:1px solid var(--line);border-radius:9px;font-size:20px;color:var(--dim);line-height:1}
+#plusMenu{display:none;gap:8px;padding:8px 12px 0;background:var(--bar);border-top:1px solid var(--line)}
+#plusMenu.on{display:flex}
+#plusMenu button{flex:1;padding:9px 0;border-radius:9px;background:var(--btn);border:1px solid var(--line);font-size:13.5px}
+.paywrap{display:flex;flex-direction:column;align-items:flex-start;margin-bottom:10px}
+.paywrap.me{align-items:flex-end}
+.paycard{width:210px;max-width:76%;border-radius:11px;padding:10px 12px;color:#fff;display:flex;flex-direction:column;gap:3px}
+.paycard.hb{background:#c8553d}
+.paycard.zz{background:#d08a2f}
+.paycard.done{opacity:.62}
+.paycard b{font-size:15px;font-weight:600}
+.paycard span{font-size:12.5px}
+.paycard em{font-style:normal;font-size:11px;opacity:.85;border-top:1px solid rgba(255,255,255,.3);padding-top:4px;margin-top:3px}
+.paysplit{font-size:11px;opacity:.9;line-height:1.6}
+.paybtns{display:flex;gap:6px;margin-top:6px}
+.paybtns button{flex:1;padding:6px 0;border-radius:7px;background:#fff;color:#a2462f;font-size:12.5px}
+.paybtns button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6)}
+.bfrom{display:block;text-decoration:none;font-size:11px;color:var(--gold);margin-bottom:2px}
+.gmake{width:100%;margin:0 0 10px}
+.gli{display:flex;align-items:center;gap:9px;cursor:pointer}
+.gli b{flex:1;font-weight:500}
+.gli input{width:18px;height:18px;flex:none;accent-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -407,7 +436,8 @@ html.pwa body{bottom:auto;height:var(--app-h,100lvh)}
       <button id="chatDone">聊完了</button>
     </div>
     <div id="chatBody"></div>
-    <div id="chatFoot"><input id="chatIn" placeholder="说点什么" maxlength="60"/><button class="act-go" id="chatSend">发</button></div>
+    <div id="plusMenu"></div>
+    <div id="chatFoot"><button id="chatPlus" aria-label="转账和红包">＋</button><input id="chatIn" placeholder="说点什么" maxlength="80"/><button class="act-go" id="chatSend">发</button></div>
   </section>
 
   <section id="key">

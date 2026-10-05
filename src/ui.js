@@ -309,7 +309,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","intimate":false}],
 "newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
-"messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信"}],
+"messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信","pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"}（这人真给主角打钱时才填，数目对得上他的家底）}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
@@ -1090,14 +1090,20 @@ function renderPanel() {
     }).concat(Object.values(threads).map(t => ({ name: t.from, npc: null, last: t.last, unread: t.unread, at: t.at })));
     rows.sort((a, b) => (b.at - a.at) || ((b.npc ? b.npc.rel : 0) - (a.npc ? a.npc.rel : 0)));
 
-    box.innerHTML = head + `<div class="msgs">${rows.map(r => {
+    const groups = E.groupList(S).slice().reverse().map(g => {
+      const last = g.msgs[g.msgs.length - 1];
+      return `<div class="thread" onclick="openGroup('${g.id}')"><div class="face sm" style="--h:200">群</div>
+        <div class="thbody"><div class="mfrom">${esc(g.name)}<em>${g.members.length + 1}人</em><span>${last ? esc(last.date) : esc(g.since)}</span></div>
+        <div class="mtext one">${last ? (last.me ? '我：' : esc(last.from) + '：') + esc(last.text || (last.payId ? '[红包]' : '')) : '还没人说话'}</div></div></div>`;
+    }).join('');
+    box.innerHTML = head + `<button class="ghost sm gmake" onclick="openMakeGroup()">＋ 发起群聊</button><div class="msgs">${groups}${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
         return `<div class="thread" onclick="openThread('${esc(r.name)}')">
           ${faceHtml(S, r.name, 'sm')}
           <div class="thbody">
             <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
-            <div class="mtext one">${r.last ? (r.last.me ? '我：' : '') + esc(r.last.text) : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
+            <div class="mtext one">${r.last ? (r.last.me ? '我：' : '') + esc(r.last.text || '') + (r.last.payId ? ((p => p ? `[${p.kind}${p.state === '待收' ? '·没领' : ''}]` : '')(E.findPay(S, r.last.payId))) : '') : (r.npc && r.npc.note ? esc(r.npc.note) : '还没说过话')}</div>
             ${r.npc && gap >= 20 ? `<div class="tip"><u>${gap}天没联系了</u></div>` : ''}
           </div></div>`;
       }).join('') || '<div class="card tip">通讯录还是空的</div>'}</div>
@@ -1505,21 +1511,48 @@ ${(n.mem || []).join('\n') || '没什么特别的'}
 ${S.history.slice(-10).map(h => `${h.date}｜${h.act ? '他去' + h.act + '：' : ''}${h.summary}`).join('\n') || '（刚开始）'}
 ${(S.pledges || []).filter(p => !p.done && p.who === n.name).length ? `【你们之间说定的事】${S.pledges.filter(p => !p.done && p.who === n.name).map(pledgeLine).join('；')}\n` : ''}${aboutNpc(n)}【就在刚才】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(-220)}`;
 }
+// 这次对话：太长了只留最近 30 句原话，更早的靠一路记下来的要点
+function lineText(l) {
+  const p = l.payId ? E.findPay(S, l.payId) : null;
+  const pt = p ? `[${p.kind} ${p.amount}元${p.note ? '：' + p.note : ''}，${p.state}]` : '';
+  return [l.text, pt].filter(Boolean).join(' ');
+}
+function convoLog(n) {
+  const L = S.convo.lines.filter(l => l.who !== 'sys');
+  const keep = L.slice(-30);
+  const head = L.length > keep.length ? `（更早的 ${L.length - keep.length} 句略，要点是：${S.convo.gist || S.convo.summary || '闲聊'}）\n` : '';
+  return head + (keep.map(l => `${l.who === 'me' ? S.player.name : (l.from || n.name)}：${lineText(l)}`).join('\n') || '（刚开口）');
+}
 function convoPrompt(n, say, judge) {
-  const log = S.convo.lines.map(l => `${l.who === 'me' ? S.player.name : n.name}：${l.text}`).join('\n') || '（刚开口）';
-  const past = (S.convo.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : n.name}：${m.text}`).join('\n');
+  const c = S.convo;
+  const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : n.name}：${lineText(m)}`).join('\n');
+  const said = c.lines.filter(l => l.who === 'ta' && l.text).map(l => l.text);
   return `${convoHead(n)}
-${past ? `\n【手机里之前的来往（主角这次就是接着这些点开的对话框）】\n${past}\n` : ''}
-【这次的对话】
-${log}
+${past ? `\n【手机里以前的来往（已经过去的事，不是刚说的）】\n${past}\n` : ''}${c.gist ? `\n【这次聊到现在的要点】${c.gist}\n` : ''}
+【这次的对话（按先后）】
+${convoLog(n)}
 
 ${judge
     ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}
-这一轮写${n.name}的最终答复，必须照这个结果来。答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞糊弄过去。`
-    : `【主角刚说的】${say}`}
+这一轮写${n.name}对这件事的答复，必须照这个结果来。答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞糊弄过去。`
+    : ''}
+【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}
+
+怎么回：
+- 只接主角刚发的这句。他问什么就答什么，他说什么就接什么；上文只用来让你的话前后对得上，不许回头去接很早以前的话茬，除非主角刚好提到。
+- 这次对话里你已经说过的意思和句子不许再说一遍${said.length ? `（你已经说过：${said.slice(-6).map(t => '「' + String(t).slice(0, 24) + '」').join('')}）` : ''}。
+- 就算你不想聊了，主角发来的话也照样回，可以冷淡、敷衍、只回一两个字，但得是对这句的回应。
+- 你记得以前跟主角的来往和说定的事，对得上就自然带出来，别装不知道。
+- 主角给你转账、发红包，要对这笔钱有反应：收下、道谢、嘴上推两句、或者真不要退回去（refund 填 true），看你们的关系和你的性子。${c.paidNote ? `\n- 刚才：${c.paidNote}。` : ''}
+- 你真要给主角钱（借他、给他、发红包、还他钱）时才填 pay，数目要跟你的身份和家底对得上。
 
 只输出一个合法 JSON：
-{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-8到8的整数),"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","kind":"borrow（借钱）|interview（帮忙约面试、推工作）|intro（介绍人）|favor（别的忙）","attr":"表达|情绪|谋划|专业","need":40到85,"money":借钱就写数额否则0,"days":借钱写多少天内还，帮忙写几天内办}'},"end":对方想结束对话就true,"summary":"这次聊天到现在的一句话（20字内）"}`;
+{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-3到3的整数),
+"gist":"这次对话从头到现在的要点，按先后，60字内；说定的事、提过的请求、吵过的架都要留着",
+"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","kind":"borrow（借钱）|interview（帮忙约面试、推工作）|intro（介绍人）|favor（别的忙）","attr":"表达|情绪|谋划|专业","need":40到85,"money":借钱就写数额否则0,"days":借钱写多少天内还，帮忙写几天内办}（只有主角在刚发的这句里明确开口求你帮忙才填；你求主角的事不算，主角答应不答应由他自己说）'},
+"deal":[{"kind":"主角答应|对方答应|主角拒绝","what":"这一来一回里说定或回绝的具体事（20字内）","inDays":几天内办，没期限填0}]（只有这一轮真说定了才写，没有就空数组）,
+"pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"},"refund":主角刚给你的钱你退回去就true,
+"cold":你不想再聊了就true,"summary":"一句话（20字内）"}`;
 }
 
 let convoFrom = '';     // 从哪个面板点进来的，返回时回那儿
@@ -1535,28 +1568,101 @@ function openConvo(name) {
   $('chatIn').value = '';
   setTimeout(() => $('chatIn').focus(), 200);
 }
+// 一笔钱在聊天里的样子
+function payCard(id) {
+  const p = E.findPay(S, id);
+  if (!p) return '';
+  const mine = p.from === '我';
+  const st = p.state === '待收' ? (p.kind === '红包' ? '待领取' : '待收款') : p.state === '已收' ? '已收' : p.state === '退还' ? '已退还' : p.state === '退回' ? '被退回' : p.state === '已抢完' ? '已被抢完' : (mine ? '已付' : '');
+  const btn = !mine && p.state === '待收'
+    ? `<div class="paybtns"><button onclick="takePay(${p.id},true)">${p.kind === '红包' ? '领红包' : '收款'}</button><button class="ghost" onclick="takePay(${p.id},false)">退还</button></div>` : '';
+  const split = p.split ? `<div class="paysplit">${p.split.map(x => `${esc(x.who)} ${x.amount}`).join('　')}</div>` : '';
+  return `<div class="paycard ${p.kind === '红包' ? 'hb' : 'zz'}${p.state === '待收' ? '' : ' done'}"><b>${p.kind === '红包' ? '红包' : '转账'}　¥${p.amount}</b><span>${esc(p.note || (p.kind === '红包' ? '恭喜发财' : ''))}</span><em>${st}${p.toDebt ? `（${p.toDebt}算还债）` : ''}</em>${split}${btn}</div>`;
+}
+function bubHtml(who, text, opt) {
+  opt = opt || {};
+  const side = who === 'me' ? 'me' : 'ta';
+  const nm = opt.from && side === 'ta' ? `<u class="bfrom">${esc(opt.from)}</u>` : '';
+  const t = text ? `<div class="bub ${side}">${nm}${esc(text)}${opt.mood ? `<i>${esc(opt.mood)}</i>` : ''}</div>` : '';
+  const pc = opt.payId ? `<div class="paywrap ${side}">${!text && nm ? nm : ''}${payCard(opt.payId)}</div>` : '';
+  return t + pc;
+}
 function renderConvo() {
   const c = S.convo;
   if (!c) return;
-  const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
-  $('chatName').innerHTML = `${esc(n.name)} <i class="tapcard">名片</i>`;
-  $('chatFace').innerHTML = faceHtml(S, n.name, '');
-  $('chatName').onclick = () => showNpc(n.name);
-  $('chatSub').textContent = callName(n);
+  const g = c.group ? E.groupList(S).find(x => x.id === c.group) : null;
+  if (g) {
+    $('chatName').innerHTML = `${esc(g.name)} <i class="tapcard">${g.members.length + 1}人</i>`;
+    $('chatFace').innerHTML = `<div class="face" style="--h:200">群</div>`;
+    $('chatName').onclick = () => toast(`群里有：${g.members.join('、')}`);
+    $('chatSub').textContent = g.members.join('、');
+  } else {
+    const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
+    $('chatName').innerHTML = `${esc(n.name)} <i class="tapcard">名片</i>`;
+    $('chatFace').innerHTML = faceHtml(S, n.name, '');
+    $('chatName').onclick = () => showNpc(n.name);
+    $('chatSub').textContent = callName(n);
+  }
   let lastDate = '';
   const hist = (c.hist || []).map(m => {
     const d = m.date && m.date !== lastDate ? `<div class="sysline">${esc(m.date)}</div>` : '';
     lastDate = m.date || lastDate;
-    return d + `<div class="bub ${m.me ? 'me' : 'ta'}">${esc(m.text)}</div>`;
+    return d + bubHtml(m.me ? 'me' : 'ta', m.text, { payId: m.payId, from: g ? m.from : '' });
   }).join('');
   const nowD = E.shortDate(S.date);
   const sep = hist && c.lines.length && lastDate !== nowD ? `<div class="sysline">${esc(nowD)}</div>` : '';
   $('chatBody').innerHTML = (hist + sep + c.lines.map(l =>
-    l.who === 'sys'
-      ? `<div class="sysline">${esc(l.text)}</div>`
-      : `<div class="bub ${l.who === 'me' ? 'me' : 'ta'}">${esc(l.text)}${l.mood ? `<i>${esc(l.mood)}</i>` : ''}</div>`).join(''))
+    l.who === 'sys' ? `<div class="sysline">${esc(l.text)}</div>` : bubHtml(l.who, l.text, { mood: l.mood, payId: l.payId, from: g ? l.from : '' })).join(''))
     || '<div class="sysline">说点什么</div>';
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
+}
+// 领钱 / 退还：聊天里、翻旧消息时都能点
+function takePay(id, take) {
+  const p = E.claimPay(S, id, take);
+  if (!p) return;
+  toast(take ? `收了${p.from}的${p.amount}` : `退还给${p.from}了`);
+  if (S.convo) {
+    S.convo.lines.push({ who: 'sys', text: take ? `你收下了${p.from}的${p.kind}，${p.amount}元` : `你把${p.from}的${p.kind}退了回去` });
+    S.convo.paidNote = (take ? '主角收下了' : '主角把') + `${p.from}给的${p.amount}元${p.kind}` + (take ? '' : '退了回去');
+    renderConvo();
+  }
+  rebuildTop(); renderPanel(); saveGame();
+}
+// ＋：转账 / 红包
+function chatPlus() {
+  const c = S.convo;
+  if (!c || busy) return;
+  const m = $('plusMenu');
+  m.innerHTML = c.group
+    ? `<button onclick="chatPay('红包')">发红包（拼手气）</button><button class="ghost" onclick="$('plusMenu').classList.remove('on')">算了</button>`
+    : `<button onclick="chatPay('转账')">转账</button><button onclick="chatPay('红包')">红包</button><button class="ghost" onclick="$('plusMenu').classList.remove('on')">算了</button>`;
+  m.classList.toggle('on');
+}
+async function chatPay(kind) {
+  $('plusMenu').classList.remove('on');
+  const c = S.convo;
+  if (!c) return;
+  const v = await ask({ title: kind === '红包' ? (c.group ? '在群里发红包' : `给${c.name}发红包`) : `转账给${c.name}`,
+    text: `账上有 ${S.player.money} 元。先写金额，后面可以跟一句话。`, input: { placeholder: kind === '红包' ? '200 恭喜发财' : '500 房租先给你', max: 40 }, ok: kind === '红包' ? '塞进去' : '转' });
+  if (!v) return;
+  const mm = v.match(/^\s*(\d+)\s*(.*)$/);
+  if (!mm) { toast('先写金额'); return; }
+  const amt = Number(mm[1]), note = mm[2].trim();
+  if (c.group) {
+    const g = E.groupList(S).find(x => x.id === c.group);
+    const r = E.groupPacket(S, g, amt, note, Math.random);
+    if (!r.ok) { toast(r.why); return; }
+    c.lines.push({ who: 'me', text: '', payId: r.pay.id });
+    renderConvo(); rebuildTop(); saveGame();
+    await groupTurn(`[在群里发了个${amt}元的拼手气红包${note ? '：' + note : ''}。引擎分好了：${r.split.map(x => `${x.who}抢到${x.amount}`).join('，')}]`);
+    return;
+  }
+  const r = E.payOut(S, c.name, amt, kind, note);
+  if (!r.ok) { toast(r.why); return; }
+  c.lines.push({ who: 'me', text: '', payId: r.pay.id });
+  if (r.debt) c.lines.push({ who: 'sys', text: r.debt });
+  renderConvo(); rebuildTop(); saveGame();
+  await convoTurn(`[给你${kind === '红包' ? '发了个红包' : '转账'} ${amt}元${note ? '：' + note : ''}${r.debt ? `（${r.debt}）` : ''}]`, null);
 }
 async function convoSend() {
   const c = S.convo;
@@ -1567,8 +1673,8 @@ async function convoSend() {
   c.lines.push({ who: 'me', text: say });
   c.turns++;
   renderConvo();
-  await convoTurn(say, null);
-  if (c.turns >= 8) { c.lines.push({ who: 'sys', text: '聊得差不多了' }); renderConvo(); }
+  if (c.group) await groupTurn(say);
+  else await convoTurn(say, null);
 }
 async function convoTurn(say, judge) {
   const c = S.convo;
@@ -1579,23 +1685,44 @@ async function convoTurn(say, judge) {
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
     const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05 }));
-    c.lines.push({ who: 'ta', text: d.reply, mood: d.mood });
-    c.rel += d.rel;
     if (d.summary) c.summary = d.summary;
-    renderConvo();
+    if (d.gist) c.gist = d.gist;
+    c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
     if (d.ask && !judge) {
+      // 主角开口求他：先不让他回，掷完骰拿结果再回一条
+      $('chatBody').querySelectorAll('.typing').forEach(x => x.remove());
       const a = d.ask;
       const ck = E.rollCheck(S, a.attr, a.need, Math.random);
       ck.what = a.what; ck.kind = a.kind; ck.days = a.days;
       if (ck.success) settleAsk(n, a, ck);
       if (ck.sys) c.lines.push({ who: 'sys', text: ck.sys });
-      c.lines.push({ who: 'sys', text: `${ck.attr}${ck.val}　掷骰${ck.roll}　${ck.total}/${ck.need}　${ck.success ? '成' : '不成'}` });
+      c.lines.push({ who: 'sys', text: `求他：${ck.what}　${ck.attr}${ck.val}　掷骰${ck.roll}　${ck.total}/${ck.need}　${ck.success ? '成' : '不成'}` });
       renderConvo();
       setBusy(false);
-      await convoTurn('', ck);
+      await convoTurn(say, ck);
       return;
     }
-    if (d.end) { c.lines.push({ who: 'sys', text: '他看样子要走了' }); renderConvo(); }
+    c.paidNote = '';
+    const line = { who: 'ta', text: d.reply, mood: d.mood };
+    if (d.pay && !judge) {
+      const py = E.payIn(S, n.name, d.pay.amount, d.pay.kind, d.pay.note, 'chat');
+      if (py) line.payId = py.id;
+      else c.lines.push({ who: 'sys', text: `${n.name}今天拿不出更多了` });
+    }
+    c.lines.push(line);
+    if (line.payId) { const py = E.findPay(S, line.payId); if (py.amount < py.asked) c.lines.push({ who: 'sys', text: `${n.name}最多只拿得出${py.amount}` }); }
+    if (d.refund) {
+      const mine = c.lines.filter(l => l.who === 'me' && l.payId).map(l => E.findPay(S, l.payId)).filter(p => p && p.state === '已付').pop();
+      const bk = mine && E.payBack(S, mine.id);
+      if (bk) { c.lines.push({ who: 'sys', text: `${n.name}把${bk.amount - (bk.toDebt || 0)}元退了回来` }); rebuildTop(); }
+    }
+    for (const dl of d.deal) {
+      if (E.addPledge(S, { who: n.name, what: dl.what, kind: dl.kind, inDays: dl.inDays }))
+        c.lines.push({ who: 'sys', text: `记下了：${dl.kind === '主角答应' ? '你答应' + n.name : dl.kind === '对方答应' ? n.name + '答应你' : '你回绝了' + n.name}「${dl.what}」` });
+    }
+    if (d.cold && !c.coldShown) { c.coldShown = true; c.lines.push({ who: 'sys', text: `${n.name}看样子不太想聊了` }); }
+    else if (!d.cold) c.coldShown = false;
+    renderConvo();
   } catch (e) {
     c.lines.push({ who: 'sys', text: '（没说成：' + (e.message || e) + '）' });
     renderConvo();
@@ -1603,6 +1730,120 @@ async function convoTurn(say, judge) {
   setBusy(false);
   saveGame();
 }
+/* ---- 群聊 ---- */
+function openGroup(id) {
+  const g = E.groupList(S).find(x => x.id === id);
+  if (!g || busy) return;
+  if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
+  convoFrom = curTab || '';
+  S.convo = { group: g.id, name: g.name, lines: [], turns: 0, summary: '', gist: g.gist || '', rel: 0, hist: g.msgs.slice(-20) };
+  closePanel();
+  $('chat').classList.add('on');
+  renderConvo();
+  $('chatIn').value = '';
+  setTimeout(() => $('chatIn').focus(), 200);
+}
+function groupPrompt(g, say) {
+  const c = S.convo;
+  const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
+  const mem = who.map(n => `- ${n.name}：${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
+  const L = c.lines.filter(l => l.who !== 'sys');
+  const keep = L.slice(-30);
+  const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
+  const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : m.from}：${lineText(m)}`).join('\n');
+  return `${worldRules()}
+
+这是主角${S.player.name}拉的微信群「${g.name}」，群里除了主角还有：
+${mem}
+【主角】${S.player.name}，${S.player.age}岁，${S.player.job}。
+
+${past ? `【群里以前的消息（已经过去了）】\n${past}\n` : ''}${c.gist ? `【这个群聊到现在的要点】${c.gist}\n` : ''}
+【这次群里的消息（按先后）】
+${log}
+
+【主角刚在群里发的——这一轮大家回的就是它】${say}
+
+怎么写：
+- 你同时扮演群里这几个人，只写他们发在群里的话，不写旁白，不替主角说话。
+- 挑一到三个最可能接这句的人回，其余的人不出声。谁回、回什么，要对得上他的身份、性子、跟主角的关系，也对得上他跟群里别人熟不熟。
+- 群里的人可以互相接话、抬杠、打岔，像真的微信群：短、口语、有人只回表情或者"哈哈"。
+- 只接主角刚发的这句和跟它直接相关的上文，不许去接很早以前的话茬；这次已经说过的话不许再说。
+- 有红包的话，抢到的人照引擎分的数说话（手气好的嘚瑟、少的吐槽），没必要每个人都开口。
+
+只输出一个合法 JSON：
+{"replies":[{"who":"群里某人的名字","text":"他发的话"}],
+"gist":"这个群这次从头到现在的要点，60字内",
+"deal":[{"who":"跟主角说定事的那个人","kind":"主角答应|对方答应|主角拒绝","what":"具体的事（20字内）","inDays":几天内办，没期限填0}],
+"summary":"一句话（20字内）"}`;
+}
+async function groupTurn(say) {
+  const c = S.convo;
+  const g = c && E.groupList(S).find(x => x.id === c.group);
+  if (!g) return;
+  setBusy(true, '群里有人在打字……');
+  $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
+  $('chatBody').scrollTop = $('chatBody').scrollHeight;
+  try {
+    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say), null, { maxTokens: 1400, temperature: 1.05 }), g.members);
+    if (d.gist) c.gist = d.gist;
+    if (d.summary) c.summary = d.summary;
+    for (const r of d.replies) c.lines.push({ who: 'ta', from: r.who, text: r.text });
+    if (!d.replies.length) c.lines.push({ who: 'sys', text: '群里没人接话' });
+    for (const dl of d.deal) {
+      if (E.addPledge(S, { who: dl.who, what: dl.what, kind: dl.kind, inDays: dl.inDays }))
+        c.lines.push({ who: 'sys', text: `记下了：${dl.kind === '主角答应' ? '你答应' + dl.who : dl.kind === '对方答应' ? dl.who + '答应你' : '你回绝了' + dl.who}「${dl.what}」` });
+    }
+  } catch (e) {
+    c.lines.push({ who: 'sys', text: '（没发出去：' + (e.message || e) + '）' });
+  }
+  renderConvo();
+  setBusy(false);
+  saveGame();
+}
+function endGroup(c, toPanel) {
+  const g = E.groupList(S).find(x => x.id === c.group);
+  const said = c.lines.filter(l => l.who !== 'sys');
+  if (g && said.length) {
+    const dt = E.shortDate(S.date);
+    for (const l of said) g.msgs.push({ from: l.who === 'me' ? '' : l.from, me: l.who === 'me', text: String(l.text || '').slice(0, 200), date: dt, payId: l.payId });
+    g.msgs = g.msgs.slice(-200);
+    g.gist = c.gist || g.gist;
+    const spoke = new Set(said.filter(l => l.who === 'ta').map(l => l.from));
+    for (const m of g.members) {
+      const n = S.npcs.find(x => x.name === m);
+      if (!n) continue;
+      if (spoke.has(m)) n.lastSeen = S.stats.days;
+      if (c.gist) E.npcMem(S, n, `在群「${g.name}」里：${c.gist}`);
+    }
+    S.history.push({ seg: S.seg, date: dt, summary: `在群「${g.name}」里聊：${c.summary || '说了会儿话'}` });
+  }
+  S.convo = null;
+  $('chat').classList.remove('on');
+  saveGame(); rebuildTop();
+  const back = convoFrom; convoFrom = '';
+  if (toPanel && back) gotoTab(back);
+}
+// 建群：勾人、起名
+function openMakeGroup() {
+  if (S.npcs.length < 2) { toast('通讯录里人还太少'); return; }
+  const list = S.npcs.slice().sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+  $('npcBox').innerHTML = `<h2>发起群聊</h2><div class="tip" style="margin-top:-10px">勾两到八个人。</div>
+    <div class="card gpick" style="margin-top:14px">${list.map(n => `<label class="li gli"><input type="checkbox" value="${esc(n.name)}"/>${faceHtml(S, n.name, 'sm')}<b>${esc(n.name)}</b><span class="rel">${esc(callName(n) || '')}</span></label>`).join('')}</div>
+    <div class="frow"><label>群名</label><input id="gName" placeholder="不填就用名字拼" maxlength="14"/></div>
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">算了</button><button class="primary" onclick="doMakeGroup()">建群</button></div>`;
+  mask('npcMask', true);
+}
+function doMakeGroup() {
+  const picked = [...document.querySelectorAll('.gpick input:checked')].map(x => x.value);
+  if (picked.length < 2) { toast('至少勾两个人'); return; }
+  if (picked.length > 8) { toast('最多八个人'); return; }
+  const g = E.makeGroup(S, picked, $('gName').value);
+  if (!g) { toast('建不起来'); return; }
+  mask('npcMask', false);
+  saveGame();
+  openGroup(g.id);
+}
+
 // 聊天里求的事，答应了就得有着落：钱到账、约上面试、记进约定
 function settleAsk(n, a, ck) {
   const rng = Math.random;
@@ -1630,10 +1871,12 @@ function settleAsk(n, a, ck) {
 function endConvo(goOn, toPanel) {
   const c = S.convo;
   if (!c) { $('chat').classList.remove('on'); return; }
+  $('plusMenu').classList.remove('on');
+  if (c.group) return endGroup(c, toPanel);
   const n = S.npcs.find(x => x.name === c.name);
   const said = c.lines.filter(l => l.who !== 'sys');
   if (n && said.length) {
-    E.applyConvo(S, c.name, { rel: c.rel, mem: c.summary || said[said.length - 1].text.slice(0, 30) });
+    E.applyConvo(S, c.name, { rel: c.rel, mem: c.gist || c.summary || said[said.length - 1].text.slice(0, 30) });
     S.recent.push({
       seg: S.seg, action: `找${c.name}聊了聊`,
       narrative: said.map(l => `${l.who === 'me' ? S.player.name : c.name}：${l.text}`).join('\n')
@@ -1641,7 +1884,7 @@ function endConvo(goOn, toPanel) {
     S.recent = S.recent.slice(-8);
     S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `跟${c.name}聊：${c.summary || '说了会儿话'}` });
     const dt = E.shortDate(S.date);
-    for (const l of said) S.msgs.push({ from: c.name, me: l.who === 'me', text: String(l.text).slice(0, 120), date: dt, kind: 'talk', read: true });
+    for (const l of said) S.msgs.push({ from: c.name, me: l.who === 'me', text: String(l.text || '').slice(0, 120), date: dt, kind: 'talk', read: true, payId: l.payId });
     S.msgs = S.msgs.slice(-240);
   }
   const name = c.name, sum = c.summary;
@@ -2149,7 +2392,13 @@ function diagText() {
   pr.remove();
   const vv = window.visualViewport ? Math.round(visualViewport.height) : '-';
   const sm = (navigator.standalone === true ? 'S' : '') + (window.matchMedia && matchMedia('(display-mode: standalone)').matches ? 'D' : '');
-  return `屏幕读数 ${screen.width}×${screen.height}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}`;
+  let wide = '', wr = innerWidth;
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.closest('#chat,#key,#panel:not(.on)')) continue;
+    const q = el.getBoundingClientRect();
+    if (q.width && q.right > wr + 1) { wr = q.right; wide = (el.id ? '#' + el.id : el.tagName.toLowerCase() + (typeof el.className === 'string' && el.className ? '.' + el.className.split(' ')[0] : '')) + Math.round(q.right); }
+  }
+  return `屏幕读数 ${screen.width}×${screen.height}｜排版${innerWidth}｜页宽${document.documentElement.scrollWidth}｜缩放${window.visualViewport ? visualViewport.scale.toFixed(2) : '-'}｜最宽${wide || '无'}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}`;
 }
 function openSettings() {
   mask('setMask', true);
@@ -2313,10 +2562,13 @@ function fitStandalone() {
   const long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
   root.style.setProperty('--app-h', Math.max(window.innerHeight, portrait ? long : short) + 'px');
 }
+// 面板停在底栏上面
+function fitTabs() { const t = $('tabs'); if (t) document.documentElement.style.setProperty('--tabsH', t.offsetHeight + 'px'); }
 function boot() {
   applySkin();
   fitStandalone();
-  window.addEventListener('resize', fitStandalone);
+  fitTabs();
+  window.addEventListener('resize', () => { fitStandalone(); fitTabs(); });
   window.addEventListener('orientationchange', () => setTimeout(fitStandalone, 300));
   // iOS 上 user-scalable 会被忽略，这里再挡一道
   document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
@@ -2342,6 +2594,7 @@ function boot() {
   $('topBtn').onclick = openSettings;
   $('keyEnd').onclick = keyFinish;
   $('chatSend').onclick = convoSend;
+  $('chatPlus').onclick = chatPlus;
   $('chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') convoSend(); });
   $('chatBack').onclick = () => endConvo(false, true);
   $('chatDone').onclick = () => endConvo(true);
