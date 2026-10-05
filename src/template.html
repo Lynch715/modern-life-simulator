@@ -10,8 +10,6 @@
 <link rel="apple-touch-icon" sizes="180x180" href="icon/icon-180.png"/>
 <link rel="manifest" href="site.webmanifest"/>
 <meta name="apple-mobile-web-app-title" content="现代生活"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="description" content="接入你自己的大模型，在一座虚构的城市里从22岁开始，把想干成的事一点点干起来。"/>
 <style>
 :root{
@@ -60,7 +58,9 @@ html,body{margin:0;height:100%;background:var(--page);color:var(--ink);
   font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
 html,body{overflow:hidden;overscroll-behavior:none}
 /* 把整页钉死：iOS 上页面本身不该能被拖动，只让里面的剧情、面板、聊天自己滚 */
-body{display:flex;justify-content:center;align-items:stretch;position:fixed;inset:0;width:100%}
+body{display:flex;justify-content:center;align-items:stretch;width:100%}
+/* 跟武侠一样：普通文档流 + 动态视口高度，不钉 fixed、不用半透明状态栏（iOS 26 装到桌面后这两样会把页面算矮） */
+@supports (height:100dvh){html,body{height:100dvh}}
 #app{width:100%;max-width:520px;height:100%;display:flex;flex-direction:column;background:var(--bg);
   border-left:1px solid var(--line);border-right:1px solid var(--line);position:relative;overflow:hidden;overflow:clip}
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
@@ -358,8 +358,6 @@ img.face{object-fit:cover;background:var(--bg2);border:1px solid var(--line)}
 .facepick img{cursor:pointer;opacity:.55;border:2px solid transparent}
 .facepick img.on{opacity:1;border-color:var(--gold)}
 .capnote{color:var(--dim);font-size:.86em;margin-top:6px}
-/* 装到桌面后 iOS 给的 100% 比屏幕短，底下露一截：按整块屏幕的高度铺满 */
-html.pwa body{bottom:auto;height:var(--app-h,100lvh)}
 /* 矮屏：选项区压紧，给剧情多留地方 */
 @media (max-height:700px){
   .act-btn{padding:4px 11px;margin-bottom:3px;font-size:13px}

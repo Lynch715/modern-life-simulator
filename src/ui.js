@@ -2566,10 +2566,8 @@ function fitStandalone() {
 function fitTabs() { const t = $('tabs'); if (t) document.documentElement.style.setProperty('--tabsH', t.offsetHeight + 'px'); }
 function boot() {
   applySkin();
-  fitStandalone();
   fitTabs();
-  window.addEventListener('resize', () => { fitStandalone(); fitTabs(); });
-  window.addEventListener('orientationchange', () => setTimeout(fitStandalone, 300));
+  window.addEventListener('resize', fitTabs);
   // iOS 上 user-scalable 会被忽略，这里再挡一道
   document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
   document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
