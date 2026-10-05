@@ -2140,8 +2140,20 @@ function doFocus() {
 }
 
 /* ================= 设置 / 存档 ================= */
+// 屏幕尺寸的读数：底栏贴不贴底这种事，只能拿真机的数来查
+function diagText() {
+  const pr = document.createElement('div');
+  pr.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0';
+  document.body.appendChild(pr);
+  const cs = getComputedStyle(pr), sa = `${parseFloat(cs.paddingTop)}/${parseFloat(cs.paddingBottom)}`;
+  pr.remove();
+  const vv = window.visualViewport ? Math.round(visualViewport.height) : '-';
+  const sm = (navigator.standalone === true ? 'S' : '') + (window.matchMedia && matchMedia('(display-mode: standalone)').matches ? 'D' : '');
+  return `屏幕读数 ${screen.width}×${screen.height}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}`;
+}
 function openSettings() {
   mask('setMask', true);
+  const dg = $('setDiag'); if (dg) dg.textContent = diagText();
   $('cfgBase').value = cfg.base; $('cfgKey').value = cfg.key; $('cfgModel').value = cfg.model;
   $('cfgThink').value = cfg.think ? 'on' : 'off';
   document.querySelectorAll('#setTheme .seg').forEach(b => {
