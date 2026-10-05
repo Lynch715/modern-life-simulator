@@ -539,14 +539,14 @@ const SEG = n => ({
   const p = JSON.parse(lastPrompt).messages[1].content;
   const has = t => p.includes(t) ? '有' : '没有';
   console.log('言出法随的 prompt 检查：');
-  console.log('   铁律块：', has('【本段铁律·压过下面所有条目】'));
+  console.log('   铁律块：', has('【本段铁律·压过下面所有条目（玩家的限制除外）】'));
   console.log('   玩家原话嵌进去：', has('路上捡到一个皮夹，里面有二十万现金'));
   console.log('   禁“差一点”：', has('差一点'));
   console.log('   禁转折词：', has('不许用"但是"'));
   console.log('   口径段：', has('这一局是玩家点单'));
-  console.log('   头等大事那条：', has('这一段的头等大事'));
+  console.log('   引擎结算块：', has('【主角这次做的事·引擎已经结算，结果不许改】'));
   console.log('   还带不带属性判定：', p.includes('属性判定') ? '带（不对）' : '不带（对）');
-  console.log('   括号要求单列：', has('【玩家在括号里提的要求·无条件照办·优先级最高】'), '｜内容：', has('1. 详细写他数钱时手在抖，最后把钱存进了银行'), '｜字数放开：', has('要求写细就写长'));
+  console.log('   括号要求单列：', has('【玩家在括号里提的写法要求·照办】'), '｜内容：', has('1. 详细写他数钱时手在抖，最后把钱存进了银行'), '｜字数放开：', has('要求写细就写长'));
   console.log('   天命骰：', (p.match(/天命骰：(\d+)（(..)）/) || []).slice(1).join(' ') || '没掷');
   const fates = await pg.evaluate(() => {
     const out = [];

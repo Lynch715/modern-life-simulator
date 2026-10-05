@@ -127,13 +127,13 @@ async function callLLM(prompt, onPartial, opt) {
   const url = cfg.base.replace(/\/+$/, '') + '/chat/completions';
   const body = {
     model: cfg.model || 'deepseek-v4-flash',
-    messages: [{ role: 'system', content: styleSystem() }, { role: 'user', content: prompt }],
+    messages: [{ role: 'system', content: opt.system || styleSystem() }, { role: 'user', content: prompt }],
     temperature: opt.temperature != null ? opt.temperature : 1.02,
     max_tokens: opt.maxTokens || 8000,
     stream: true,
     response_format: { type: 'json_object' }
   };
-  if (/deepseek/i.test(body.model)) body.thinking = { type: cfg.think ? 'enabled' : 'disabled' };
+  if (/deepseek/i.test(body.model)) body.thinking = { type: cfg.think && !opt.noThink ? 'enabled' : 'disabled' };
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const ms = opt.timeout || 180000;
   let timer = ac ? setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms) : null;
@@ -318,7 +318,9 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "riftEased":["这一段里主角把梁子解开了的人名"],
 "newJob":null或{"employer":"新东家名字","title":"岗位（干什么的，比如「编辑助理」「后厨」「客户经理」）","salary":月薪数字,"lv":0到5的职级,"probation":是否试用期},
 "options":["四个下一步的行动，每条12字内，具体、可执行、互相不同"],
-"nextStop":null,
+"pledges":[{"who":"人名","what":"答应或回绝的具体事（20字内）","kind":"主角答应|对方答应|主角拒绝","inDays":几天内要办，没期限填0}],
+"pledgeDone":["【答应过的事】里这一段办掉了的，照抄原话"],
+"nextStop":null或{"type":"npc","who":"人名"}（主角托了人、正在等那人回话时才填）,
 "gameOver":false,"ending":null}`;
 
 function memBlocks() {
@@ -331,10 +333,38 @@ function memBlocks() {
   return { recents, sums };
 }
 
+// 这一段要带给模型的人：玩家点名的、要去见的、最近剧情里在场的排前面，剩下按最近来往补满
+function pickNpcs(max) {
+  const act = String(S.lastAction || '');
+  const want = new Set(((S.plan && S.plan.steps) || []).map(x => x.who).filter(Boolean).map(w => E.whoIs(S, w)));
+  const near = S.recent.slice(-2).map(r => r.narrative || '').join('') + (S.unresolved || []).join('');
+  const tier = n => {
+    const call = callName(n);
+    if (want.has(n.name) || act.indexOf(n.name) >= 0 || (call && act.indexOf(call) >= 0) || (call && call.length >= 2 && act.indexOf(call.slice(0, 1)) >= 0 && /^(妈妈|爸爸)$/.test(call))) return 0;
+    if (near.indexOf(n.name) >= 0) return 1;
+    return 2;
+  };
+  return S.npcs.map((n, i) => ({ n, i, t: tier(n) }))
+    .sort((a, b) => a.t - b.t || (b.n.lastSeen || 0) - (a.n.lastSeen || 0) || b.i - a.i)
+    .slice(0, max || 14).map(x => x.n);
+}
+function pledgeLine(p) {
+  const head = p.kind === '主角答应' ? `主角答应${p.who}` : p.kind === '对方答应' ? `${p.who}答应主角` : `主角回绝了${p.who}`;
+  return `${p.made}，${head}：${p.what}${p.due ? `（${p.due.m}月${p.due.d}日前）` : ''}`;
+}
+function pledgeBlock() {
+  const L = (S.pledges || []).filter(p => !p.done).slice(-8);
+  return L.length ? `【答应过的事、回绝过的事（都还作数，人物要记得）】\n${L.map(pledgeLine).join('\n')}\n` : '';
+}
+function waitBlock() {
+  const L = E.stopList(S);
+  return L.length ? `【主角在等的】${L.map(w => w.type === 'money' ? `存款到${w.n}` : w.type === 'npc' ? `${w.who}回话` : `${w.label || '到日子'}`).join('；')}\n` : '';
+}
+
 function stateBlocks() {
   const p = S.player, L = S.ledger;
   const M = memBlocks();
-  const npc = S.npcs.slice(-12).map(n =>
+  const npc = pickNpcs(14).map(n =>
     `${n.name}（${n.age || '?'}岁，${n.job || '不详'}，${n.tie}，关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-4).join('；')}`).join('\n') || '（还没认识什么人）';
   const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
   E.fixPace(S);
@@ -368,6 +398,7 @@ ${npc}
 【同期的人在做什么】
 ${peers}
 【未了的事】${S.unresolved.join('；') || '暂时没有'}
+${pledgeBlock()}${waitBlock()}
 【往事提要】
 ${M.sums}
 【最近发生的】
@@ -397,15 +428,16 @@ const STOP_WRITE = {
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
 
-// 玩家行动里的括号：（……）或(...)，里面是对描写和推演的直接要求
-function splitAct(act) {
-  const asks = [];
-  const doing = String(act || '').replace(/[（(]([^（）()]*)[）)]/g, (_, x) => { if (x.trim()) asks.push(x.trim()); return ' '; }).replace(/\s+/g, ' ').trim();
-  return { doing: doing || String(act || ''), asks };
-}
-// 只在心想事成这一档生效
-function fiatAsks() { return E.fdm(S).fiat && S.lastAction && S.actTyped ? splitAct(S.lastAction).asks : []; }
-const ASK_RULE = asks => `【玩家在括号里提的要求·无条件照办·优先级最高】
+// 玩家行动里的括号：（……）或(...)。解析时分成两种：限制（别替我做主）和写法要求
+const splitAct = E.splitAct;
+function styleAsks() { return S.plan && S.plan.style ? S.plan.style : []; }
+function limitAsks() { return S.plan && S.plan.limits ? S.plan.limits : []; }
+const LIMIT_RULE = ls => `【玩家的限制·必须遵守·压过下面所有条目】
+${ls.map((a, i) => `${i + 1}. ${a}`).join('\n')}
+- 写到限制那里就停：替主角拿主意、替他答应、替他签、替他往前推的，一律不许写。
+${E.fdm(S).fiat ? '- 心想事成那条"办成之后再往前推一步"，碰到这里的限制就不适用。\n' : ''}- 这几句话本身不要原样抄进叙事。
+`;
+const ASK_RULE = asks => `【玩家在括号里提的写法要求·照办】
 ${asks.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 这是玩家直接下给你的写作和推演指令，不是剧情里的人说的话：
 - 要求写什么场面、什么细节，就写什么，写到他要的那个细度；要求推演出什么结果、什么后续，剧情就走到那一步。
@@ -413,8 +445,8 @@ ${asks.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 - 跟下面的字数、结尾写法、对话条数、选项要求有冲突时，一律以这里为准；要求写得细就写长些，没提篇幅就照常。
 - 括号里的话本身不要原样抄进叙事。
 `;
-const FIAT_RULE = act0 => { const sp = S.actTyped ? splitAct(act0) : { doing: act0, asks: [] }, act = sp.doing; return `${sp.asks.length ? ASK_RULE(sp.asks) + '\n' : ''}【本段铁律·压过下面所有条目】
-玩家写的这件事——「${act}」——在这一段里**已经成了**。你要写的是它怎么成的，不是它成不成。
+const FIAT_RULE = act0 => { const act = splitAct(act0).doing; const res = S.plan && S.plan.results; return `【本段铁律·压过下面所有条目（玩家的限制除外）】
+${res ? '上面【引擎已经结算】里标【成了】的事，在这一段里**都已经成了**，你要写的是怎么成的。标【没成】的是硬条件不够（钱不够、本来就没有），照实写，不许改成成了。' : `玩家写的这件事——「${act}」——在这一段里**已经成了**。你要写的是它怎么成的，不是它成不成。`}
 - 不许写成"试了试""差一点""看起来有戏""对方说再看看"，也不许推到下一段去办。
 - 不许用"但是""可惜""然而""只是""不过"给它打折，段尾也不许埋一个把它推翻的钩子。
 - 该配合的人就配合：他要见的人见得到，要的东西拿得到，开的口对方接得住，要的钱有人给。
@@ -428,7 +460,7 @@ function judgeBlock(j) {
     const f = E.fateInfo(j.fate);
     s += `- 天命骰：${j.fate}（${f.label}）——${f.desc}\n`;
   }
-  if (j.check) {
+  if (j.check && !(S.plan && S.plan.results)) {
     const c = j.check;
     s += `- 属性判定：${c.attr}${c.val}，掷骰${c.roll}（修正${c.mod >= 0 ? '+' : ''}${c.mod}）＝${c.total}，难度${c.need}，判定【${c.success ? '成功' : '失败'}】${c.crit ? '（' + c.crit + '）' : ''}。必须如实体现。\n`;
   }
@@ -445,6 +477,18 @@ function judgeBlock(j) {
   return s;
 }
 
+// 引擎替玩家办完的事，原样交给模型
+function planBlock() {
+  const P = S.plan;
+  if (!P || !P.results) return '';
+  const lines = P.results.map((r, i) => `${i + 1}. ${r.text}：【${r.ok ? '成了' : '没成'}】${r.ck ? `（${r.ck.attr}${r.ck.val}，掷骰${r.ck.roll}＝${r.ck.total}，难度${r.ck.need}${r.ck.crit ? '，' + r.ck.crit : ''}）` : ''}${r.note ? '。' + r.note : ''}`).join('\n');
+  return `【主角这次做的事·引擎已经结算，结果不许改】
+${lines}
+- 他写了几件事就写几件，顺序照上面。成了的写成办成，没成的写卡在哪、怎么没成，不许翻过来，也不许拖到下一段。
+- 上面的钱数就是实际进出的数，叙事里照这个写；playerChanges.money 只记这几笔之外的零碎花销（打车、买水之类）。
+${limitAsks().length ? '\n' + LIMIT_RULE(limitAsks()) : ''}${styleAsks().length ? '\n' + ASK_RULE(styleAsks()) : ''}`;
+}
+
 function segPrompt(seg) {
   const { from, to, days, events, stop } = seg.adv;
   if (seg.quick) return quickPrompt(seg);
@@ -452,7 +496,7 @@ function segPrompt(seg) {
     ? events.slice(-14).map(e => `[${e.t}] ${e.s}`).join('\n')
     : '（没什么值得记的）';
   const writer = (STOP_WRITE[stop.kind] || STOP_WRITE['事'])(stop.detail);
-  const actBlock = S.lastAction
+  const actBlock = planBlock() ? `【主角自己安排的事】${splitAct(S.lastAction).doing}\n${planBlock()}\n（先把这件事的经过写出来，150 字上下，写过程，然后再往下走）` : S.lastAction
     ? `【主角自己安排的事】${S.lastAction}\n（这一段先把这件事的经过写出来——150 字上下，照玩家写的去办：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说，一样不落，写过程而不是一句话交代结果——然后再往下走）`
     : '（这是开局之后的第一段）';
   return `${worldRules()}
@@ -471,7 +515,7 @@ ${evText}
 【这一段怎么收尾】${writer}
 
 要求：
-${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${fiatAsks().length ? '按括号里的要求来，没提篇幅就照常 300-500' : days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
+${E.fdm(S).fiat && S.lastAction && !planBlock() ? `- **这一段的头等大事**：把玩家写的「${S.lastAction}」写成已经办成的事，写足、写具体、写出后续的好处。这一条压过下面所有要求。\n` : ''}- 叙事 ${styleAsks().length ? '按括号里的要求来，没提篇幅就照常 300-500' : days >= 10 ? '400-600' : '250-420'} 字。${days >= 8 ? '这是一段被快进的日子，不许写成"第一天……第二天……"的流水账。挑这段时间里真正有分量的两三件事写，其余用一两句带过。' : ''}
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**这一段里至少要有三处人物直接说话，用引号写原话**，不许把对话转述成"他说……"。
@@ -482,6 +526,7 @@ ${E.fdm(S).fiat && S.lastAction ? `- **这一段的头等大事**：把玩家写
 - 这一段里主角跟谁发生了关系（双方都是成年人），就在那个人的 npcUpdates（新认识的写在 newNpcs）里写 intimate:true，没有就写 false。正文点到为止，不写露骨细节。
 - 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
 - options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
+- 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
 ${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
 - 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
 
@@ -497,7 +542,7 @@ function quickPrompt(seg) {
 
 ${stateBlocks()}
 
-【主角这就要做的事】${fiatAsks().length ? splitAct(S.lastAction).doing + '（括号里的要求见下面引擎判定一栏，必须照办）' : S.lastAction}
+【主角这就要做的事】${planBlock() ? splitAct(S.lastAction).doing + '\n' + planBlock() : S.lastAction}
 
 【本段引擎判定（不可更改）】
 ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。数值按引擎认的那个来。\n` : ''}
@@ -505,15 +550,16 @@ ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.ca
 【时间】${E.shortDate(from)} 到 ${E.shortDate(to)}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
 
 要求：
-${E.fdm(S).fiat ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${fiatAsks().length ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${fiatAsks().length ? '篇幅按括号里的要求来：要求写细就写长，没提篇幅就 300-500 字。' : '300-500 字。'}
+${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${S.plan ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${styleAsks().length ? '篇幅按括号里的要求来：要求写细就写长，没提篇幅就 300-500 字。' : '300-500 字。'}
 - 照玩家写的原样去办，一个细节都不许丢：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说、想达到什么，都要在剧情里落到实处。玩家没写的细节由你补足，但不许改他写的。
 - 写过程，不写梗概：怎么去的、到了看见什么、跟人怎么一来一回谈的、中间哪里卡住了又怎么过去的，最后得到了什么。不许用"经过一番努力""几经周折"这类话把过程跳过去。
 - 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
 - 写具体：去了哪儿、见了谁、花了多少钱、最后手里多了什么少了什么。
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**只要碰上人，就得让他开口说话，用引号写原话**，这一段至少两处直接对白。没有人的时候可以不写对话，但别整段白描。
 - 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
-- ${ap ? `收尾接上撞见的那件事：${ap.detail}。` : fiatAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
+- ${ap ? `收尾接上撞见的那件事：${ap.detail}。` : limitAsks().length ? '结尾停在玩家限制的那个地方，把选择留给主角。' : styleAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。'}
 - options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
+- 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
 
 只输出一个合法 JSON：
 ${SCHEMA}`;
@@ -597,8 +643,12 @@ function beginChapter(head, sub, action, judge) {
   const div = document.createElement('div');
   div.className = 'chapter';
   let dice = '';
-  if (judge && (judge.fate || judge.check || judge.focus)) {
+  if (judge && (judge.fate || judge.check || judge.focus || (judge.steps || []).length)) {
     const bits = [];
+    for (const r of (judge.steps || [])) {
+      if (r.ck) bits.push(`<span class="die ${r.ck.success ? 'good' : 'bad'}">${esc(r.ck.attr)} ${r.ck.total}/${r.ck.need} ${r.ck.success ? '成' : '败'}</span>`);
+      else if (!r.ok) bits.push(`<span class="die bad">${esc(String(r.text).slice(0, 8))} 没成</span>`);
+    }
     if (judge.check) bits.push(`<span class="die ${judge.check.success ? 'good' : 'bad'}">${esc(judge.check.attr)} ${judge.check.total}/${judge.check.need} ${judge.check.success ? '成' : '败'}</span>`);
     if (judge.focus) bits.push(`<span class="die ${judge.focus.success ? 'good' : 'bad'}">${judge.focus.heal ? '养了' : '投入'}${judge.focus.days}天 ${judge.focus.heal ? (judge.focus.success ? '缓过来了' : '没养利索') : (judge.focus.success ? '做成' : '没成')}</span>`);
     const f = judge.fate ? E.fateInfo(judge.fate) : null;
@@ -666,6 +716,24 @@ function renderOptions(opts) {
     box.appendChild(ex);
     return;
   }
+  if (S.pending) {
+    box.innerHTML = '';
+    const b = document.createElement('button');
+    b.className = 'act-btn'; b.textContent = '这一段没写成，再写一次';
+    b.onclick = () => retryPending();
+    box.appendChild(b);
+    const tip = document.createElement('div');
+    tip.className = 'tip'; tip.style.marginTop = '8px';
+    tip.textContent = '日子已经过了，判定也定了，只是故事没写出来。再写一次不会多花时间。';
+    box.appendChild(tip);
+    return;
+  }
+  if (S.interview) {
+    const b = document.createElement('button');
+    b.className = 'act-btn'; b.textContent = `去面试：${S.interview.title}`;
+    b.onclick = () => askJob();
+    box.appendChild(b);
+  }
   (opts || []).slice(0, 4).forEach(o => {
     const b = document.createElement('button');
     b.className = 'act-btn'; b.textContent = o;
@@ -692,15 +760,66 @@ function renderOptions(opts) {
 }
 
 /* ================= 一段推进 ================= */
+// 玩家亲手写的一句话，先拆成引擎能执行的步骤（不写故事）
+const PARSE_SYSTEM = '你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。';
+function parsePrompt(act) {
+  const p = S.player;
+  const npcs = S.npcs.slice(-40).map(n => `${n.name}${callName(n) ? '（' + callName(n) + '）' : ''}`).join('、') || '（还没有）';
+  return `【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
+【认识的人】${npcs}
+【玩家写的】${act}
+
+把玩家这句话拆成步骤。步骤类型只能从这里选：
+- quit：辞职
+- repay：还钱。who=还给谁，amount=多少（没说数就填0，表示全还）
+- startBiz：开店、开工作室、开公司。kind 只能填 小店/工作室/小公司，name=起的名字
+- closeBiz：把自己的生意关掉
+- spend：花钱（买东西、请客、送礼、交费）。amount=多少钱，玩家没说就按常理估
+- seekMoney：去弄钱（找人要、接私活、卖东西、借钱）。amount=要多少，who=找谁，borrow=是不是借（要还的填 true）
+- jobHunt：找工作、投简历、托人找活。target=想去的单位或行当
+- meet：去见某个人、找某人说事。who=谁（尽量用【认识的人】里的名字）
+- focus：接连好几天闷头做一件事（写作、学东西、练手艺、做项目）。days=几天
+- rest：休养、养病。days=几天
+- other：以上都不是
+
+每一步都要有：
+- text：这一步是什么，用玩家的话概括，20字内
+- diff：这件事本身有多难，只能填 顺手/普通/费劲/难/很难。顺手＝买早饭、回消息、打个电话这种不会失败的；普通＝日常要花点力气；费劲＝要求人、要有点本事；难＝多数人办不成；很难＝几乎办不成。只按事情本身判断，不看主角是谁
+- attr：主要靠哪项本事，只能填 专业/表达/谋划/情绪/体能
+
+另外：
+- days：玩家要这件事持续几天（"闭关三个月"填90，"这礼拜"填7，没说就是1）
+- limits：玩家明确提的限制（"不要替我答应""等我选""先别告诉家里"），照抄原话，没有就空数组
+- style：玩家对怎么写的要求（"写细一点""多写对话"），没有就空数组
+- stopWhen：玩家说"等到什么时候再叫我"才填：{"type":"money","n":数额} 或 {"type":"days","n":天数} 或 {"type":"npc","who":"人名"}（等某人回话）；没有就 null
+- 玩家说了几件事就拆几步，顺序照他说的，最多三步。括号里的话是要求，不算步骤。
+
+只输出 JSON：
+{"steps":[{"type":"other","text":"","diff":"普通","attr":"表达","who":"","amount":0,"days":0,"kind":"","name":"","target":"","borrow":false}],"days":1,"limits":[],"style":[],"stopWhen":null}`;
+}
 async function doAction(action, typed) {
   if (busy || !S || S.over) return;
+  if (S.pending) { await retryPending(); return; }
+  let plan;
+  if (typed) {
+    setBusy(true, '正在琢磨你要做的事……');
+    try {
+      const raw = await llmJSON(parsePrompt(action), null, { maxTokens: 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000 });
+      plan = E.sanitizePlan(raw, action, true);
+    } catch (e) {
+      plan = E.simplePlan(action, true);        // 解析不出来也不卡人：整句当一件普通的事
+    }
+    setBusy(false);
+  } else plan = E.simplePlan(action, false);
   S.lastAction = action;
-  S.actTyped = !!typed;            // 只有玩家亲手写的，括号才算要求
-  await runSegment({ quick: true });     // 自己动手做的事，就写这一两天
+  S.actTyped = !!typed;
+  S.plan = plan;
+  await runSegment({ quick: true });
 }
 async function skipAhead() {
   if (busy || !S || S.over) return;
-  S.lastAction = null; S.actTyped = false;
+  if (S.pending) { await retryPending(); return; }
+  S.lastAction = null; S.actTyped = false; S.plan = null;
   await runSegment({ skip: true });      // 日子往下过，跑到有事为止
 }
 
@@ -715,19 +834,21 @@ function makeJudge(action) {
 
 async function runSegment(opt) {
   if (busy) return;
+  if (S.pending) { await retryPending(); return; }
   opt = opt || {};
-  const quick = !!opt.quick && !!S.lastAction;
   const rng = Math.random;
   const judge = makeJudge(S.lastAction);
+  S.interview = null;
 
-  // 玩家这次行动先判一把（自由度高的一档基本都过）
-  if (S.lastAction && S.freedom !== '心想事成' && Math.random() < 0.55) {
-    const attr = guessAttr(S.lastAction);
-    judge.check = E.rollCheck(S, attr, 52 + Math.round(S.player.age - 22) * 1.5, rng);
-    S.stats.checks++; if (judge.check.success) S.stats.wins++;
+  // 玩家这次要做的事，引擎先办：钱、工作、债、店、时长都在这里落账
+  let ran = null;
+  if (S.plan && !S.plan.results) {
+    ran = E.runSteps(S, S.plan, rng);
+    S.plan.results = ran.results;
+    judge.steps = ran.results;
   }
+  const quick = !!opt.quick && !!S.lastAction && !(ran && (ran.long || S.plan.stopWhen));
 
-  // 投入中的事，跑之前先记一下
   const focusing = !!S.focus;
   const adv = E.advance(S, { rng, maxDays: quick ? 1 : 35, quiet: quick });
   if (focusing && adv.stop.kind === '投入') judge.focus = E.settleFocus(S, rng);
@@ -739,38 +860,56 @@ async function runSegment(opt) {
 
   S.seg++;
   S.stats.segs++;
-  const head = adv.stop.kind === '年终' ? `${adv.to.y}年` : adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
-  setBusy(true, quick ? '正在记下这一天……' : adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……');
-  beginChapter(head, adv.stop.kind === '年终' ? '年终' : quick ? '' : `${adv.days}天`, S.lastAction || '', adv.stop.kind === '年终' ? null : judge);
-  renderOptions([]);
-  S.pending = { action: S.lastAction, stop: adv.stop };
-  saveGame();
+  const isYear = adv.stop.kind === '年终';
+  const head = isYear ? `${adv.to.y}年` : adv.days <= 1 ? E.shortDate(adv.to) : `${E.shortDate(adv.from)} — ${E.shortDate(adv.to)}`;
+  const sub = isYear ? '年终' : quick ? '' : `${adv.days}天`;
 
   if (adv.stop.kind === '结局') {
-    S.seg++;
-    setBusy(false);
+    S.plan = null; S.lastAction = null;
+    renderOptions([]);
+    saveGame();
     await runEnding({ why: adv.stop.why, text: adv.stop.detail });
     return;
   }
-  const isYear = adv.stop.kind === '年终';
+  // 状态已经推进了：把这一段要发的请求整个存下来。请求失败只重发它，不再推进日子、不重掷骰子
+  S.pending = {
+    prompt: isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge, quick }),
+    isYear, head, sub, action: S.lastAction || '', judge: isYear ? null : judge,
+    busyText: quick ? '正在记下这一天……' : adv.days >= 8 ? `${adv.days}天过去了，正在记下这段日子……` : '正在记下这几天……',
+    apptKind: adv.stop.apptKind || null, apptTitle: adv.stop.kind === '约' ? adv.stop.detail : ''
+  };
+  saveGame();
+  beginChapter(head, sub, S.pending.action, S.pending.judge);
+  renderOptions([]);
+  await writePending();
+}
+
+async function writePending() {
+  const P = S.pending;
+  if (!P) return;
+  setBusy(true, P.busyText || '正在记下这几天……');
   try {
-    const prompt = isYear ? yearPrompt(E.yearDiff(S)) : segPrompt({ adv, judge, quick });
-    const d = await llmJSON(prompt, raw => {
+    const raw = await llmJSON(P.prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
     });
+    const d = E.sanitizeTurn(raw);
     updateChapterNarrative(d.narrative);
-    if (isYear) {
+    if (P.isYear) {
       const snap = E.yearSnap(S);
       S.years = (S.years || []).concat([{ y: snap.y, snap, text: d.narrative, summary: d.summary || '' }]).slice(-12);
       S.history.push({ seg: S.seg, date: `${snap.y}年`, summary: `【年终】${d.summary || ''}` });
     }
     E.applyTurn(S, d);
+    // 被引擎截掉的数，当场就在这一段末尾说清楚
+    if (S.capNote && curChapter) curChapter.querySelector('.ntext').insertAdjacentHTML('beforeend', `<p class="capnote">（引擎记账：${esc(S.capNote)}）</p>`);
     const claim = E.judgeClaim(S, d.milestoneClaim);
     if (claim && !claim.ok) S.claimNote = `你申报过「${claim.title}」，但${claim.short}，还不够格`;
     else S.claimNote = null;
     S.pending = null;
+    S.plan = null;
     S.lastAction = null; S.actTyped = false;
+    if (P.apptKind === '面试') S.interview = { title: P.apptTitle || '一场面试' };
     S.lastOptions = (d.options && d.options.length) ? d.options : ['接着过日子', '找人聊聊', '琢磨一下理想那件事', '出去走走'];
     await finishChapter();
     rebuildTop();
@@ -780,20 +919,21 @@ async function runSegment(opt) {
     if (S.over) { renderOptions([]); }
   } catch (e) {
     updateChapterNarrative('（这一段没写成：' + (e.message || e) + '）');
-    renderOptions(S.lastOptions.length ? S.lastOptions : ['再试一次']);
+    renderOptions([]);
     toast(e.message || '出错了');
   }
   setBusy(false);
 }
-
-function guessAttr(a) {
-  a = String(a || '');
-  if (/谈|说服|聊|讲|面试|汇报|推销|争|解释|道歉/.test(a)) return '表达';
-  if (/查|想|算|计划|打听|研究|分析|找路子|比较/.test(a)) return '谋划';
-  if (/跑|熬|扛|搬|加班|通宵|锻炼/.test(a)) return '体能';
-  if (/忍|稳住|顶住|面对|撑/.test(a)) return '情绪';
-  return '专业';
+// 上一段请求没成：日子已经过了、骰子已经掷了，只把那个请求再发一次
+async function retryPending() {
+  const P = S.pending;
+  if (!P || busy) return;
+  if (!curChapter) beginChapter(P.head, P.sub, P.action, P.judge);
+  else updateChapterNarrative('');
+  await writePending();
 }
+
+const guessAttr = E.guessAttr;
 
 /* ================= 开局 ================= */
 function renderStart() {
@@ -1190,7 +1330,8 @@ async function askKey(mileId) {
   runKey({ scene: m.scene, gate: m.gate, title: m.title, desc: m.desc, kind: 'mile', mileId, hard: keyHard(mileId) });
 }
 function askJob() {
-  runKey({ scene: '面试', gate: '一场面试', title: '找个新饭碗', kind: 'job', mileId: null, hard: 28 + E.num(S.job.lv) * 8 });
+  const iv = S.interview; S.interview = null;
+  runKey({ scene: '面试', gate: iv ? iv.title : '一场面试', title: '找个新饭碗', kind: 'job', mileId: null, hard: 28 + E.num(S.job.lv) * 8 });
 }
 function askRaise() {
   if (S.job.out) { toast('眼下没有工作'); return; }
@@ -1199,6 +1340,7 @@ function askRaise() {
 }
 async function runKey(m) {
   if (busy) return;
+  if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
   if (S.convo) endConvo(false);      // 从聊天里点进来的，先把聊天收掉
   closePanel();
   const hard = m.hard;
@@ -1360,7 +1502,7 @@ ${(n.mem || []).join('\n') || '没什么特别的'}
 【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。手头存款${S.player.money}元。
 【主角这阵子干的事】（${n.name}知道多少看关系：走得近的、家里人大体都知道；不熟的只知道跟自己有关的和传到耳朵里的。知道的就要对得上，别装不知道，也别说错）
 ${S.history.slice(-10).map(h => `${h.date}｜${h.act ? '他去' + h.act + '：' : ''}${h.summary}`).join('\n') || '（刚开始）'}
-${aboutNpc(n)}【就在刚才】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(-220)}`;
+${(S.pledges || []).filter(p => !p.done && p.who === n.name).length ? `【你们之间说定的事】${S.pledges.filter(p => !p.done && p.who === n.name).map(pledgeLine).join('；')}\n` : ''}${aboutNpc(n)}【就在刚才】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(-220)}`;
 }
 function convoPrompt(n, say, judge) {
   const log = S.convo.lines.map(l => `${l.who === 'me' ? S.player.name : n.name}：${l.text}`).join('\n') || '（刚开口）';
@@ -1371,18 +1513,19 @@ ${past ? `\n【手机里之前的来往（主角这次就是接着这些点开�
 ${log}
 
 ${judge
-    ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。
+    ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}
 这一轮写${n.name}的最终答复，必须照这个结果来。答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞糊弄过去。`
     : `【主角刚说的】${say}`}
 
 只输出一个合法 JSON：
-{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-8到8的整数),"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","attr":"表达|情绪|谋划|专业","need":40到85,"money":如果是借钱就写数额否则0,"days":多少天内还}'},"end":对方想结束对话就true,"summary":"这次聊天到现在的一句话（20字内）"}`;
+{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-8到8的整数),"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","kind":"borrow（借钱）|interview（帮忙约面试、推工作）|intro（介绍人）|favor（别的忙）","attr":"表达|情绪|谋划|专业","need":40到85,"money":借钱就写数额否则0,"days":借钱写多少天内还，帮忙写几天内办}'},"end":对方想结束对话就true,"summary":"这次聊天到现在的一句话（20字内）"}`;
 }
 
 let convoFrom = '';     // 从哪个面板点进来的，返回时回那儿
 function openConvo(name) {
   const n = S.npcs.find(x => x.name === name);
   if (!n || busy) return;
+  if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
   convoFrom = curTab || '';
   S.convo = { name, lines: [], turns: 0, summary: '', rel: 0, hist: S.msgs.filter(m => m.from === name).slice(-14) };
   closePanel();
@@ -1434,20 +1577,17 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05 });
-    c.lines.push({ who: 'ta', text: d.reply || '……', mood: d.mood || '' });
-    c.rel += E.num(d.rel);
+    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05 }));
+    c.lines.push({ who: 'ta', text: d.reply, mood: d.mood });
+    c.rel += d.rel;
     if (d.summary) c.summary = d.summary;
     renderConvo();
-    if (d.ask && d.ask.what && !judge) {
-      const ck = E.rollCheck(S, d.ask.attr || '表达', E.num(d.ask.need) || 60, Math.random);
-      ck.what = d.ask.what;
-      ck.money = E.num(d.ask.money); ck.days = E.num(d.ask.days);
-      if (ck.success && ck.money > 0) {
-        E.addDebt(S, c.name, ck.money, ck.days || 60);
-        c.lines.push({ who: 'sys', text: `${c.name}给你转了${ck.money}，说好${ck.days || 60}天内还` });
-        rebuildTop();
-      }
+    if (d.ask && !judge) {
+      const a = d.ask;
+      const ck = E.rollCheck(S, a.attr, a.need, Math.random);
+      ck.what = a.what; ck.kind = a.kind; ck.days = a.days;
+      if (ck.success) settleAsk(n, a, ck);
+      if (ck.sys) c.lines.push({ who: 'sys', text: ck.sys });
       c.lines.push({ who: 'sys', text: `${ck.attr}${ck.val}　掷骰${ck.roll}　${ck.total}/${ck.need}　${ck.success ? '成' : '不成'}` });
       renderConvo();
       setBusy(false);
@@ -1461,6 +1601,30 @@ async function convoTurn(say, judge) {
   }
   setBusy(false);
   saveGame();
+}
+// 聊天里求的事，答应了就得有着落：钱到账、约上面试、记进约定
+function settleAsk(n, a, ck) {
+  const rng = Math.random;
+  if (a.kind === 'borrow' && a.money > 0) {
+    const cap = E.lendCap(S, n);
+    const amt = Math.min(Math.round(a.money), cap);
+    const days = a.days || 60;
+    E.addDebt(S, n.name, amt, days);
+    ck.money = amt;
+    ck.note = amt < a.money ? `${n.name}最多只拿得出${amt}元（主角开口要的是${a.money}），借了${amt}，${days}天内还` : `借了${amt}元，${days}天内还`;
+    ck.sys = `${n.name}给你转了${amt}${amt < a.money ? `（你要的是${a.money}，他只拿得出这么多）` : ''}，说好${days}天内还`;
+    rebuildTop();
+  } else if (a.kind === 'interview' || a.kind === 'intro') {
+    const inD = E.rnd(rng, 2, 6), dt = E.addDays(S.date, inD);
+    const title = (a.kind === 'interview' ? `${n.name}帮忙约的面试` : `${n.name}介绍的人：${a.what}`).slice(0, 30);
+    S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title, kind: a.kind === 'interview' ? '面试' : '约', done: false });
+    ck.note = `约在${dt.m}月${dt.d}日（${inD}天后）`;
+    ck.sys = `记下了：${dt.m}月${dt.d}日，${title}`;
+  } else {
+    E.addPledge(S, { who: n.name, what: a.what, kind: '对方答应', inDays: a.days || 14 });
+    ck.note = `记成${n.name}答应的事，${a.days || 14}天内办`;
+    ck.sys = `记下了：${n.name}答应「${a.what}」`;
+  }
 }
 function endConvo(goOn, toPanel) {
   const c = S.convo;
@@ -1952,6 +2116,7 @@ function openBorrow() {
 
 /* ================= 投入 ================= */
 function openFocus() {
+  if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
   if (S.focus) { toast('手头这摊还没做完'); return; }
   mask('focusMask', true);
   $('fcWhat').value = '';
@@ -1968,7 +2133,7 @@ function doFocus() {
   S.focus = { what, days, left: days, progress: 0, attr, heal,
     ideal: !heal && /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
   mask('focusMask', false);
-  S.actTyped = false; S.lastAction = heal ? `接下来这${days}天，先把身体养回来（${what}）` : `接下来这${days}天，闷头${what}`;
+  S.actTyped = false; S.plan = null; S.lastAction = heal ? `接下来这${days}天，先把身体养回来（${what}）` : `接下来这${days}天，闷头${what}`;
   saveGame();
   runSegment();
 }
@@ -2029,6 +2194,7 @@ function loadGame() {
   if (!raw) return false;
   try { S = JSON.parse(raw); } catch (_) { return false; }
   if (!S || !S.player) return false;
+  if (S.pending && !S.pending.prompt) S.pending = null;      // 老版本存的 pending 没有请求原文，接不上
   E.fixJob(S);
   E.fixPace(S);
   E.fixWho(S);

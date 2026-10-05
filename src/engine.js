@@ -5,7 +5,7 @@
 const SAVE_VERSION = 1;
 
 /* ---------- 基础 ---------- */
-const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const r2 = v => Math.round(v * 100) / 100;
 
@@ -262,7 +262,7 @@ function newState(o) {
     key: null,
     npcs: [], peers: [], msgs: [], appts: [], unresolved: [],
     status: [], chronic: [],
-    focus: null, stopWhen: null,
+    focus: null, stopWhen: [], pledges: [], plan: null,
     place: '', scene: null,
     recent: [], history: [], volumes: [], chapters: [],
     pending: null, lastOptions: [], lastAction: null, lastJudge: null,
@@ -645,12 +645,13 @@ function advance(S, opt) {
 
     // 约好的事
     const ap = S.appts.find(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done);
-    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title }; break; }
+    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '' }; break; }
 
     // 自设的停下条件
-    if (S.stopWhen && S.stopWhen.type === 'money' && S.player.money >= S.stopWhen.n) {
-      stop = { kind: '条件', detail: `存款到了${S.stopWhen.n}` }; S.stopWhen = null; break;
-    }
+    const sw = checkStopWhen(S);
+    if (sw) { stop = sw; break; }
+    const pt = pledgeTick(S);
+    events.push(...pt.ev);
 
     const nt = npcTick(S, rng);
     if (nt.stop && !quiet && S.flags.cool <= 0) { stop = nt.stop; break; }
@@ -678,6 +679,304 @@ function advance(S, opt) {
   if (S.focus && S.focus.left <= 0) { /* 交给 UI 结算 */ }
 
   return { from, to: S.date, days, events, stop };
+}
+
+/* ---------- 玩家一句话 → 引擎动作 ---------- */
+// 难度档：按事情本身，不按年龄。属性起步二十来点，d20 修正 ±38
+const DIFFS = { '顺手': 0, '普通': 20, '费劲': 32, '难': 45, '很难': 60 };
+const STEP_TYPES = ['quit', 'repay', 'startBiz', 'closeBiz', 'spend', 'seekMoney', 'jobHunt', 'meet', 'focus', 'rest', 'other'];
+function guessAttr(a) {
+  a = String(a || '');
+  if (/谈|说服|聊|讲|面试|汇报|推销|争|解释|道歉/.test(a)) return '表达';
+  if (/查|想|算|计划|打听|研究|分析|找路子|比较/.test(a)) return '谋划';
+  if (/跑|熬|扛|搬|加班|通宵|锻炼/.test(a)) return '体能';
+  if (/忍|稳住|顶住|面对|撑/.test(a)) return '情绪';
+  return '专业';
+}
+// 括号里的话：（……）或(...)
+function splitAct(act) {
+  const asks = [];
+  const doing = String(act || '').replace(/[（(]([^（）()]*)[）)]/g, (_, x) => { if (x.trim()) asks.push(x.trim()); return ' '; }).replace(/\s+/g, ' ').trim();
+  return { doing: doing || String(act || ''), asks };
+}
+// 解析调用失败时的兜底：括号里像"别替我做主"的算限制，其余算写法要求
+const LIMIT_RE = /不要|不许|不准|别|先别|等我|让我|我来|不能|问我|我选|我决定|我确认|不替|不帮我|只.{0,6}不/;
+function splitAsks(asks) {
+  const limits = [], style = [];
+  for (const a of asks || []) (LIMIT_RE.test(a) ? limits : style).push(a);
+  return { limits, style };
+}
+// 选项按钮、兜底：整句当一件普通的事
+function simplePlan(act, typed) {
+  const sp = typed ? splitAct(act) : { doing: String(act || ''), asks: [] };
+  const sa = splitAsks(sp.asks);
+  return { steps: [{ type: 'other', text: sp.doing.slice(0, 60), diff: '普通', attr: guessAttr(sp.doing) }], limits: sa.limits, style: sa.style, days: 1, stopWhen: null, parsed: false };
+}
+// 解析调用返回的东西：只认白名单
+function sanitizePlan(raw, act, typed) {
+  const d = T.obj(raw);
+  const base = simplePlan(act, typed);
+  if (!d || !Array.isArray(d.steps) || !d.steps.length) return base;
+  const steps = [];
+  for (const x0 of d.steps) {
+    const x = T.obj(x0);
+    if (!x || !STEP_TYPES.includes(x.type)) continue;
+    const st = { type: x.type, text: T.str(x.text, 60) || x.type, diff: DIFFS[x.diff] !== undefined ? x.diff : '普通', attr: ATTRS.includes(x.attr) ? x.attr : guessAttr(x.text) };
+    if (x.who) st.who = T.str(x.who, 12);
+    if (x.amount !== undefined) st.amount = Math.round(T.num(x.amount, 0, 1e9));
+    if (x.days !== undefined) st.days = Math.round(T.num(x.days, 0, 365));
+    if (x.kind) st.kind = T.str(x.kind, 6);
+    if (x.name) st.name = T.str(x.name, 14);
+    if (x.target) st.target = T.str(x.target, 20);
+    if (x.borrow === true) st.borrow = true;
+    steps.push(st);
+  }
+  if (!steps.length) return base;
+  if (steps.length > 3) {                          // 一次最多三步，多的并成最后一件
+    const rest = steps.splice(2);
+    steps.push({ type: 'other', text: rest.map(r => r.text).join('，').slice(0, 60), diff: rest.reduce((a, r) => DIFFS[r.diff] > DIFFS[a] ? r.diff : a, '普通'), attr: rest[0].attr });
+  }
+  const limits = T.arr(d.limits, 5).map(x => T.str(x, 60)).filter(Boolean);
+  const style = T.arr(d.style, 5).map(x => T.str(x, 80)).filter(Boolean);
+  return {
+    steps,
+    limits: limits.length || style.length ? limits : base.limits,
+    style: limits.length || style.length ? style : base.style,
+    days: Math.round(T.num(d.days, 1, 365)) || 1,
+    stopWhen: sanitizeStop(d.stopWhen),
+    parsed: true
+  };
+}
+// 这一步难不难
+function stepNeed(S, st) {
+  let need = DIFFS[st.diff] !== undefined ? DIFFS[st.diff] : 20;
+  if (st.attr === '体能') need += Math.max(0, S.player.age - 35) * 0.8;
+  return Math.round(need);
+}
+function stepCheck(S, st, rng) {
+  if (st.diff === '顺手') return null;
+  const ck = rollCheck(S, st.attr || guessAttr(st.text), stepNeed(S, st), rng);
+  S.stats.checks++; if (ck.success) S.stats.wins++;
+  return ck;
+}
+// 三档能要到的钱
+function moneyCeil(S) {
+  const c = capMoney(S);
+  return fdm(S).fiat ? c * 50 : S.freedom === '都市传奇' ? c * 2 : c;
+}
+// 找人借：看对方拿不拿得出
+const LEND_K = [[/家里人|妈|爸|父|母|爷|奶|外公|外婆|哥|姐|叔|伯|姨|舅|姑/, 6], [/爱人|对象|老公|老婆|女朋友|男朋友|伴侣/, 4], [/朋友|同学|发小|兄弟|闺蜜/, 2], [/同事|室友|老板|领导|师傅/, 1]];
+function lendCap(S, n) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const tie = String((n && n.tie) || '');
+  let k = 0.5;
+  for (const [re, v] of LEND_K) if (re.test(tie)) { k = v; break; }
+  if (partnerOf(S) && n && partnerOf(S).name === n.name) k = Math.max(k, 4);
+  let cap = city.pay * k * clamp(num(n && n.rel) / 60, 0.2, 1.6);
+  if (fdm(S).fiat) cap *= 5;
+  return Math.round(cap / 100) * 100;
+}
+function findDebt(S, st) {
+  const L = (S.debts || []).map((d, i) => ({ d, i })).filter(x => x.d.left > 0);
+  if (!L.length) return null;
+  const who = st.who ? whoIs(S, st.who) : '';
+  const hit = L.find(x => who && (x.d.who === who || x.d.who.indexOf(who) >= 0 || who.indexOf(x.d.who) >= 0));
+  if (hit) return hit;
+  if (num(st.amount) > 0) return L.slice().sort((a, b) => Math.abs(a.d.left - st.amount) - Math.abs(b.d.left - st.amount))[0];
+  return L.length === 1 ? L[0] : null;
+}
+function bizKindOf(st) {
+  if (BIZ_KINDS[st.kind]) return st.kind;
+  const t = (st.kind || '') + (st.name || '') + (st.text || '');
+  if (/公司/.test(t)) return '小公司';
+  if (/店|馆|铺|摊|档|吧|坊/.test(t)) return '小店';
+  return '工作室';
+}
+// 逐步执行。返回每一步的结果；钱、工作、债、店在这里就落账
+function runSteps(S, plan, rng) {
+  rng = rng || Math.random;
+  const out = [];
+  let long = 0;
+  const fiat = !!fdm(S).fiat;
+  for (const st of (plan.steps || [])) {
+    const r = { type: st.type, text: st.text, ok: false, note: '', ck: null };
+    const p = S.player;
+    switch (st.type) {
+      case 'quit': {
+        const q = quitJob(S);
+        if (q) { r.ok = true; r.note = q.text; } else r.note = '本来就没有工作';
+        break;
+      }
+      case 'repay': {
+        const hit = findDebt(S, st);
+        if (!hit) {
+          // 没有欠条，那就是还人情钱：照花钱算
+          const amt = Math.round(num(st.amount));
+          if (amt > 0 && p.money >= amt) { p.money -= amt; acct(S, '还人情', -amt, st.who || ''); r.ok = true; r.note = `给了${st.who || '对方'}${amt}元，账上剩${p.money}`; }
+          else r.note = amt > 0 ? `要${amt}元，手头只有${p.money}` : '账上查不到欠谁的钱';
+          break;
+        }
+        const want = num(st.amount) > 0 ? Math.min(num(st.amount), hit.d.left) : hit.d.left;
+        const pr = payDebt(S, hit.i, want);
+        if (!pr) { r.note = `欠${hit.d.who}${hit.d.left}元，手头只有${p.money}，一分都拿不出`; break; }
+        r.ok = true;
+        r.note = `还了${pr.who}${pr.pay}元${pr.left ? `，还欠${pr.left}` : '，清了'}；账上剩${p.money}`;
+        if (pr.pay < want) r.note += `（想还${want}，钱不够）`;
+        break;
+      }
+      case 'startBiz': {
+        if (S.biz && !S.biz.dead) { r.note = `手上已经有「${S.biz.name}」了`; break; }
+        const kind = bizKindOf(st);
+        const ob = openBiz(S, { kind, name: st.name || (st.text || '').replace(/^开(个|一家|一间)?/, '').slice(0, 14) || kind }, rng);
+        if (!ob.ok) { r.note = ob.why; break; }
+        r.ok = true; r.ck = ob.ck;
+        r.note = `${kind}「${S.biz.name}」开起来了，本钱${ob.need}，账上剩${p.money}${ob.ck.success ? '' : '；开头不太顺，口碑起手低'}`;
+        break;
+      }
+      case 'closeBiz': {
+        if (!S.biz || S.biz.dead) { r.note = '手上没有生意'; break; }
+        const cb = closeBiz(S);
+        r.ok = true; r.note = `「${cb.name}」关了，开了${cb.months}个月，一共${cb.total >= 0 ? '赚' : '亏'}${Math.abs(cb.total)}`;
+        break;
+      }
+      case 'spend': {
+        const amt = Math.round(num(st.amount));
+        if (amt <= 0) { r.ok = true; r.note = '花了点小钱'; break; }
+        if (p.money < amt) { r.note = `要${amt}元，手头只有${p.money}`; break; }
+        p.money -= amt; acct(S, '花销', -amt, st.text || '');
+        r.ok = true; r.note = `花了${amt}元，账上剩${p.money}`;
+        break;
+      }
+      case 'seekMoney': {
+        r.ck = fiat ? null : stepCheck(S, st, rng);
+        if (r.ck && !r.ck.success) { r.note = '没要到'; break; }
+        const want = Math.round(num(st.amount)) || Math.round(capMoney(S) * 0.3);
+        let ceil = moneyCeil(S);
+        const n = st.who ? S.npcs.find(x => x.name === whoIs(S, st.who)) : null;
+        if (n && st.borrow) ceil = Math.min(ceil, lendCap(S, n));
+        const got = Math.min(want, ceil);
+        if (st.borrow) addDebt(S, n ? n.name : (st.who || '某人'), got, num(st.days) || 60);
+        else { p.money += got; acct(S, '进账', got, st.text || ''); }
+        r.ok = true;
+        r.note = `${st.borrow ? '借到' : '拿到'}${got}元${got < want ? `（要的是${want}，引擎只认${got}）` : ''}${st.borrow ? `，${num(st.days) || 60}天内要还` : ''}；账上${p.money}`;
+        break;
+      }
+      case 'jobHunt': {
+        r.ck = stepCheck(S, st, rng);
+        if (r.ck && !r.ck.success) { r.note = '递出去的没回音'; break; }
+        const inD = rnd(rng, 2, 5), dt = addDays(S.date, inD);
+        const title = `${st.target || '一家单位'}的面试`.slice(0, 30);
+        S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title, kind: '面试', done: false });
+        r.ok = true; r.note = `约上了${dt.m}月${dt.d}日${title}`;
+        break;
+      }
+      case 'meet': {
+        r.ck = stepCheck(S, st, rng);
+        r.ok = !r.ck || r.ck.success;
+        const n = st.who ? S.npcs.find(x => x.name === whoIs(S, st.who)) : null;
+        if (n) { n.lastSeen = S.stats.days; r.who = n.name; }
+        r.note = r.ok ? (n ? `见到了${n.name}` : '人见到了') : (st.who ? `${st.who}那边没接住` : '没见成');
+        break;
+      }
+      case 'focus':
+      case 'rest': {
+        const days = clamp(Math.round(num(st.days) || num(plan.days) || 10), 3, 120);
+        if (S.focus) { r.note = `手头「${S.focus.what}」还没做完`; break; }
+        const heal = st.type === 'rest';
+        const what = (st.text || '').slice(0, 30);
+        S.focus = { what, days, left: days, progress: 0, attr: heal ? '体能' : (st.attr || guessAttr(what)), heal,
+          ideal: !heal && /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
+        long = days;
+        r.ok = true; r.note = `接下来${days}天${heal ? '先养身体' : '闷头做这件事'}，做完引擎再结算`;
+        break;
+      }
+      default: {
+        r.ck = stepCheck(S, st, rng);
+        r.ok = !r.ck || r.ck.success;
+      }
+    }
+    out.push(r);
+  }
+  // 玩家说的长时间、但没说是闷头做什么的：照投入算
+  if (!long && num(plan.days) >= 3 && !S.focus && out.length) {
+    const days = clamp(num(plan.days), 3, 120);
+    const what = (plan.steps[0].text || '').slice(0, 30);
+    S.focus = { what, days, left: days, progress: 0, attr: plan.steps[0].attr || guessAttr(what), heal: false,
+      ideal: /理想|作品|写|做|练|学|产品|店/.test(what) ? 1 : 0, need: 55 + days * 1.1 };
+    long = days;
+  }
+  if (plan.stopWhen) addStopWhen(S, plan.stopWhen, rng);
+  return { results: out, long };
+}
+
+/* ---------- 自设的停下条件 ---------- */
+function stopList(S) {
+  if (!S.stopWhen) S.stopWhen = [];
+  if (!Array.isArray(S.stopWhen)) S.stopWhen = [S.stopWhen];       // 老存档是单个对象
+  return S.stopWhen;
+}
+function addStopWhen(S, w, rng) {
+  w = sanitizeStop(w);
+  if (!w) return null;
+  rng = rng || Math.random;
+  const L = stopList(S);
+  if (w.type === 'days') { const dt = addDays(S.date, w.n); w = { type: 'date', y: dt.y, m: dt.m, d: dt.d, label: `${w.n}天后` }; }
+  if (w.type === 'npc') { w.who = whoIs(S, w.who); w.at = S.stats.days + rnd(rng, 1, 6); }    // 对方哪天回话，挂上的时候就定了
+  if (L.some(x => JSON.stringify(x) === JSON.stringify(w))) return null;
+  L.push(w);
+  S.stopWhen = L.slice(-4);
+  return w;
+}
+function checkStopWhen(S) {
+  const L = stopList(S);
+  for (let i = 0; i < L.length; i++) {
+    const w = L[i];
+    let hit = null;
+    if (w.type === 'money' && S.player.money >= w.n) hit = `存款到了${w.n}`;
+    else if (w.type === 'date' && daysBetween(S.date, w) <= 0) hit = `${w.label || '约定的日子'}到了`;
+    else if (w.type === 'npc' && S.stats.days >= num(w.at)) {
+      hit = `${w.who}回话了`;
+      const n = S.npcs.find(x => x.name === w.who);
+      if (n) n.lastSeen = S.stats.days;
+    }
+    if (hit) { L.splice(i, 1); return { kind: '条件', detail: hit, who: w.who || null }; }
+  }
+  return null;
+}
+
+/* ---------- 答应过的事 ---------- */
+function addPledge(S, pl) {
+  if (!pl || !pl.who || !pl.what) return null;
+  S.pledges = S.pledges || [];
+  const who = whoIs(S, pl.who);
+  if (S.pledges.some(x => !x.done && x.who === who && x.what === pl.what)) return null;
+  const due = num(pl.inDays) > 0 ? addDays(S.date, num(pl.inDays)) : null;
+  const o = { who, what: String(pl.what).slice(0, 40), kind: PLEDGE_KINDS.includes(pl.kind) ? pl.kind : '主角答应', made: shortDate(S.date), due, done: false };
+  S.pledges.push(o);
+  S.pledges = S.pledges.filter(x => !x.done).slice(-20);
+  return o;
+}
+function donePledge(S, what) {
+  const t = String(what || '');
+  const p = (S.pledges || []).find(x => !x.done && (x.what === t || (t.length >= 4 && (x.what.indexOf(t) >= 0 || t.indexOf(x.what) >= 0))));
+  if (p) p.done = true;
+  S.pledges = (S.pledges || []).filter(x => !x.done);
+  return p || null;
+}
+function pledgeTick(S) {
+  const ev = [];
+  for (const p of (S.pledges || [])) {
+    if (p.done || !p.due || daysBetween(S.date, p.due) > 0) continue;
+    p.done = true;
+    if (p.kind === '主角答应') {
+      ev.push({ t: '人情', s: `答应${p.who}的「${p.what}」到日子了，没办` });
+      addRift(S, p.who, `答应的「${p.what}」没兑现`, '私怨', 15);
+    } else if (p.kind === '对方答应') {
+      ev.push({ t: '人情', s: `${p.who}答应的「${p.what}」，到日子也没动静` });
+    }
+  }
+  S.pledges = (S.pledges || []).filter(x => !x.done);
+  return { ev };
 }
 
 /* ---------- 投入结算 ---------- */
@@ -710,6 +1009,81 @@ function settleFocus(S, rng) {
   return Object.assign({ what: f.what, days: f.days, progress: Math.round(f.progress) }, ck);
 }
 
+/* ---------- 模型返回值清洗 ---------- */
+// 只管类型和长度，不管业务：数字一律有限数，布尔只认 true，字符串截长，数组截条数，不认识的字段扔掉
+const T = {
+  str: (v, n) => (v === null || v === undefined) ? '' : String(typeof v === 'object' ? '' : v).trim().slice(0, n || 200),
+  num: (v, lo, hi) => clamp(num(v), lo === undefined ? -1e9 : lo, hi === undefined ? 1e9 : hi),
+  bool: v => v === true,
+  arr: (v, n) => Array.isArray(v) ? v.slice(0, n || 10) : [],
+  obj: v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : null
+};
+function sanitizeTurn(d) {
+  d = T.obj(d) || {};
+  const o = {};
+  if (d.narrative !== undefined) o.narrative = T.str(d.narrative, 6000);
+  if (d.summary !== undefined) o.summary = T.str(d.summary, 60);
+  if (d.ending !== undefined && d.ending !== null) o.ending = T.str(d.ending, 80);
+  o.gameOver = T.bool(d.gameOver);
+  if (d.npcMax !== undefined) o.npcMax = T.num(d.npcMax, 1, 6);
+  const sc = T.obj(d.scene);
+  if (sc) o.scene = { location: T.str(sc.location, 24) || undefined, unresolved: Array.isArray(sc.unresolved) ? T.arr(sc.unresolved, 5).map(x => T.str(x, 40)).filter(Boolean) : undefined };
+  o.resolvedInfo = T.arr(d.resolvedInfo, 6).map(x => T.str(x, 40)).filter(Boolean);
+  const pc = T.obj(d.playerChanges) || {};
+  const P = {};
+  const at = T.obj(pc.attributes);
+  if (at) { P.attributes = {}; for (const k of ATTRS) P.attributes[k] = T.num(at[k], -100, 100); }
+  for (const k of ['energy', 'money', '信誉', '人品', 'idealProgress']) P[k] = T.num(pc[k]);
+  P.job = pc.job ? T.str(pc.job, 30) || null : null;
+  P.salary = pc.salary === null || pc.salary === undefined ? null : T.num(pc.salary, 0, 1e7);
+  P.statusAdd = T.arr(pc.statusAdd, 3).map(T.obj).filter(x => x && x.name).map(x => ({ name: T.str(x.name, 8), desc: T.str(x.desc, 40), days: T.num(x.days, 1, 120) }));
+  P.statusRemove = T.arr(pc.statusRemove, 6).map(x => T.str(x, 8)).filter(Boolean);
+  P.chronicAdd = T.arr(pc.chronicAdd, 2).map(T.obj).filter(x => x && x.name).map(x => ({ name: T.str(x.name, 10), desc: T.str(x.desc, 50) }));
+  o.playerChanges = P;
+  o.npcUpdates = T.arr(d.npcUpdates, 12).map(T.obj).filter(x => x && x.name).map(x => ({
+    name: T.str(x.name, 12), rel: T.num(x.rel, -20, 20), tie: x.tie ? T.str(x.tie, 12) : null, note: x.note ? T.str(x.note, 50) : null,
+    mem: x.mem ? T.str(x.mem, 60) : null, intimate: T.bool(x.intimate) }));
+  o.newNpcs = T.arr(d.newNpcs, 6).map(T.obj).filter(x => x && x.name).map(x => ({
+    name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
+    tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close) }));
+  o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120) }));
+  o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80) }));
+  o.appointments = T.arr(d.appointments, 3).map(T.obj).filter(x => x && x.title).map(x => ({ title: T.str(x.title, 30), inDays: T.num(x.inDays, 1, 120), kind: T.str(x.kind, 8) }));
+  o.milestoneClaim = T.arr(d.milestoneClaim, 3).map(x => T.str(typeof x === 'object' && x ? x.title : x, 40)).filter(Boolean);
+  o.together = typeof d.together === 'string' ? T.str(d.together, 12) : '';
+  o.newRifts = T.arr(d.newRifts, 1).map(T.obj).filter(x => x && x.who).map(x => ({ who: T.str(x.who, 12), reason: T.str(x.reason, 40), kind: RIFT_KINDS[x.kind] ? x.kind : '私怨', heat: T.num(x.heat, 5, 60) }));
+  o.riftEased = T.arr(d.riftEased, 3).map(x => T.str(typeof x === 'object' && x ? x.who : x, 12)).filter(Boolean);
+  const nj = T.obj(d.newJob);
+  o.newJob = nj && nj.employer ? { employer: T.str(nj.employer, 16), title: T.str(nj.title || nj.post, 10), salary: T.num(nj.salary, 0, 1e7), lv: T.num(nj.lv, 0, LEVELS.length - 1), probation: T.bool(nj.probation) } : null;
+  o.options = T.arr(d.options, 4).map(x => T.str(x, 30)).filter(Boolean);
+  o.nextStop = sanitizeStop(d.nextStop);
+  o.pledges = T.arr(d.pledges, 2).map(T.obj).filter(x => x && x.who && x.what).map(x => ({
+    who: T.str(x.who, 12), what: T.str(x.what, 40), kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', inDays: T.num(x.inDays, 0, 365) }));
+  o.pledgeDone = T.arr(d.pledgeDone, 4).map(x => T.str(typeof x === 'object' && x ? x.what : x, 40)).filter(Boolean);
+  return o;
+}
+// 停下条件：存款到数 / 到某天 / 等某人回话
+function sanitizeStop(v) {
+  const o = T.obj(v);
+  if (!o) return null;
+  if (o.type === 'money' && num(o.n) > 0) return { type: 'money', n: Math.round(T.num(o.n, 1, 1e9)) };
+  if (o.type === 'days' && num(o.n) > 0) return { type: 'days', n: Math.round(T.num(o.n, 1, 365)) };
+  if (o.type === 'npc' && o.who) return { type: 'npc', who: T.str(o.who, 12) };
+  return null;
+}
+function sanitizeConvo(d) {
+  d = T.obj(d) || {};
+  const a = T.obj(d.ask);
+  return {
+    reply: T.str(d.reply, 300) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -8, 8),
+    ask: a && a.what ? { what: T.str(a.what, 40), kind: ASK_KINDS.includes(a.kind) ? a.kind : (num(a.money) > 0 ? 'borrow' : 'favor'),
+      attr: ATTRS.includes(a.attr) ? a.attr : '表达', need: T.num(a.need, 20, 90) || 60, money: T.num(a.money, 0, 1e9), days: T.num(a.days, 0, 720) } : null,
+    end: T.bool(d.end), summary: T.str(d.summary, 30)
+  };
+}
+const ASK_KINDS = ['borrow', 'interview', 'intro', 'favor'];
+const PLEDGE_KINDS = ['主角答应', '对方答应', '主角拒绝'];
+
 /* ---------- 吃 LLM 返回的 JSON ---------- */
 // 一段里能改多少，引擎说了算
 function capMoney(S) {
@@ -717,7 +1091,7 @@ function capMoney(S) {
   return Math.max(12000, Math.round(inc * 2.5 + Math.abs(S.player.money) * 0.35));
 }
 function applyTurn(S, d) {
-  d = d || {};
+  d = sanitizeTurn(d);
   const p = S.player;
   const pc = d.playerChanges || {};
   const cut = [];   // 被截下来的，下一段要告诉模型
@@ -732,7 +1106,7 @@ function applyTurn(S, d) {
     p.attrs[k] = Math.round(p.attrF[k]);
   }
   if (num(pc.energy)) p.energy = clamp(p.energy + cap('精力', pc.energy, 35), 0, energyCap(S));
-  if (num(pc.money)) { const mv = cap('钱', pc.money, capMoney(S)); p.money += mv; acct(S, mv > 0 ? '额外进账' : '额外花销', mv, d.summary || ''); }
+  if (num(pc.money)) { const mv = cap('零碎进出的钱', pc.money, Math.round(capMoney(S) * 0.3)); p.money += mv; acct(S, mv > 0 ? '额外进账' : '额外花销', mv, d.summary || ''); }   // 大钱走行动结算，叙事里只认零碎
   if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + cap('行业口碑', pc.信誉, 8), 0, 100);
   if (num(pc.人品)) p.人品 = clamp(p.人品 + cap('做人', pc.人品, 8), 0, 100);
   if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + cap('理想的功夫', pc.idealProgress, 35));
@@ -744,7 +1118,7 @@ function applyTurn(S, d) {
     if (want > hi || want < lo) cut.push(`月薪你写成${want}，引擎只认到${clamp(want, lo, hi)}`);
     S.ledger.salary = clamp(want, lo, hi);
   }
-  if (d.newJob && d.newJob.employer) takeJob(S, d.newJob);
+  if (d.newJob && d.newJob.employer) { const tj = takeJob(S, d.newJob); if (tj.note) cut.push(tj.note); }
 
   for (const st of (pc.statusAdd || [])) {
     if (!st || !st.name) continue;
@@ -820,7 +1194,11 @@ function applyTurn(S, d) {
     S.recent.push({ seg: S.seg, action: S.lastAction || '', narrative: d.narrative });
     S.recent = S.recent.slice(-8);
   }
-  if (d.gameOver) { S.over = true; S.ending = d.ending || '此局终了'; }
+  // 答应的事、拒绝的事
+  for (const pl of d.pledges) addPledge(S, pl);
+  for (const w of d.pledgeDone) donePledge(S, w);
+  if (d.nextStop) addStopWhen(S, d.nextStop);
+  if (d.gameOver === true) { S.over = true; S.ending = d.ending || '此局终了'; }
   S.capNote = cut.length ? cut.slice(0, 3).join('；') : null;
   return S;
 }
@@ -1480,26 +1858,44 @@ function review(S, rng) {
 function quitJob(S) {
   const J = S.job;
   if (!J || J.out) return null;
+  const perf0 = num(J.perf), mood0 = num(J.mood);     // 先记下走之前的样子，再清零
   J.out = true; J.was = J.employer; J.title = '待业'; J.perf = 0; J.mood = 0;
   S.ledger.salary = 0;
   S.player.信誉 = clamp(S.player.信誉 - 1, 0, 100);
-  if (J.mood < 0 || num(J.perf) < 12) addRift(S, J.was || '原来那家', '走的时候没处理干净', '前东家', 22);
+  if (mood0 < 0 || perf0 < 12) addRift(S, J.was || '原来那家', '走的时候没处理干净', '前东家', 22);
   return { kind: '辞职', text: `从${J.was || '原来那家'}出来了，下个月起没有工资` };
 }
 // 新饭碗（LLM 报的）
+// 新饭碗的月薪范围：城市行情 × 职级，心想事成放宽到三倍
+function salaryRange(S, lv) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const now = num(S.ledger.salary);
+  const lo = Math.round(city.pay * 0.6);
+  let hi = Math.max(Math.round(city.pay * LEVELS[lv].pay * 1.6), Math.round(now * 1.8));
+  if (fdm(S).fiat) hi *= 3;
+  return { lo, hi };
+}
 function takeJob(S, o) {
   const J = S.job;
+  const fiat = !!fdm(S).fiat;
+  const lv0 = J.out ? Math.max(0, num(J.lv) - 1) : num(J.lv);
+  let lv = clamp(Math.round(num(o.lv)) || Math.max(1, num(J.lv)), 0, LEVELS.length - 1);
+  let note = null;
+  if (!fiat && lv > lv0 + 2) { note = `职级你写成${LEVELS[lv].t}，引擎只认到${LEVELS[lv0 + 2].t}`; lv = lv0 + 2; }
+  const R = salaryRange(S, lv);
+  let pay = num(o.salary) ? Math.round(num(o.salary)) : 0;
+  if (pay && (pay > R.hi || pay < R.lo)) { const c = clamp(pay, R.lo, R.hi); note = (note ? note + '；' : '') + `新工作月薪你写成${pay}，引擎只认${c}`; pay = c; }
   J.out = false;
   J.employer = String(o.employer || J.employer || '新东家').slice(0, 16);
   J.post = String(o.title || o.post || J.post || '').slice(0, 10);
-  J.title = LEVELS[clamp(num(o.lv) || 1, 0, LEVELS.length - 1)].t;
-  J.lv = clamp(num(o.lv) || Math.max(1, num(J.lv)), 0, LEVELS.length - 1);
+  J.lv = lv;
+  J.title = LEVELS[lv].t;
   J.probation = !!o.probation;
   J.perf = 0; J.mood = 0; J.quarters = 0;
-  S.ledger.base = Math.max(1000, num(o.salary) ? Math.round(num(o.salary) / LEVELS[J.lv].pay) : S.ledger.base);
-  S.ledger.salary = num(o.salary) ? Math.round(num(o.salary)) : Math.round(S.ledger.base * LEVELS[J.lv].pay);
+  S.ledger.base = Math.max(1000, pay ? Math.round(pay / LEVELS[lv].pay) : S.ledger.base);
+  S.ledger.salary = pay || Math.round(S.ledger.base * LEVELS[lv].pay);
   S.player.job = `${J.employer}的${J.post || J.title}`;
-  return { kind: '新工作', text: `${J.employer}，${J.post || J.title}，月薪${S.ledger.salary}` };
+  return { kind: '新工作', text: `${J.employer}，${J.post || J.title}，月薪${S.ledger.salary}`, note };
 }
 
 /* ---------- 欠的钱 ---------- */
@@ -1900,7 +2296,10 @@ const API = {
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
   LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,
   METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
-  startKey, keyRound, settleKey
+  startKey, keyRound, settleKey,
+  sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
+  DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
+  stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 root.ENGINE = API;
