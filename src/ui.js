@@ -308,7 +308,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
 "npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","intimate":false}],
-"newNpcs":[{"name":"","age":0,"job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
+"newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信"}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关"}],
 "appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
@@ -551,8 +551,8 @@ function bootPrompt(o) {
 只输出一个合法 JSON：
 {"narrative":"开场","summary":"一句话","employer":"","title":"","place":"","scene":{"location":"","unresolved":["3件麻烦，每条20字内"]},
 "ladder":[{"name":"这一段叫什么","milestones":[{"title":"","desc":"","metric":"投入","need":60,"scene":"提案","gate":""}]}],
-"npcs":[{"name":"","age":0,"job":"","tie":"主角手机里给他存的称呼：妈妈、房东、老板、表姐、室友这种，不要写母子、雇主","care":"","note":"","rel":30,"close":true}],
-"peers":[{"name":"","note":""}],
+"npcs":[{"name":"","age":0,"gender":"男或女，按称呼和名字判断，拿不准留空","job":"","tie":"主角手机里给他存的称呼：妈妈、房东、老板、表姐、室友这种，不要写母子、雇主","care":"","note":"","rel":30,"close":true}],
+"peers":[{"name":"","gender":"男或女","note":""}],
 "messages":[{"from":"","text":""}],
 "options":["","","",""]}`;
 }
@@ -799,9 +799,11 @@ function guessAttr(a) {
 function renderStart() {
   const o = $('startBox');
   o.innerHTML = `
+  ${artImg('cover_arrival', 'cover', '', true)}
   <h2>开局</h2>
   <div class="frow"><label>名字</label><input id="sName" maxlength="6" placeholder="随你"/></div>
   <div class="frow"><label>性别</label><div class="segs" id="sGender">${seg(['男', '女'], '男')}</div></div>
+  ${avatarsOn() ? `<div class="frow"><label>头像</label><div class="facepick" id="sFace"></div></div>` : ''}
   <div class="frow"><label>学历</label><div class="segs" id="sEdu">${seg(Object.keys(E.EDUS), '本科')}</div></div>
   <div class="frow"><label>学校</label><div class="segs" id="sSchool">${seg(Object.keys(E.SCHOOLS), '普通')}</div></div>
   <div class="frow"><label>专业</label><div class="segs wrap" id="sMajor">${seg(Object.keys(E.MAJORS), '文科')}</div></div>
@@ -812,7 +814,7 @@ function renderStart() {
   <div class="hint" id="oHint">${E.ORIGINS['普通家庭'].desc}</div>
   <div class="frow"><label>城市</label><div class="segs" id="sCity">${seg(Object.keys(E.CITIES), '新一线')}</div></div>
   <div class="hint" id="cHint">${E.CITIES['新一线'].desc}</div>
-  <div class="frow"><label>赛道</label><div class="segs wrap" id="sTrack">${seg(Object.keys(E.TRACKS), '创作')}</div></div>
+  <div class="frow"><label>赛道</label><div class="segs wrap" id="sTrack">${seg(Object.keys(E.TRACKS), '创作', TRACK_ICON)}</div></div>
   <div class="frow col"><label>你想干成的事</label><input id="sIdeal" maxlength="30" placeholder="${E.TRACKS['创作'].ph}"/></div>
   <div class="frow"><label>口径</label><div class="segs" id="sFree">${seg(Object.keys(E.FREEDOM), '都市传奇')}</div></div>
   <div class="hint" id="fHint">${esc(FREE_NOTE['都市传奇'])}</div>
@@ -820,7 +822,8 @@ function renderStart() {
   bindSeg('sOrigin', v => $('oHint').textContent = E.ORIGINS[v].desc);
   bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
   bindSeg('sTrack', v => $('sIdeal').placeholder = E.TRACKS[v].ph);
-  bindSeg('sGender');
+  bindSeg('sGender', v => renderFacePick(v));
+  renderFacePick('男');
   const bgUpd = () => {
     const o = { edu: segVal('sEdu'), school: segVal('sSchool'), major: segVal('sMajor'), persona: segVal('sPersona') };
     const f = E.bgEffect(o);
@@ -833,7 +836,18 @@ function renderStart() {
   bindSeg('sFree', v => $('fHint').textContent = FREE_NOTE[v] || '');
   $('startGo').onclick = startNew;
 }
-function seg(arr, cur) { return arr.map(a => `<button class="seg${a === cur ? ' on' : ''}" data-v="${esc(a)}">${esc(a)}</button>`).join(''); }
+let pickedFace = '';
+function renderFacePick(gender) {
+  const box = $('sFace');
+  if (!box) return;
+  const pool = FACE_POOL[gender] || [];
+  const ok = pool.filter(f => avatarSrc(f, 'young'));
+  if (!ok.length) { box.innerHTML = ''; pickedFace = ''; return; }
+  if (ok.indexOf(pickedFace) < 0) pickedFace = ok[0];
+  box.innerHTML = ok.map(f => `<img class="face md${f === pickedFace ? ' on' : ''}" data-f="${f}" src="${avatarSrc(f, 'young')}" alt="" decoding="async"/>`).join('');
+  box.querySelectorAll('img').forEach(i => i.onclick = () => { pickedFace = i.dataset.f; renderFacePick(gender); });
+}
+function seg(arr, cur, ic) { return arr.map(a => `<button class="seg${a === cur ? ' on' : ''}" data-v="${esc(a)}">${ic && ic[a] ? icon(ic[a]) : ''}${esc(a)}</button>`).join(''); }
 function bindSeg(id, cb) {
   const box = $(id);
   box.querySelectorAll('.seg').forEach(b => b.onclick = () => {
@@ -852,7 +866,7 @@ async function startNew() {
     gender: segVal('sGender'), origin: segVal('sOrigin'), city: segVal('sCity'),
     edu: segVal('sEdu'), school: segVal('sSchool'), major: segVal('sMajor'), persona: segVal('sPersona'), looks: segVal('sLooks'),
     track, ideal: $('sIdeal').value.trim() || E.TRACKS[track].ph,
-    freedom: segVal('sFree'),
+    freedom: segVal('sFree'), face: pickedFace,
     startYear: new Date().getFullYear(), rngSeed: Date.now(), payRoll: Math.random()
   };
   S = E.newState(o);
@@ -877,7 +891,7 @@ async function startNew() {
     S.place = d.place || '';
     S.home = { kind: '租', since: E.shortDate(S.date), place: S.place };
     S.ideal.stages = E.normLadder(d.ladder);
-    S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [] }));
+    S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [], gender: E.guessGender(p.gender, '', p.note, p.name) }));
     E.applyTurn(S, { newNpcs: d.npcs, npcMax: 4, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
     S.booted = true;
     S.lastOptions = d.options && d.options.length ? d.options : ['出门转转', '给家里打个电话', '把手头的活干完', '想想理想那件事'];
@@ -937,9 +951,8 @@ function renderPanel() {
 
     box.innerHTML = head + `<div class="msgs">${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
-        const f = faceOf(r.name);
         return `<div class="thread" onclick="openThread('${esc(r.name)}')">
-          <div class="face sm" style="--h:${f.hue}">${esc(f.ch)}</div>
+          ${faceHtml(S, r.name, 'sm')}
           <div class="thbody">
             <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
@@ -986,7 +999,7 @@ function renderPanel() {
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
-    <div class="card"><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
+    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
@@ -1220,6 +1233,9 @@ function bandColor(v) { return v >= 66 ? 'good' : v >= 33 ? '' : 'bad'; }
 function renderKey() {
   const K = S.key;
   if (!K) { $('key').classList.remove('on'); return; }
+  const ban = $('keyBan');
+  if (ban && ban.dataset.scene !== K.scene) { ban.dataset.scene = K.scene; ban.innerHTML = artImg(KEY_ART[K.scene], 'ban', ''); }
+  $('keyOpp').innerHTML = S.npcs.some(n => n.name === K.opp.name) ? faceHtml(S, K.opp.name, 'md') : '';
   $('keyTitle').textContent = `${K.scene}　${K.opp.name}`;
   $('keySub').textContent = `${K.opp.job ? K.opp.job + '　' : ''}${K.opp.note}`;
   $('keyBars').innerHTML = [
@@ -1242,7 +1258,7 @@ function renderKey() {
     const dead = (k === '亮底牌' && K.usedCard);
     const seen = (K.used || {})[k] || 0;
     return `<button class="kmove${dead ? ' dead' : ''}" data-m="${k}"${dead ? ' disabled' : ''}>
-      <b>${k}</b><i>${mv.tip}</i><u>${mv.attr}${S.player.attrs[mv.attr]}${seen ? `　用过${seen}次` : ''}</u></button>`;
+      <b>${icon(MOVE_ICON[k])}${k}</b><i>${mv.tip}</i><u>${mv.attr}${S.player.attrs[mv.attr]}${seen ? `　用过${seen}次` : ''}</u></button>`;
   }).join('');
   $('keyMoves').querySelectorAll('.kmove').forEach(b => b.onclick = () => keyGo(b.dataset.m));
   $('keyMoves').style.display = K.over ? 'none' : '';
@@ -1295,8 +1311,8 @@ function showNpc(name) {
   const n = S.npcs.find(x => x.name === name);
   if (!n) return;
   const gap = S.stats.days - (n.lastSeen || 0);
-  $('npcBox').innerHTML = `<h2>${esc(n.name)}</h2>
-    <div class="tip" style="margin-top:-10px">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div>
+  $('npcBox').innerHTML = `<div class="cardhead">${faceHtml(S, n.name, 'lg')}<div><h2>${esc(n.name)}</h2>
+    <div class="tip">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div></div></div>
     <div class="card" style="margin-top:14px"><div class="lines">
       <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
       ${n.intimate ? `<div><b>你们之间</b><span>${esc(n.intimate.first)}起有过关系${n.intimate.times > 1 ? `，${n.intimate.times}回` : ''}</span></div>` : ''}
@@ -1380,6 +1396,7 @@ function renderConvo() {
   if (!c) return;
   const n = S.npcs.find(x => x.name === c.name) || { name: c.name, rel: 20, tie: '' };
   $('chatName').innerHTML = `${esc(n.name)} <i class="tapcard">名片</i>`;
+  $('chatFace').innerHTML = faceHtml(S, n.name, '');
   $('chatName').onclick = () => showNpc(n.name);
   $('chatSub').textContent = callName(n);
   let lastDate = '';
@@ -1490,10 +1507,9 @@ function renderMoments() {
   return `<div class="mombox">
     <div class="mompost"><input id="momIn" placeholder="说点什么…" maxlength="60"/><button class="act-go" onclick="postMoment()">发</button></div>
     ${ms.length ? ms.map(m => {
-      const f = faceOf(m.who);
       const mine = m.who === S.player.name;
       return `<div class="mom">
-        <div class="face" style="--h:${f.hue}">${esc(f.ch)}</div>
+        ${faceHtml(S, m.who, '', m.y)}
         <div class="mombody">
           <div class="momwho">${esc(m.who)}${mine ? '<em>我</em>' : ''}</div>
           <div class="momtext">${esc(m.text)}</div>
@@ -1573,7 +1589,7 @@ function renderHome() {
   const out = [`<h3>家</h3>`];
 
   // 住处
-  out.push(`<h4>住处</h4><div class="card">`);
+  out.push(`<h4>住处</h4><div class="card">${artImg(HOME_ART[H.kind], '', H.kind === '买' ? '自己的房子' : '租的房子')}`);
   if (H.kind === '买') {
     const left = H.loan && !H.loan.done ? H.loan.left : 0;
     out.push(`<div class="big">自己的房子</div>
@@ -1594,7 +1610,7 @@ function renderHome() {
   out.push(`<h4>伴侣</h4><div class="card">`);
   if (P) {
     const warmWord = P.warm >= 75 ? '热乎着' : P.warm >= 50 ? '还好' : P.warm >= 25 ? '淡了' : '快过不下去了';
-    out.push(`<div class="big">${esc(P.name)}</div>
+    out.push(`<div class="cardhead">${faceHtml(S, P.name, 'md')}<div class="big">${esc(P.name)}</div></div>
       <div class="lines" style="margin-top:8px">
         <div><b>什么关系</b><span>${esc(P.stage)}${P.marriedAt ? `（${esc(P.marriedAt)}领的证）` : `（${esc(P.since)}起）`}</span></div>
         <div><b>过得怎么样</b><span class="${P.warm < 25 ? 'bad' : P.warm >= 75 ? 'good' : ''}">${warmWord}</span></div>
@@ -1738,6 +1754,7 @@ async function runEnding(reason) {
   setBusy(true, '正在收尾……');
   S.seg++;
   const div = beginChapter(`${S.date.y}年`, `${S.player.age}岁 · 收`, '', null);
+  { const hd = div.querySelector('.chaphead'); if (hd) hd.insertAdjacentHTML('afterend', artImg(endingArt(sc, reason), 'ending', '')); }
   try {
     const d = await llmJSON(endPrompt(sc, reason), raw => {
       const t = extractPartialField(raw, 'narrative');
@@ -1790,6 +1807,7 @@ function renderBiz() {
   const K = E.BIZ_KINDS[B.kind];
   return `<h4>${esc(B.name)}</h4>
   <div class="card">
+    ${B.dead ? '' : artImg(BIZ_ART[B.kind], '', B.kind)}
     <div class="lines">
       <div><b>开了多久</b><span>${B.months}个月（${esc(B.since)}起）</span></div>
       <div><b>上个月</b><span class="${B.net >= 0 ? 'good' : 'bad'}">进${B.rev}　出${B.cost}　${B.net >= 0 ? '剩' + B.net : '亏' + (-B.net)}</span></div>
@@ -2014,6 +2032,7 @@ function loadGame() {
   E.fixJob(S);
   E.fixPace(S);
   E.fixWho(S);
+  ensureFaces(S);
   $('story').innerHTML = S.chapters.join('');
   if (S.runId) bookAll(S.runId).then(rows => {
     if (!rows || rows.length <= S.chapters.length) return;

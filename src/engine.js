@@ -233,7 +233,7 @@ function newState(o) {
     freedom: o.freedom || '都市传奇',
     origin: o.origin, city: o.city,
     player: {
-      name: o.name || '无名', gender: o.gender || '男', age: bg.age, age0: bg.age,
+      name: o.name || '无名', gender: o.gender || '男', age: bg.age, age0: bg.age, face: String(o.face || ''),
       bg: { edu: EDUS[o.edu] ? o.edu : '本科', school: SCHOOLS[o.school] ? o.school : '普通', major: MAJORS[o.major] ? o.major : '', persona: PERSONAS[o.persona] ? o.persona : '', looks: LOOKS[o.looks] ? o.looks : '' },
       track: o.track, skillName: track.skill,
       ideal: o.ideal || track.ph,
@@ -517,7 +517,8 @@ function peerTick(S, rng) {
     // 从此他是个能说上话的人，不再只是朋友圈里的名字
     if (!S.npcs.some(n => n.name === pr.name)) {
       S.npcs.push({ name: pr.name, age: S.player.age, job: pr.note || '同期', rel: 38, tie: '同学',
-        care: '', note: (pr.track || []).slice(-2).join('，'), close: false, mem: [], lastSeen: S.stats.days });
+        care: '', note: (pr.track || []).slice(-2).join('，'), close: false, mem: [], lastSeen: S.stats.days,
+        gender: guessGender(pr.gender, '同学', pr.note, pr.name), ageY: S.date.y });
     }
     pr.npc = true;
     return { ev, stop: { kind: '同期', detail: PEER_HOOK[use](pr) + `（他${mv}，${peerWord(S, pr)}）`, peer: pr.name, hook: use } };
@@ -1308,7 +1309,7 @@ function addMoment(S, who, text, kind) {
     id: 'm' + (S.momentId = num(S.momentId) + 1),
     who: String(who || '某人').slice(0, 12),
     text: t, kind: kind || 'npc',
-    date: shortDate(S.date), day: S.stats.days,
+    date: shortDate(S.date), day: S.stats.days, y: S.date.y,
     likes: rnd(Math.random, 0, 6), liked: false, cs: [], read: false
   };
   S.moments.push(m);
@@ -1821,6 +1822,19 @@ function settleKey(S) {
   return out;
 }
 
+// 性别：模型给了就用；没给按称呼/职业里的字推；推不出留空（留空的人用姓氏字块，不瞎猜）
+const FEMALE_WORDS = /妈|娘|姨|姑|婶|嫂|姐|妹|妻|老婆|媳|女|太太|夫人|奶奶|外婆|闺蜜/;
+const MALE_WORDS = /爸|爹|叔|舅|伯|哥|弟|兄|夫|老公|丈夫|男|先生|爷爷|外公|师傅|师父|老板$/;
+function guessGender(given, tie, job, name) {
+  if (given === '男' || given === '女') return given;
+  const t = String(tie || '') + '|' + String(name || '');   // 称呼和名字都看：表姐、孙姐、妈
+  if (FEMALE_WORDS.test(t)) return '女';
+  if (MALE_WORDS.test(t)) return '男';
+  const j = String(job || '');
+  if (/女|妈|姐|太太|夫人/.test(j)) return '女';
+  if (/先生|大爷|大叔|小伙|哥们/.test(j)) return '男';
+  return '';
+}
 function addNpcs(S, list, max) {
   for (const n of (list || []).slice(0, max || 2)) {
     if (!n || !n.name) continue;
@@ -1830,7 +1844,8 @@ function addNpcs(S, list, max) {
       job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
       tie: String(n.tie || '认识的人').slice(0, 12),
       care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
-      close: !!n.close, mem: [], lastSeen: S.stats.days
+      close: !!n.close, mem: [], lastSeen: S.stats.days,
+      gender: guessGender(n.gender, n.tie, n.job, n.name), ageY: S.date.y
     });
     if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
@@ -1871,7 +1886,7 @@ function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
-  npcMem, markIntimate, lovers, whoIs, fixWho, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
+  npcMem, markIntimate, lovers, whoIs, fixWho, guessGender, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,

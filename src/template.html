@@ -328,6 +328,35 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .lirow>span:first-child{flex:1;min-width:0}
 .lirow .liact{display:flex;gap:6px;flex:none}
 .li .lirow .ghost.sm{padding:5px 11px;font-size:12.5px}
+
+/* ---- 美术：图标与图片 ---- */
+.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.15em;flex:none}
+.seg .ic{width:14px;height:14px;margin-right:4px;vertical-align:-2px;opacity:.85}
+.seg.on .ic{opacity:1}
+.kmove b .ic{width:15px;height:15px;margin-right:5px;vertical-align:-2.5px;color:var(--gold)}
+.kmove.dead b .ic{color:inherit}
+.art{margin:0 0 10px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg2);aspect-ratio:16/9;max-height:150px;min-width:0}
+.art img{display:block;width:100%;height:100%;object-fit:cover}
+.art.cover{aspect-ratio:3/1;max-height:96px;margin:0 0 12px}
+.art.ban{aspect-ratio:3/1;max-height:88px;margin:0 0 8px}
+.art.ending{margin:10px 0 12px}
+:root[data-theme="light"] .art,:root[data-theme="paper"] .art{box-shadow:inset 0 0 0 1px rgba(0,0,0,.035)}
+@media (max-width:330px),(max-height:430px){.art.ban{display:none}}
+/* 头像 */
+img.face{object-fit:cover;background:var(--bg2);border:1px solid var(--line)}
+.face.md{width:48px;height:48px;border-radius:11px;font-size:19px}
+.face.me{width:64px;height:64px;border-radius:14px;font-size:24px}
+.face.lg{width:80px;height:80px;border-radius:16px;font-size:30px}
+.cardhead{display:flex;gap:12px;align-items:center;min-width:0}
+.cardhead>div{min-width:0;flex:1}
+.cardhead h2{margin:0}
+.keyrow{display:flex;gap:10px;align-items:center}
+.keyrow>div:last-child{min-width:0;flex:1}
+#chatFace:empty{display:none}
+#chatHd>#chatFace{flex:none}
+.facepick{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+.facepick img{cursor:pointer;opacity:.55;border:2px solid transparent}
+.facepick img.on{opacity:1;border-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -365,7 +394,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   <section id="chat">
     <div id="chatHd">
       <button id="chatBack">‹</button>
-      <div><div id="chatName">—</div><div id="chatSub"></div></div>
+      <div id="chatFace"></div><div><div id="chatName">—</div><div id="chatSub"></div></div>
       <button id="chatDone">聊完了</button>
     </div>
     <div id="chatBody"></div>
@@ -373,7 +402,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   </section>
 
   <section id="key">
-    <div id="keyHd"><div><div id="keyTitle">—</div><div id="keySub"></div></div></div>
+    <div id="keyHd"><div id="keyBan"></div><div class="keyrow"><div id="keyOpp"></div><div><div id="keyTitle">—</div><div id="keySub"></div></div></div></div>
     <div id="keyBars"></div>
     <div id="keyLog"></div>
     <div id="keyMoves"></div>
@@ -447,6 +476,7 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 </div>
 
 <script>/*==ENGINE==*/</script>
+<script>/*==ART==*/</script>
 <script>/*==UI==*/</script>
 <script>/*==INSTALL==*/</script>
 </body>
