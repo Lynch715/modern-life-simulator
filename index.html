@@ -493,7 +493,9 @@ html,body{max-width:100%;overflow-x:hidden}
     </select></div>
     <div id="setFreeWrap"><div class="frow"><label>口径</label><div class="segs" id="setFree"></div></div>
     <div class="hint" id="setFreeNote"></div>
-    <div class="hint">随时可改，改完下一段就按新口径走。</div></div>
+    <div class="frow"><label>文风</label><div class="segs wrap" id="setStyle"></div></div>
+    <div class="hint" id="setStyleNote"></div>
+    <div class="hint">随时可改，改完下一段就按新口径、新文风走。</div></div>
     <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
     <div class="btns"><button class="ghost" id="setExport">导出存档</button><button class="ghost" id="setImport">导入存档</button></div>
     <div class="hint">存档是一个文件，带着它换设备接着玩（章节全本也在里面）。导入会盖掉这台设备上现在这局。</div>
@@ -3542,27 +3544,82 @@ const SAY_RULE = `【必须有人说话】这是最要紧的一条。
 - 对白要像真人说话：短句、口语、半截话、答非所问、被打断、有停顿。不许每个人都说完整漂亮的长句，不许拿对白交代设定。
 - 说话的人可以带一个很小的动作或语气（把手机扣在桌上、笑了一下、没接这句），但别在每句后面都缀一串形容。`;
 
+/* ---- 文风：只管正文怎么写；聊天、朋友圈、消息不套 ---- */
+const STYLE_COMMON = `你是一个中文现代生活模拟游戏的叙事引擎。你只负责把引擎给定的结果写成故事，不负责决定成败。
+
+不管哪种文风都要守的：
+- 引擎给的结果、钱数、日期、身体状况照写，文风只管怎么写，不管写什么。
+- 不许写"他终于明白了""这一刻他忽然懂得""生活就是这样"之类的感悟句，不许总结升华，尤其不许拿它收尾。
+- 不出现真实存在的公司、平台、品牌、真人姓名，用虚构的名字。
+- 下面说的是一种写法的技巧，不是让你抄谁：不许照搬任何作家原作里的句子、人物名、地名、口头禅，也不许在文中提到这位作家。
+- 微信消息要像真的微信：短、有语气词、有错字也行、有人发两条、有人只回一个字——不管正文用什么文风，消息、朋友圈都是人物自己在说话。`;
+const STYLES = {
+  '白描': { note: '短句，名词具体，不抒情，不升华。',
+    rule: `【文风·白描】
+- 像一个会写小说的人在写一个具体的人过的具体日子。名词要具体：几路公交、几块钱的面、几层的办公楼、几点几分的消息。
+- 人说话就是人说话：有口语、有废话、会打断、会答非所问、会说一半不说了。
+- 不许排比句，不许"不是……而是……"的句式堆叠，不许成语连用。
+- 不许每段都用天色、窗外、灯光收尾。写失败和难堪时不要找补，写顺利时不要煽情。` },
+  '余华': { note: '冷，短，同一个动作反复出现；越苦的事写得越平静，带点黑色幽默。',
+    rule: `【文风·冷静的重复】
+- 句子短，叙述冷静，几乎不用形容词，情绪一个字都不直接写。
+- 越是难堪、倒霉、疼的事，越要写得平平淡淡，像在说吃了一碗面；荒唐处让人想笑又笑不出来。
+- 用重复：同一个动作、同一句话、同一个数字，在这一段里出现两三次，每次只变一点点。
+- 人物说话简单直接，常常答非所问或者说得一本正经地荒唐；用"他想了想，觉得也是"这类憨直的逻辑往下推。
+- 不渲染环境，不写比喻，或者只写最土最朴素的比喻。` },
+  '莫言': { note: '气味颜色声音都浓，长句一层层铺；比喻夸张，往土里、往身体上落。',
+    rule: `【文风·浓烈的感官】
+- 气味、颜色、声音、身体的感觉要写得浓、写得满，一样东西要让人闻得到、看得见、摸得着。
+- 长句一层层往下铺，逗号连着逗号，一口气写下去；中间可以夹短促的一句断开。
+- 比喻夸张、大胆、往土里和身体上落：拿吃的、牲口、庄稼、泥土、汗、血来比城里的事，越不搭越好。
+- 叙述可以夹民间口语、俗话、骂人话，带一股野气；可以有一点点超出常理的夸张（声音震得墙皮掉、汗流成河），但事情本身照引擎给的写。
+- 允许排比和铺陈，但对白仍是人的口语。` },
+  '刘震云': { note: '一件事套一件事，一句话顶一句话地绕；把人和人的拧巴绕出来，冷着脸说笑话。',
+    rule: `【文风·绕】
+- 叙述爱绕：一件事背后还有一件事，这件事又是因为另一个人的另一件事。"本来是件简单的事，但……不光是……"这样一层层剥开。
+- 爱讲道理，讲的却是拧巴的道理：一个说的是这个，一个说的是那个，两人说的都是一回事，又都不是一回事。
+- 句子平实，重复关键词，像在跟人掰扯；语气冷，事情荒唐，作者从不笑。
+- 人说话也绕，一句话里藏着另一句话，谁也不把话说透。
+- 不写景，不抒情，只写人和人之间的账。` },
+  '王朔': { note: '京味贫嘴，满嘴俏皮话，没正形；什么正经事都拿来调侃。',
+    rule: `【文风·贫嘴】
+- 叙述和对白都贫：俏皮话、反话、抬杠、拿大词说小事、拿正经话说不正经的事，一本正经地胡说八道。
+- 节奏快，对白多，人物互相挤兑、互相拆台，谁都不肯好好说话；叙述人也跟着耍贫，对主角也不客气。
+- 口语化，北方口语味，可以用"丫""得嘞""您受累"之类的口头词，但别堆砌方言。
+- 底子是混不吝，但贫嘴底下要有一点实在的东西：钱的窟窿、面子、怕。
+- 不煽情，正经时刻也用一句玩笑岔过去。` },
+  '张爱玲': { note: '冷眼、刻薄、精致；写人心里那点算计，比喻又新又冷。',
+    rule: `【文风·冷眼】
+- 叙述精致、冷，带着看透的刻薄：写人心里那点算计、体面、虚荣、自欺，一针见血又不动声色。
+- 比喻新奇、冷、出人意料，常拿衣料、颜色、器物、光线来比人和人的关系。
+- 细节写衣着、房间的陈设、颜色、光，借物写人；一句漂亮的、凉薄的判断可以落在段中，但不许落在段尾升华。
+- 对白不多，但每句都暗藏机锋，话里有话，彼此试探。
+- 写城市的现代生活也照样冷眼，写出体面底下的寒酸。` },
+  '金庸': { note: '叙述用章回江湖腔，写的却是房租加班相亲；对白保持现代口语，靠反差出效果。',
+    rule: `【文风·江湖说书】
+- 叙述用说书人的江湖腔、半文半白：「这一日」「只见」「但见」「原来」「当下」「心中暗叫」「却说」，写得像武侠小说的章节。
+- 写的是现代生活里的事：房租、加班、相亲、地铁、外卖，拿江湖的气派写出来——收租的是"一方豪强"，开会像"群雄聚首"，谈判像"过招"，但别真打起来，也别出现武功。
+- 人物出场交代来历、给个外号（自己编，别用任何武侠小说里的人名和外号）。
+- **对白保持现代人说话**，该怎么说就怎么说，跟叙述的江湖腔形成反差。
+- 动作写得干脆、有招式感；心理用"心中暗想""暗叫不好"这类说法。` }
+};
+function styleOf() { const k = S && S.style; return STYLES[k] ? k : '白描'; }
 const styleSystem = () => `${PERSON()}
 ${SAY_RULE}
 
-` + STYLE_SYSTEM;
-const STYLE_SYSTEM = `你是一个中文现代生活模拟游戏的叙事引擎。你只负责把引擎给定的结果写成故事，不负责决定成败。
+${STYLE_COMMON}
 
-怎么写：
-- 像一个会写小说的人在写一个具体的人过的具体日子。名词要具体：几路公交、几块钱的面、几层的办公楼、几点几分的消息。
-- 人说话就是人说话：有口语、有废话、会打断、会答非所问、会说一半不说了。不许所有人都说完整漂亮的长句。
-- 不许写"他终于明白了""这一刻他忽然懂得""生活就是这样"之类的感悟句，尤其不许拿它收尾。
-- 不许总结升华，不许每段都用天色、窗外、灯光收尾。
-- 不许排比句，不许"不是……而是……"的句式堆叠，不许成语连用。
-- 微信消息要像真的微信：短、有语气词、有错字也行、有人发两条、有人只回一个字。
-- 写失败和难堪时不要找补，写顺利时不要煽情。
-- 不出现真实存在的公司、平台、品牌、真人姓名，用虚构的名字。`;
+${STYLES[styleOf()].rule}`;
+// 聊天、群、朋友圈：人物自己说话，不套文风
+const CHAT_SYSTEM = `你在一个中文现代生活模拟游戏里扮演主角手机上的联系人。像真人发微信、真人当面说话：短、口语、有语气词，可以答非所问。不许旁白，不许升华，不许说教。不出现真实存在的公司、品牌、真人姓名。`;
 
-function worldRules() {
+function worldRules(chat) {
   const f = E.FREEDOM[S.freedom];
-  return `${PERSON()}
+  return `${chat ? '' : `${PERSON()}
 ${SAY_RULE}
 
+${STYLES[styleOf()].rule}
+`}
 【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角${S && S.player ? S.player.age0 || 22 : 22}岁刚出校门，从零开始。
 这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
 
@@ -4288,6 +4345,8 @@ function renderStart() {
   <div class="frow col"><label>你想干成的事</label><input id="sIdeal" maxlength="30" placeholder="${E.TRACKS['创作'].ph}"/></div>
   <div class="frow"><label>口径</label><div class="segs" id="sFree">${seg(Object.keys(E.FREEDOM), '都市传奇')}</div></div>
   <div class="hint" id="fHint">${esc(FREE_NOTE['都市传奇'])}</div>
+  <div class="frow"><label>文风</label><div class="segs wrap" id="sStyle">${seg(Object.keys(STYLES), '白描')}</div></div>
+  <div class="hint" id="stHint">${esc(STYLES['白描'].note)}</div>
   <div class="btns"><button class="ghost" onclick="openSettings()">接口设置</button><button class="primary" id="startGo">开始</button></div>`;
   bindSeg('sOrigin', v => $('oHint').textContent = E.ORIGINS[v].desc);
   bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
@@ -4304,6 +4363,7 @@ function renderStart() {
   ['sEdu', 'sSchool', 'sMajor', 'sPersona', 'sLooks'].forEach(id => bindSeg(id, bgUpd));
   bgUpd();
   bindSeg('sFree', v => $('fHint').textContent = FREE_NOTE[v] || '');
+  bindSeg('sStyle', v => $('stHint').textContent = STYLES[v].note);
   $('startGo').onclick = startNew;
 }
 let pickedFace = '';
@@ -4340,6 +4400,7 @@ async function startNew() {
     startYear: new Date().getFullYear(), rngSeed: Date.now(), payRoll: Math.random()
   };
   S = E.newState(o);
+  S.style = segVal('sStyle') || '白描';
   try { await bookClear(S.runId); } catch (_) { }
   mask('startMask', false);
   $('story').innerHTML = '';
@@ -4836,7 +4897,7 @@ function aboutNpc(n) {
   return t ? `【最近剧情里跟${n.name}有关的原话】${t}\n` : '';
 }
 function convoHead(n) {
-  return `${worldRules()}
+  return `${worldRules(true)}
 
 你现在扮演的是【${n.name}】，不是主角。只说${n.name}的话，一次一两句，像真人发微信或者当面讲话：短、有口语、可以答非所问、可以不接主角的话茬。
 不许旁白，不许描写主角的动作和心理，不许替主角说话。不许说教，不许煽情。
@@ -5024,7 +5085,7 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05 }));
+    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CHAT_SYSTEM }));
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -5091,7 +5152,7 @@ function groupPrompt(g, say) {
   const keep = L.slice(-30);
   const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
   const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : m.from}：${lineText(m)}`).join('\n');
-  return `${worldRules()}
+  return `${worldRules(true)}
 
 这是主角${S.player.name}拉的微信群「${g.name}」，群里除了主角还有：
 ${mem}
@@ -5125,7 +5186,7 @@ async function groupTurn(say) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say), null, { maxTokens: 1400, temperature: 1.05 }), g.members);
+    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say), null, { maxTokens: 1400, temperature: 1.05, system: CHAT_SYSTEM }), g.members);
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
     for (const r of d.replies) c.lines.push({ who: 'ta', from: r.who, text: r.text });
@@ -5319,7 +5380,7 @@ async function doComment(id, to) {
   if (!cand.length) return;
   setBusy(true, '对面在看……');
   try {
-    const d = await llmJSON(`${worldRules()}
+    const d = await llmJSON(`${worldRules(true)}
 
 ${m.who === S.player.name ? `主角${S.player.name}自己` : m.who}在朋友圈发了一条：「${m.text}」（${m.date}）
 【底下的留言（按先后）】
@@ -5343,7 +5404,7 @@ ${momPeople(cand)}
 
 - 这一来一回里要是真说定了什么（答应来借住、约了吃饭、答应帮忙），写进 deal；只是嘴上开玩笑的不算。
 
-只输出一个合法 JSON：{"cs":[{"who":"","to":"","text":"","rel":0}],"deal":[{"who":"跟主角说定事的那个人","kind":"主角答应|对方答应|主角拒绝","what":"具体的事（20字内）","inDays":几天内办，没期限填0}]}`, null, { maxTokens: 600, temperature: 1.05 });
+只输出一个合法 JSON：{"cs":[{"who":"","to":"","text":"","rel":0}],"deal":[{"who":"跟主角说定事的那个人","kind":"主角答应|对方答应|主角拒绝","what":"具体的事（20字内）","inDays":几天内办，没期限填0}]}`, null, { maxTokens: 600, temperature: 1.05, system: CHAT_SYSTEM });
     const ok = new Set(cand), replied = [];
     for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 2)) {
       const w = c && E.whoIs(S, String(c.who || '').trim());
@@ -5380,7 +5441,7 @@ async function postMoment() {
   if (!cand.length) { S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `朋友圈：发了「${v.slice(0, 20)}」，没人看见` }); saveGame(); return; }
   setBusy(true, '发出去了……');
   try {
-    const d = await llmJSON(`${worldRules()}
+    const d = await llmJSON(`${worldRules(true)}
 
 ${S.player.name}在朋友圈发了一条：「${v}」
 
@@ -5395,7 +5456,7 @@ ${momPeople(cand.map(n => n.name))}
 
 - 底下要是真有人跟主角说定了什么（约饭、要来串门），写进 deal；开玩笑的不算。
 
-只输出一个合法 JSON：{"likes":["名字"],"cs":[{"who":"谁","to":"","text":"留言","rel":0}],"deal":[{"who":"","kind":"主角答应|对方答应|主角拒绝","what":"","inDays":0}]}`, null, { maxTokens: 700, temperature: 1.08 });
+只输出一个合法 JSON：{"likes":["名字"],"cs":[{"who":"谁","to":"","text":"留言","rel":0}],"deal":[{"who":"","kind":"主角答应|对方答应|主角拒绝","what":"","inDays":0}]}`, null, { maxTokens: 700, temperature: 1.08, system: CHAT_SYSTEM });
     const ok = new Set(cand.map(n => n.name));
     for (const l of (Array.isArray(d.likes) ? d.likes : []).slice(0, 8)) if (ok.has(E.whoIs(S, String(l).trim()))) E.addLiker(S, mm, String(l).trim());
     for (const c of (Array.isArray(d.cs) ? d.cs : []).slice(0, 3)) {
@@ -5857,6 +5918,14 @@ function openSettings() {
     $('setFreeNote').textContent = FREE_NOTE[v] || '';
   });
   $('setFreeNote').textContent = FREE_NOTE[S ? S.freedom : '都市传奇'] || '';
+  $('setStyle').innerHTML = seg(Object.keys(STYLES), styleOf());
+  $('setStyleNote').textContent = STYLES[styleOf()].note;
+  bindSeg('setStyle', v => {
+    if (!S) return;
+    S.style = v; saveGame();
+    toast('文风改成' + v + '，下一段起');
+    $('setStyleNote').textContent = STYLES[v].note;
+  });
   $('setFreeWrap').style.display = S ? '' : 'none';
 }
 function saveCfg() {

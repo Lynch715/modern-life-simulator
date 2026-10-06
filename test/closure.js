@@ -146,7 +146,7 @@ console.log('—— 引擎 ——');
   const shot = async n => { if (process.env.SHOT) { await pg.waitForTimeout(300); await pg.screenshot({ path: `${process.env.SHOT}/${n}.png` }); } };
   const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
-  let groupCalls = 0, lastGroup = '', segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '', convoCalls = 0, lastConvo = '';
+  let lastSegRaw = '', lastConvoRaw = '', groupCalls = 0, lastGroup = '', segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '', convoCalls = 0, lastConvo = '';
   await pg.route('**/chat/completions', async route => {
     const post = route.request().postData() || '';
     if (post.includes('指令解析器')) {
@@ -164,7 +164,7 @@ console.log('—— 引擎 ——');
       return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(body) });
     }
     if (post.includes('你现在扮演的是')) {
-      convoCalls++; lastConvo = post;
+      convoCalls++; lastConvo = post; lastConvoRaw = post;
       const say = (JSON.parse(post).messages[1].content.match(/【主角刚发的这句——你这一轮要回的就是它】(.*)/) || [])[1] || '';
       let body = { reply: '回：' + say, mood: '平常', rel: 3, gist: '一路聊着', ask: null, deal: [], cold: convoCalls > 3, summary: '聊天' };
       if (post.includes('引擎判定（不可更改）')) body = { reply: '行 借你', mood: '爽快', rel: 1, ask: null, deal: [], cold: false, summary: '借钱' };
@@ -177,7 +177,7 @@ console.log('—— 引擎 ——');
     }
     if (post.includes('请铸造开局')) return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(BOOT) });
     if (failNext > 0) { failNext--; return route.fulfill({ status: 503, body: '{"error":{"message":"忙"}}' }); }
-    segCalls++; lastSeg = post;
+    segCalls++; lastSegRaw = post; lastSeg = post;
     return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(SEG(segCalls)) });
   });
   await pg.addInitScript(() => localStorage.setItem('mls_cfg', JSON.stringify({ base: 'https://api.deepseek.com', key: 'sk-test', model: 'deepseek-chat' })));
@@ -322,6 +322,20 @@ console.log('—— 引擎 ——');
   await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
   await pg.click('#acts .act-btn'); await idle();
   ok(/【朋友圈近况/.test(lastSeg) && /孙姐发：「新买了个锅」｜底下：主角：周六去你家蹭饭/.test(lastSeg), '写故事时带着朋友圈近况');
+
+  // 文风
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; S.style = '余华'; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  const sys0 = JSON.parse(lastSegRaw).messages[0].content;
+  ok(/文风·冷静的重复/.test(sys0) && !/文风·白描/.test(sys0) && /文风·冷静的重复/.test(lastSeg), '选了余华，正文按余华写');
+  await pg.evaluate(() => openConvo('赵鹏')); await send('在吗');
+  ok(!/文风·/.test(lastConvoRaw) && /扮演主角手机上的联系人/.test(lastConvoRaw), '聊天不套文风');
+  await pg.click('#chatDone'); await idle();
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; openSettings(); });
+  await shot('8-settings-style');
+  await pg.click('#setStyle .seg:has-text("金庸")');
+  ok(await pg.evaluate(() => S.style === '金庸'), '设置里能改文风');
+  await pg.evaluate(() => mask('setMask', false));
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();
