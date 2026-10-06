@@ -1111,7 +1111,7 @@ function addPledge(S, pl) {
   if (!pl || !pl.who || !pl.what) return null;
   S.pledges = S.pledges || [];
   const who = whoIs(S, pl.who);
-  if (S.pledges.some(x => !x.done && x.who === who && x.what === pl.what)) return null;
+  if (S.pledges.some(x => !x.done && x.who === who && sameThing(x.what, pl.what)) || recentlyDone(S, pl.what)) return null;
   const due = num(pl.inDays) > 0 ? addDays(S.date, num(pl.inDays)) : null;
   const o = { who, what: String(pl.what).slice(0, 40), kind: PLEDGE_KINDS.includes(pl.kind) ? pl.kind : '主角答应', made: shortDate(S.date), due, done: false };
   S.pledges.push(o);
@@ -1150,6 +1150,7 @@ function apptWho(S, ap) {
 function findPromisePledge(S, pr) { return (S.pledges || []).find(x => !x.done && x.who === pr.who && x.what === pr.what) || null; }
 function keepPromise(S, pr) {
   if (!pr) return null;
+  noteDone(S, pr.what || pr.title);
   if (pr.type === 'pledge') { const p = findPromisePledge(S, pr); if (p) p.done = true; S.pledges = (S.pledges || []).filter(x => !x.done); }
   const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
   if (n) n.lastSeen = S.stats.days;
@@ -1157,6 +1158,7 @@ function keepPromise(S, pr) {
 }
 function breakPromise(S, pr) {
   if (!pr) return null;
+  noteDone(S, pr.what || pr.title);
   const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
   const what = pr.what || pr.title;
   if (pr.type === 'pledge') {
@@ -1171,6 +1173,7 @@ function breakPromise(S, pr) {
 function delayPromise(S, pr, days) {
   days = clamp(Math.round(num(days)) || 1, 1, 60);
   if (!pr) return null;
+  noteDone(S, pr.what || pr.title);
   const dt = addDays(S.date, days);
   const n = pr.who ? S.npcs.find(x => x.name === pr.who) : null;
   if (pr.type === 'pledge') {
@@ -1408,11 +1411,14 @@ function applyTurn(S, d) {
 
   for (const a of (d.appointments || []).slice(0, 3)) {
     if (!a || !a.title) continue;
+    // 已经约着的、刚办掉的同一件事，不再挂一遍（不然天天弹提醒）
+    if (S.appts.some(x => !x.done && sameThing(x.title, a.title)) || recentlyDone(S, a.title)) continue;
+    if ((S.pledges || []).some(p => !p.done && p.due && sameThing(p.what, a.title))) continue;
     const inD = clamp(num(a.inDays) || 3, 1, 120);
     const dt = addDays(S.date, inD);
     S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title: String(a.title).slice(0, 30), kind: String(a.kind || '').slice(0, 8), done: false });
   }
-  S.appts = S.appts.filter(a => !a.done).slice(-12);
+  S.appts = S.appts.filter(a => !a.done && daysBetween(S.date, a) >= 0).slice(-12);
 
   if (d.scene) {
     S.place = String(d.scene.location || S.place).slice(0, 24);
@@ -2530,6 +2536,20 @@ function simRatio(a, b) {
   for (const g of A) if (B.has(g)) hit++;
   return hit / A.length;
 }
+// 两件事是不是说的同一件：互相包含，或者字面重合一半以上
+function sameThing(a, b) {
+  a = String(a || '').replace(/[\s，。、！？：「」“”"'（）()]/g, ''); b = String(b || '').replace(/[\s，。、！？：「」“”"'（）()]/g, '');
+  if (!a || !b) return false;
+  if (a === b || (a.length >= 3 && b.indexOf(a) >= 0) || (b.length >= 3 && a.indexOf(b) >= 0)) return true;
+  return Math.max(simRatio(a, b), simRatio(b, a)) >= 0.5;
+}
+// 刚办掉、刚改期、刚放了鸽子的事记几天，模型再报同一件就不认
+function noteDone(S, text) {
+  S.doneRecent = (S.doneRecent || []).filter(x => S.stats.days - x.day <= 6);
+  S.doneRecent.push({ t: String(text || '').slice(0, 40), day: S.stats.days });
+  S.doneRecent = S.doneRecent.slice(-20);
+}
+function recentlyDone(S, text) { return (S.doneRecent || []).some(x => S.stats.days - x.day <= 6 && sameThing(x.t, text)); }
 function stuckLevel(S) {
   const r = S.recent;
   if (r.length < 2) return 0;
@@ -2569,7 +2589,7 @@ const API = {
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
   stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
-  apptWho, keepPromise, breakPromise, delayPromise,
+  apptWho, sameThing, noteDone, recentlyDone, keepPromise, breakPromise, delayPromise,
   sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

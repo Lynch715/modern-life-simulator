@@ -130,6 +130,18 @@ console.log('—— 引擎 ——');
   ok(c.to === '赵鹏', '留言记下回复谁');
 }
 
+{ // 15 同一件事不反复挂
+  const S = mk(); S.appts.push(Object.assign(E.addDays(S.date, 2), { title: '去医院做入职体检', kind: '约', done: false }));
+  E.applyTurn(S, { appointments: [{ title: '去医院做入职体检', inDays: 1 }, { title: '入职体检', inDays: 3 }] });
+  ok(S.appts.length === 1, '已经约着的同一件事不再挂', S.appts.map(a => a.title).join('｜'));
+  const a = E.advance(S, { maxDays: 5, quiet: true }); E.keepPromise(S, a.stop.promise);
+  E.applyTurn(S, { appointments: [{ title: '去医院做入职体检', inDays: 1 }], pledges: [{ who: '赵鹏', what: '去医院做入职体检', kind: '主角答应', inDays: 1 }] });
+  ok(!S.appts.some(x => !x.done) && !S.pledges.length, '刚办完的事模型再报也不认');
+  E.addPledge(S, { who: '孙姐', what: '周末帮她搬家', kind: '主角答应', inDays: 3 });
+  E.addPledge(S, { who: '孙姐', what: '帮她搬家', kind: '主角答应', inDays: 4 });
+  ok(S.pledges.length === 1, '同一个人同一件事只记一条');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -146,7 +158,7 @@ console.log('—— 引擎 ——');
   const shot = async n => { if (process.env.SHOT) { await pg.waitForTimeout(300); await pg.screenshot({ path: `${process.env.SHOT}/${n}.png` }); } };
   const errs = [];
   pg.on('pageerror', e => errs.push(e.message));
-  let lastSegRaw = '', lastConvoRaw = '', groupCalls = 0, lastGroup = '', segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '', convoCalls = 0, lastConvo = '';
+  let badNext = 0, lastSegRaw = '', lastConvoRaw = '', groupCalls = 0, lastGroup = '', segCalls = 0, failNext = 0, parseCalls = 0, lastSeg = '', convoCalls = 0, lastConvo = '';
   await pg.route('**/chat/completions', async route => {
     const post = route.request().postData() || '';
     if (post.includes('指令解析器')) {
@@ -178,6 +190,7 @@ console.log('—— 引擎 ——');
     if (post.includes('请铸造开局')) return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(BOOT) });
     if (failNext > 0) { failNext--; return route.fulfill({ status: 503, body: '{"error":{"message":"忙"}}' }); }
     segCalls++; lastSegRaw = post; lastSeg = post;
+    if (badNext > 0) { badNext--; return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: 'data: ' + JSON.stringify({ choices: [{ delta: { content: '{"narrative":"这是一段坏掉的回复正文，后面的格式全乱了。他说"走吧"，然后两个人下了楼，楼道里的灯坏了一盏，谁也没提。","summary":"坏' } }] }) + '\n\ndata: ' + JSON.stringify({ choices: [{ delta: { content: '了", "options": [甲, 乙' } }] }) + '\n\ndata: [DONE]\n\n' }); }
     return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(SEG(segCalls)) });
   });
   await pg.addInitScript(() => localStorage.setItem('mls_cfg', JSON.stringify({ base: 'https://api.deepseek.com', key: 'sk-test', model: 'deepseek-chat' })));
@@ -198,8 +211,14 @@ console.log('—— 引擎 ——');
   ok(/引擎已经结算/.test(lastSeg) && /玩家的限制/.test(lastSeg) && /别替我答应任何事/.test(lastSeg), '叙事请求带着结算块和限制');
 
   // 请求失败：日子只过一次，重试不重掷
+  // 接口偶尔忙两下：自己扛过去，玩家看不见
+  const fb0 = await pg.evaluate(() => S.stats.days);
+  failNext = 2;
+  await pg.click('#acts .act-btn'); await idle();
+  ok(await pg.evaluate(() => !S.pending) && failNext === 0, '接口忙两下自己重试成功，不报失败');
+  await pg.evaluate(() => { S.promiseAsk = null; renderOptions(S.lastOptions); });
+  failNext = 99;                      // 一直不通才算失败
   const before = await pg.evaluate(() => ({ days: S.stats.days, seg: S.seg }));
-  failNext = 2;                       // llmJSON 自己会重试一次，两次都失败才算失败
   await pg.click('#acts .act-btn'); await idle();
   const mid = await pg.evaluate(() => ({ days: S.stats.days, seg: S.seg, pending: !!S.pending, btn: document.querySelector('#acts .act-btn').textContent, fate: S.pending && S.pending.judge && S.pending.judge.fate }));
   ok(mid.pending && /再写一次/.test(mid.btn), '失败后只留一个"再写一次"', mid.btn);
@@ -336,6 +355,13 @@ console.log('—— 引擎 ——');
   await pg.click('#setStyle .seg:has-text("金庸")');
   ok(await pg.evaluate(() => S.style === '金庸'), '设置里能改文风');
   await pg.evaluate(() => mask('setMask', false));
+
+  // 回复格式坏了：留下正文，不整段重写
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  badNext = 1; const sc0 = segCalls;
+  await pg.click('#acts .act-btn'); await idle();
+  const bj = await pg.evaluate(() => ({ pend: !!S.pending, txt: document.querySelectorAll('.chapter')[document.querySelectorAll('.chapter').length - 1].textContent }));
+  ok(!bj.pend && /坏掉的回复正文/.test(bj.txt) && segCalls === sc0 + 1, '格式坏了只留正文，不再请求一遍', bj.txt.slice(-30));
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();

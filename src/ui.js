@@ -17,7 +17,7 @@ const THEME_BG = { dark: '#0f1116', light: '#f7f5f1', paper: '#f2ead9' };
 function applySkin() {
   const t = THEME_BG[cfg.theme] ? cfg.theme : 'dark';
   document.documentElement.dataset.theme = t;
-  document.documentElement.dataset.font = ['s', 'm', 'l'].indexOf(cfg.font) >= 0 ? cfg.font : 'm';
+  document.documentElement.dataset.font = ['s', 'm', 'l', 'xl'].indexOf(cfg.font) >= 0 ? cfg.font : 'm';
   const m = document.querySelector('meta[name="theme-color"]');
   if (m) m.setAttribute('content', THEME_BG[t]);
 }
@@ -120,7 +120,21 @@ async function bookClear(run) {
 }
 
 /* ================= 接口 ================= */
+// 网络断、接口忙（429/5xx）、传到一半断了：自己再试两次，别让玩家看见失败
 async function callLLM(prompt, onPartial, opt) {
+  const waits = [1500, 4000];
+  for (let i = 0; ; i++) {
+    try { return await callLLMOnce(prompt, onPartial, opt); }
+    catch (e) {
+      const m = String((e && e.message) || e);
+      const transient = !(opt && opt.noRetry) && !/HTTP (400|401|402|403|404|422)|请先在设置/.test(m);
+      if (!transient || i >= waits.length) throw e;
+      if (typeof setBusy === 'function' && busy) setBusy(true, `接口没接住，第${i + 2}次再试……`);
+      await new Promise(r => setTimeout(r, waits[i]));
+    }
+  }
+}
+async function callLLMOnce(prompt, onPartial, opt) {
   opt = opt || {};
   lastFinish = null;
   if (!cfg.key) { openSettings(); throw new Error('请先在设置里填密钥'); }
@@ -258,6 +272,15 @@ async function llmJSON(prompt, onPartial, opt) {
   catch (e) {
     if (e.message && (e.message.startsWith('接口调用失败') || e.message.startsWith('请先在设置'))) throw e;
     const truncated = lastFinish === 'length';
+    // 正文已经写出来了：留下正文，别的字段算了，不整段重写
+    const fixed = raw ? fixQuotes(raw) : '';
+    const nar = fixed ? extractPartialField(fixed, 'narrative') : '';
+    if (nar && nar.replace(/\s/g, '').length >= 30) {
+      const keep = { narrative: nar };
+      for (const k of ['summary', 'reply']) { const v = extractPartialField(fixed, k); if (v) keep[k] = v; }
+      console.warn('格式不全，只留正文');
+      return keep;
+    }
     toast(truncated ? '回复太长被截断，重试一次' : '回复格式有误，重试一次');
     const extra = truncated
       ? '\n\n（上次输出太长被截断。这次把叙事压到 300 字内，newNpcs 最多 1 人，务必输出完整合法的单个 JSON）'
@@ -395,7 +418,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信","pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"}（这人真给主角打钱时才填，数目对得上他的家底）}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关","likes":["点赞的人，只能是【认识的人】里跟他也认识的"],"cs":[{"who":"底下留言的人（【认识的人】里跟他也认识的，不能是主角）","to":"回复谁，没有就空","text":"留言，十五字内"}]}],
-"appointments":[{"title":"约好的事","inDays":3,"kind":"约"}],
+"appointments":[{"title":"这一段里新约下的事（【约好的事】里已经有的、刚办完的，不要再写）","inDays":3,"kind":"约"}],
 "milestoneClaim":[],
 "together":"这一段里主角跟谁明确确定了恋爱关系（说开了、答应了、在一起了）就写那人名字，没有就写空字符串",
 "newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
@@ -442,7 +465,11 @@ function pledgeBlock() {
 }
 function waitBlock() {
   const L = E.stopList(S);
-  return L.length ? `【主角在等的】${L.map(w => w.type === 'money' ? `存款到${w.n}` : w.type === 'npc' ? `${w.who}回话` : `${w.label || '到日子'}`).join('；')}\n` : '';
+  const ap = (S.appts || []).filter(a => !a.done).map(a => `${a.m}月${a.d}日：${a.title}`);
+  const dn = (S.doneRecent || []).filter(x => S.stats.days - x.day <= 6).map(x => x.t);
+  return (L.length ? `【主角在等的】${L.map(w => w.type === 'money' ? `存款到${w.n}` : w.type === 'npc' ? `${w.who}回话` : `${w.label || '到日子'}`).join('；')}\n` : '')
+    + (ap.length ? `【约好的事（已经记着了，到日子引擎会提醒，不要再写进 appointments）】${ap.join('；')}\n` : '')
+    + (dn.length ? `【这几天刚了结的事（办了、改期了或者没去，别再当成新约定）】${dn.join('；')}\n` : '');
 }
 
 // 最近几天跟主角有关的朋友圈：他发的、他留过言的、底下提到他的
@@ -801,7 +828,7 @@ function renderOptions(opts) {
   if (S.over) {
     box.innerHTML = `<div class="ended">${esc(S.endTitle || '这一局')}　—　${esc(S.ending || '')}</div>`;
     const go = document.createElement('button');
-    go.className = 'act-btn'; go.textContent = '日子还得过下去（再给十年）';
+    go.className = 'act-btn full'; go.textContent = '日子还得过下去（再给十年）';
     go.onclick = () => { S.over = false; goOn(); };
     box.appendChild(go);
     const ex = document.createElement('div');
@@ -813,7 +840,7 @@ function renderOptions(opts) {
   if (S.pending) {
     box.innerHTML = '';
     const b = document.createElement('button');
-    b.className = 'act-btn'; b.textContent = '这一段没写成，再写一次';
+    b.className = 'act-btn full'; b.textContent = '这一段没写成，再写一次';
     b.onclick = () => retryPending();
     box.appendChild(b);
     const tip = document.createElement('div');
@@ -831,7 +858,7 @@ function renderOptions(opts) {
   }
   if (S.interview) {
     const b = document.createElement('button');
-    b.className = 'act-btn'; b.textContent = `去面试：${S.interview.title}`;
+    b.className = 'act-btn full'; b.textContent = `去面试：${S.interview.title}`;
     b.onclick = () => askJob();
     box.appendChild(b);
   }
@@ -906,7 +933,7 @@ async function doAction(action, typed) {
   if (typed) {
     setBusy(true, '正在琢磨你要做的事……');
     try {
-      const raw = await llmJSON(parsePrompt(action), null, { maxTokens: 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000 });
+      const raw = await llmJSON(parsePrompt(action), null, { maxTokens: 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000, noRetry: true });
       plan = E.sanitizePlan(raw, action, true);
     } catch (e) {
       plan = E.simplePlan(action, true);        // 解析不出来也不卡人：整句当一件普通的事
@@ -993,41 +1020,45 @@ async function writePending() {
   const P = S.pending;
   if (!P) return;
   setBusy(true, P.busyText || '正在记下这几天……');
+  let d;
   try {
     const raw = await llmJSON(P.prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
     });
-    const d = E.sanitizeTurn(raw);
-    updateChapterNarrative(d.narrative);
-    if (P.isYear) {
-      const snap = E.yearSnap(S);
-      S.years = (S.years || []).concat([{ y: snap.y, snap, text: d.narrative, summary: d.summary || '' }]).slice(-12);
-      S.history.push({ seg: S.seg, date: `${snap.y}年`, summary: `【年终】${d.summary || ''}` });
-    }
-    E.applyTurn(S, d);
-    // 被引擎截掉的数，当场就在这一段末尾说清楚
-    if (S.capNote && curChapter) curChapter.querySelector('.ntext').insertAdjacentHTML('beforeend', `<p class="capnote">（引擎记账：${esc(S.capNote)}）</p>`);
-    const claim = E.judgeClaim(S, d.milestoneClaim);
-    if (claim && !claim.ok) S.claimNote = `你申报过「${claim.title}」，但${claim.short}，还不够格`;
-    else S.claimNote = null;
-    S.pending = null;
-    S.plan = null;
-    S.lastAction = null; S.actTyped = false;
-    if (P.promise) S.promiseAsk = Object.assign({ date: E.shortDate(S.date) }, P.promise);
-    else if (P.apptKind === '面试') S.interview = { title: P.apptTitle || '一场面试' };
-    S.lastOptions = (d.options && d.options.length) ? d.options : ['接着过日子', '找人聊聊', '琢磨一下理想那件事', '出去走走'];
-    await finishChapter();
-    rebuildTop();
-    renderOptions(S.lastOptions);
-    renderPanel();
-    saveGame();
-    if (S.over) { renderOptions([]); }
+    d = E.sanitizeTurn(raw);
+    if (!d.narrative) throw new Error('模型没写出正文');
   } catch (e) {
     updateChapterNarrative('（这一段没写成：' + (e.message || e) + '）');
     renderOptions([]);
     toast(e.message || '出错了');
+    setBusy(false);
+    return;
   }
+  // 正文到手：这一段就算过了。后面哪一步出岔子只记下来，不再让玩家重写同一段
+  S.pending = null;
+  const step = (name, fn) => { try { fn(); } catch (e) { console.error('记账出错：' + name, e); S.applyErr = `${name}：${e.message || e}`; } };
+  step('正文', () => updateChapterNarrative(d.narrative));
+  if (P.isYear) step('年终', () => {
+    const snap = E.yearSnap(S);
+    S.years = (S.years || []).concat([{ y: snap.y, snap, text: d.narrative, summary: d.summary || '' }]).slice(-12);
+    S.history.push({ seg: S.seg, date: `${snap.y}年`, summary: `【年终】${d.summary || ''}` });
+  });
+  step('记账', () => E.applyTurn(S, d));
+  step('截账说明', () => { if (S.capNote && curChapter) curChapter.querySelector('.ntext').insertAdjacentHTML('beforeend', `<p class="capnote">（引擎记账：${esc(S.capNote)}）</p>`); });
+  step('里程碑', () => {
+    const claim = E.judgeClaim(S, d.milestoneClaim);
+    S.claimNote = claim && !claim.ok ? `你申报过「${claim.title}」，但${claim.short}，还不够格` : null;
+  });
+  S.plan = null;
+  S.lastAction = null; S.actTyped = false;
+  if (P.promise) S.promiseAsk = Object.assign({ date: E.shortDate(S.date) }, P.promise);
+  else if (P.apptKind === '面试') S.interview = { title: P.apptTitle || '一场面试' };
+  S.lastOptions = (d.options && d.options.length) ? d.options : ['接着过日子', '找人聊聊', '琢磨一下理想那件事', '出去走走'];
+  saveGame();
+  try { await finishChapter(); } catch (e) { console.error(e); }
+  step('界面', () => { rebuildTop(); renderOptions(S.over ? [] : S.lastOptions); renderPanel(); });
+  saveGame();
   setBusy(false);
 }
 // 上一段请求没成：日子已经过了、骰子已经掷了，只把那个请求再发一次
@@ -2693,11 +2724,20 @@ function saveCfg() {
   mask('setMask', false);
   toast('记下了');
 }
+// 章节全文另存在 IndexedDB 里，存档只带最近 12 章，免得把浏览器给的那点空间撑满
+// （同一个网址下几个游戏共用这点空间，满了存档就悄悄写不进去，刷新后日子会倒回去）
 function saveGame() {
   if (!S) return;
+  if (S.chapters && S.chapters.length > 12) S.chapters = S.chapters.slice(-12);
   const j = JSON.stringify(S);
-  try { localStorage.setItem(LS_SAVE, j); } catch (_) { }
-  try { localStorage.setItem(LS_SAVE + '_bak', j); } catch (_) { }     // 备份一份，主存档万一没了还能接上
+  let ok = true;
+  try { localStorage.setItem(LS_SAVE, j); }
+  catch (_) {
+    try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.setItem(LS_SAVE, j); }
+    catch (e2) { ok = false; }
+  }
+  if (ok) { try { localStorage.setItem(LS_SAVE + '_bak', j); } catch (_) { try { localStorage.removeItem(LS_SAVE + '_bak'); } catch (__) { } } }
+  if (!ok && !saveGame.warned) { saveGame.warned = true; toast('存档写不进去了：浏览器空间满了，去设置里导出存档'); }
 }
 function loadGame() {
   let raw = localStorage.getItem(LS_SAVE);
