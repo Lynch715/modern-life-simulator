@@ -3690,8 +3690,8 @@ ${WORLD_FIXED}
 ${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}
 
 ${NARR_COMMON()}`;
-const WORLD_FIXED = `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角刚出校门，从零开始。
-这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
+const WORLD_FIXED = `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角从刚出校门那年开始，一年年往下过，眼下多大看【主角眼下】。
+这是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。日子好走还是难走，照【本局口径】；怎么写，照【文风】。
 
 【铁律】
 - 引擎的判定结果不可更改：成就是成，败就是败，钱的加减、身体的毛病、日期的推移，都必须照引擎给的写。
@@ -3726,6 +3726,18 @@ const CONVO_SYSTEM = CHAT_SYSTEM + `
 "pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"},"refund":主角刚给你的钱你退回去就true,
 "cold":你不想再聊了就true,"summary":"一句话（20字内）"}`;
 
+// 每次写故事的请求最后都贴这一段：系统提示里的规矩模型容易读着读着就忘，最后再压一遍
+function finalCheck(extra) {
+  return `【交稿前逐条对一遍，有一条不对就改了再交】
+1. 上面【引擎已经结算】【本段引擎判定】【最终结果】里写的成败、钱数、日期、身体状况，正文一个字都不许改，不许把失败写成成功，也不许把成功写成"差一点"。
+2. 钱的数目照引擎给的写；playerChanges 只写这一段另外的零碎增减。
+3. ${cfg.person === 'ta' ? '通篇第三人称' : '通篇用"你"称呼主角'}；有人出场就有直接对白，用中文引号，不许转述。
+4. 文风照系统说明里的【文风】写；不许感悟、不许升华、不许拿感慨收尾。
+5. 玩家括号里的限制和要求照办；玩家没让你替他做的决定，不许替他做。
+6. 不许替引擎宣布里程碑达成；不许跳过时间；没出现在【认识的人】里的人可以新登场，但要写进 newNpcs。
+7. 出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
+8. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
+}
 function NARR_COMMON() {
   return `【每一段都要做到的】
 - 手机消息写进 messages，1-3 条，短。
@@ -3769,12 +3781,12 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "gameOver":false,"ending":null}`;
 
 function memBlocks() {
-  const recents = S.recent.slice(-3).map((r, i, a) => {
-    const full = i >= a.length - 1;
+  const recents = S.recent.slice(-4).map((r, i, a) => {
+    const full = i >= a.length - 2;
     const t = full ? r.narrative : String(r.narrative || '').replace(/\s+/g, '').slice(0, 90) + '……';
     return `${r.action ? `【当时的行动】${r.action}\n` : ''}【${full ? '叙事' : '叙事·节略'}】${t}`;
   }).join('\n---\n') || '（还没开始）';
-  const sums = S.history.slice(-10).map(h => `${h.date}｜${h.summary}`).join('\n') || '（无）';
+  const sums = S.history.slice(-12).map(h => `${h.date}｜${h.summary}`).join('\n') || '（无）';
   return { recents, sums };
 }
 
@@ -3822,10 +3834,9 @@ function momentsBlock() {
 function stateBlocks() {
   const p = S.player, L = S.ledger;
   const M = memBlocks();
-  const hot = new Set(pickNpcs(5).map(n => n.name));       // 这一段多半用得上的人，记忆给全；其余的只带最近一条
   const npc = pickNpcs(14).map(n => {
     const meta = [n.age ? n.age + '岁' : '', n.job || '', n.tie || '', '关系' + relWord(n.rel, n.tie), n.care ? '在意' + n.care : ''].filter(Boolean).join('，');
-    return `${n.name}（${meta}）${(n.mem || []).slice(hot.has(n.name) ? -3 : -1).join('；')}`;
+    return `${n.name}（${meta}）${(n.mem || []).slice(-4).join('；')}`;
   }).join('\n') || '（还没认识什么人）';
   const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
   E.fixPace(S);
@@ -3983,7 +3994,7 @@ ${E.fdm(S).fiat && S.lastAction && !planBlock() ? `- **这一段的头等大事*
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**这一段里至少要有三处人物直接说话，用引号写原话**，不许把对话转述成"他说……"。
 - options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
 ${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}
-按系统说明里的格式，只输出一个合法 JSON。`;
+${finalCheck()}`;
 }
 
 // 就地办一件事：只写这一两天
@@ -4012,7 +4023,7 @@ ${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的
 - ${ap && ap.promise ? `收尾停在他想起今天约了这件事：${ap.detail}。不许写他去没去，去不去由玩家定。` : ap ? `收尾接上撞见的那件事：${ap.detail}。` : limitAsks().length ? '结尾停在玩家限制的那个地方，把选择留给主角。' : styleAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : (styleOf() === '网文' ? '结尾停在事情办完的那一刻，可以留一个钩子（一条消息、一个人出现），不要感慨。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。')}
 - options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
 
-按系统说明里的格式，只输出一个合法 JSON。`;
+${finalCheck()}`;
 }
 
 function bootPrompt(o) {
@@ -4831,7 +4842,7 @@ ${K}
 - ${res.result === '谈成' ? '谈成之后不要写主角感慨万千，写他走出门第一件具体的事。' : '没谈成不要写他发誓要怎样，写他当下做了什么。'}
 ${meta.kind === 'job' && res.result === '谈成' ? '- 这场是面试而且谈成了：必须把 newJob 填上（东家、职位、月薪、是否试用期），月薪要跟剧情里说的对得上。\n' : ''}${meta.kind === 'love' ? (res.result === '谈成' ? '- 话挑明了，对方也接了：写两个人怎么把这层窗户纸捅破的，别写成偶像剧，写具体的地点和那几句话。\n' : '- 没接住：写清楚是拒绝、是躲开了、还是说再看看，之后两个人怎么把场面收掉。\n') : ''}${meta.kind === 'marry' ? (res.result === '谈成' ? '- 婚事定下来了：写谁先开的口、钱怎么算、家里人什么态度。\n' : '- 婚事没谈成：写卡在哪儿——钱、房、家里、还是对方本来就没想好。\n') : ''}${meta.kind === 'job' && res.result !== '谈成' ? '- 这场面试没成，不要安慰他，写他怎么走出那栋楼。\n' : ''}
 
-按系统说明里的格式，只输出一个合法 JSON。`;
+${finalCheck()}`;
 }
 
 async function askKey(mileId) {
@@ -5047,7 +5058,9 @@ ${convoLog(n)}
 ${c.gist ? `【这次聊到现在的要点】${c.gist}\n` : ''}${said.length ? `【你这次已经说过的，别再说】${said.slice(-6).map(t => '「' + String(t).slice(0, 24) + '」').join('')}\n` : ''}【主角手头】存款${S.player.money}元${c.paidNote ? `\n【刚才】${c.paidNote}` : ''}
 ${judge
     ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}\n这一轮写${n.name}对这件事的答复。\n`
-    : ''}【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}`;
+    : ''}【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}
+
+【回之前对一遍】你是${n.name}，不是主角；只回主角刚发的这句，不接很早以前的话茬；这次说过的话不再说；${judge ? '答复照引擎判定的结果来，' : ''}钱、日子、说定的事对得上；只输出系统说明里那个 JSON。`;
 }
 
 let convoFrom = '';     // 从哪个面板点进来的，返回时回那儿
