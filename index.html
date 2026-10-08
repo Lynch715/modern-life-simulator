@@ -3677,32 +3677,73 @@ const STYLES = {
 - 动作写得干脆、有招式感；心理用"心中暗想""暗叫不好"这类说法。` }
 };
 function styleOf() { const k = S && S.style; return STYLES[k] ? k : '白描'; }
+// 写故事的每一种请求都用这一份系统提示；按「越不变越靠前」排，接口的前缀缓存才吃得上
 const styleSystem = () => `${PERSON()}
 ${SAY_RULE}
 
 ${STYLE_COMMON}
 
-${STYLES[styleOf()].rule}`;
-// 聊天、群、朋友圈：人物自己说话，不套文风
-const CHAT_SYSTEM = `你在一个中文现代生活模拟游戏里扮演主角手机上的联系人。像真人发微信、真人当面说话：短、口语、有语气词，可以答非所问。不许旁白，不许升华，不许说教。不出现真实存在的公司、品牌、真人姓名。`;
-
-function worldRules(chat) {
-  const f = E.FREEDOM[S.freedom];
-  return `${chat ? '' : `${PERSON()}
-${SAY_RULE}
-
 ${STYLES[styleOf()].rule}
-`}
-【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角${S && S.player ? S.player.age0 || 22 : 22}岁刚出校门，从零开始。
+
+${WORLD_FIXED}
+
+${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}
+
+${NARR_COMMON()}`;
+const WORLD_FIXED = `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角刚出校门，从零开始。
 这不是爽文也不是苦难展览，是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。
 
 【铁律】
 - 引擎的判定结果不可更改：成就是成，败就是败，钱的加减、身体的毛病、日期的推移，都必须照引擎给的写。
 - 你不能宣布主角达成了理想的里程碑，那由引擎裁定。你只能把过程写出来，并在 milestoneClaim 里申报。
 - 新出现的人要有来由，但生活里本来就会有人主动找上门：老同学的电话、中介的骚扰、前同事拉你入伙、家里催你，都不必事先铺垫。
-- 钱要具体到数。时间要具体到日子。
+- 钱要具体到数。时间要具体到日子。`;
+// 每一段都要做到的、跟这一段写什么无关的要求，和返回格式
 
-${f.tone}`;
+// 聊天、群、朋友圈：人物自己说话，不套文风
+const CHAT_SYSTEM = `你在一个中文现代生活模拟游戏里扮演主角手机上的联系人。像真人发微信、真人当面说话：短、口语、有语气词，可以答非所问。不许旁白，不许升华，不许说教。不出现真实存在的公司、品牌、真人姓名。`;
+// 私聊专用：规矩和返回格式放系统提示，每轮一字不差，后面的对话记录只往后加，缓存能吃满
+const CONVO_SYSTEM = CHAT_SYSTEM + `
+
+你扮演的是下面写明的那个人，不是主角。只说他的话，一次一两句，像真人发微信或者当面讲话：短、有口语、可以答非所问、可以不接主角的话茬。
+不许旁白，不许描写主角的动作和心理，不许替主角说话。不许说教，不许煽情。
+
+怎么回：
+- 只接主角最后发的那句。他问什么就答什么，他说什么就接什么；上文只用来让你的话前后对得上，不许回头去接很早以前的话茬，除非主角刚好提到。
+- 这次对话里你已经说过的意思和句子不许再说一遍。
+- 就算你不想聊了，主角发来的话也照样回，可以冷淡、敷衍、只回一两个字，但得是对这句的回应。
+- 你记得以前跟主角的来往和说定的事，对得上就自然带出来，别装不知道。
+- 主角给你转账、发红包，要对这笔钱有反应：收下、道谢、嘴上推两句、或者真不要退回去（refund 填 true），看你们的关系和你的性子。
+- 你真要给主角钱（借他、给他、发红包、还他钱）时才填 pay，数目要跟你的身份和家底对得上。
+- ask：只有主角在最后那句里明确开口求你帮忙才填；你求主角的事不算，主角答应不答应由他自己说。给了【引擎判定】的那一轮，ask 填 null，答复必须照判定结果来：答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞。
+- deal：只有这一轮真说定了事才写，没有就空数组。
+
+只输出一个合法 JSON：
+{"reply":"你这一轮说的话","mood":"你此刻什么状态（4字内）","rel":关系增减(-3到3的整数),
+"gist":"这次对话从头到现在的要点，按先后，60字内；说定的事、提过的请求、吵过的架都要留着",
+"ask":null 或 {"what":"主角求的事","kind":"borrow（借钱）|interview（帮忙约面试、推工作）|intro（介绍人）|favor（别的忙）","attr":"表达|情绪|谋划|专业","need":40到85,"money":借钱就写数额否则0,"days":借钱写多少天内还，帮忙写几天内办},
+"deal":[{"kind":"主角答应|对方答应|主角拒绝","what":"这一来一回里说定或回绝的具体事（20字内）","inDays":几天内办，没期限填0}],
+"pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"},"refund":主角刚给你的钱你退回去就true,
+"cold":你不想再聊了就true,"summary":"一句话（20字内）"}`;
+
+function NARR_COMMON() {
+  return `【每一段都要做到的】
+- 手机消息写进 messages，1-3 条，短。
+- moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事，像真人一样。
+- 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
+- 新出现的人写 newNpcs（最多2人）。**这一段里出场、被提到、或者跟主角有来往的每一个已有人物，都要在 npcUpdates 里写一条 mem**，写具体的事，以后他会凭这个记得主角干过什么。
+- 这一段里主角跟谁发生了关系（双方都是成年人），就在那个人的 npcUpdates（新认识的写在 newNpcs）里写 intimate:true，没有就写 false。正文点到为止，不写露骨细节。
+- 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
+- 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
+- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
+- 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
+- 只输出一个合法 JSON，不要任何别的字。下面另给了格式的（开局、年终、结局、关键局开场），照下面给的；没另给的，一律用这个格式：
+${SCHEMA}`;
+}
+// 系统提示里已经有世界观和规矩了；这里只给聊天类请求一句短的
+function worldRules(chat) {
+  if (!chat) return '';
+  return `【世界观】当代中国都市，公司、平台、店铺、小区都是虚构的名字。主角${S.player.name}刚出校门几年，在一座城市里从零开始过日子。`;
 }
 
 const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（25字内）",
@@ -3728,12 +3769,12 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "gameOver":false,"ending":null}`;
 
 function memBlocks() {
-  const recents = S.recent.slice(-4).map((r, i, a) => {
-    const full = i >= a.length - 2;
+  const recents = S.recent.slice(-3).map((r, i, a) => {
+    const full = i >= a.length - 1;
     const t = full ? r.narrative : String(r.narrative || '').replace(/\s+/g, '').slice(0, 90) + '……';
     return `${r.action ? `【当时的行动】${r.action}\n` : ''}【${full ? '叙事' : '叙事·节略'}】${t}`;
   }).join('\n---\n') || '（还没开始）';
-  const sums = S.history.slice(-12).map(h => `${h.date}｜${h.summary}`).join('\n') || '（无）';
+  const sums = S.history.slice(-10).map(h => `${h.date}｜${h.summary}`).join('\n') || '（无）';
   return { recents, sums };
 }
 
@@ -3781,22 +3822,18 @@ function momentsBlock() {
 function stateBlocks() {
   const p = S.player, L = S.ledger;
   const M = memBlocks();
-  const npc = pickNpcs(14).map(n =>
-    `${n.name}（${n.age || '?'}岁，${n.job || '不详'}，${n.tie}，关系${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-4).join('；')}`).join('\n') || '（还没认识什么人）';
+  const hot = new Set(pickNpcs(5).map(n => n.name));       // 这一段多半用得上的人，记忆给全；其余的只带最近一条
+  const npc = pickNpcs(14).map(n => {
+    const meta = [n.age ? n.age + '岁' : '', n.job || '', n.tie || '', '关系' + relWord(n.rel, n.tie), n.care ? '在意' + n.care : ''].filter(Boolean).join('，');
+    return `${n.name}（${meta}）${(n.mem || []).slice(hot.has(n.name) ? -3 : -1).join('；')}`;
+  }).join('\n') || '（还没认识什么人）';
   const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
   E.fixPace(S);
   const PC = E.PACES[S.pace];
   const pf = S.paceFrom && S.stats.days - S.paceFrom.day <= 14 ? `（${S.stats.days - S.paceFrom.day <= 1 ? '刚' : S.stats.days - S.paceFrom.day + '天前'}从「${S.paceFrom.name}」换成这样，这一段要让人看出日子的过法变了）` : '';
   const plan = `「${S.pace}」：${PC.story}${pf}`;
-  return `【今天】${E.dateStr(S.date)}
-【人在哪】${S.place || '不详'}
-【主角】${p.name}，${p.gender}，${p.age}岁，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}眼下的营生：${p.job}
-【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
-【志业阶梯】${E.ladderBlock(S)}
-【属性】专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}
-【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
-${(S.rifts || []).filter(r => !r.done).length ? `【结下的梁子】${S.rifts.filter(r => !r.done).map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}` : ''}
-${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}【家】${(() => {
+  const L2 = S.ledger;
+  const home = (() => {
     const H = S.home || {}; const P = E.partnerOf(S); const kids = (S.family && S.family.kids || []).filter(k => !k.unborn);
     const a = [H.kind === '买' ? `有自己的房子（${H.loan && !H.loan.done ? `月供${H.loan.monthly}，还欠${H.loan.left}` : '贷款还清了'}）` : `还在租房，房租${S.ledger.rent}`];
     a.push(P ? `跟${P.name}${P.stage}${P.warm >= 60 ? '，还热乎' : P.warm >= 30 ? '，不咸不淡' : '，早淡了'}` : '一个人过');
@@ -3804,22 +3841,29 @@ ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，�
     if (lv.length) a.push(`发生过关系的：${lv.map(n => `${n.name}（${P && P.name === n.name ? P.stage : callName(n) || '没名分'}，最近一次${n.intimate.last}）`).join('、')}`);
     if (kids.length) a.push(`孩子${kids.map(k => `${k.name}${k.age}岁`).join('、')}，每月养孩子${E.kidCost(S)}`);
     return a.join('；');
-  })()}
-【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
-【钱】存款${p.money}元，月薪${L.salary}${L.subsidy ? `，家里每月给${L.subsidy}` : ''}，房租${L.rent}，生活${L.living}${L.remit ? `，每月往家寄${L.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}
-【名声】行业口碑${p.信誉}，做人${p.人品}
-【身上的毛病】${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `｜去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
-【这阵子的重心】${plan}
-【认识的人】
-${npc}
+  })();
+  const rifts = (S.rifts || []).filter(r => !r.done);
+  // 顺序：几乎不变的 → 偶尔变的 → 每段都变的（日期放最后），接口的前缀缓存能多吃一截
+  return `【主角】${p.name}，${p.gender}，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}
+【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
 【同期的人在做什么】
 ${peers}
-【未了的事】${S.unresolved.join('；') || '暂时没有'}
-${pledgeBlock()}${waitBlock()}${momentsBlock()}
-【往事提要】
+【家】${home}
+【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
+【这阵子的重心】${plan}
+【志业阶梯】${E.ladderBlock(S)}
+【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
+${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【认识的人】
+${npc}
+${pledgeBlock()}${waitBlock()}${momentsBlock()}【往事提要】
 ${M.sums}
 【最近发生的】
-${M.recents}`;
+${M.recents}
+【未了的事】${S.unresolved.join('；') || '暂时没有'}
+【主角眼下】${p.age}岁，营生：${p.job}｜属性 专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}｜身上的毛病：${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `，去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
+【钱】存款${p.money}元，月薪${L2.salary}${L2.subsidy ? `，家里每月给${L2.subsidy}` : ''}，房租${L2.rent}，生活${L2.living}${L2.remit ? `，每月往家寄${L2.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}｜行业口碑${p.信誉}，做人${p.人品}
+【今天】${E.dateStr(S.date)}
+【人在哪】${S.place || '不详'}`;
 }
 
 const STOP_WRITE = {
@@ -3937,19 +3981,9 @@ ${E.fdm(S).fiat && S.lastAction && !planBlock() ? `- **这一段的头等大事*
 - 必须接着上一段的结尾往下走：地点、在场的人、正在办的事都要接得上。
 - 这一段比上一段一定要往前一步：地点、身边的人、主角知道的事、和谁的关系，四样里至少一样真的变了。
 - ${cfg.person === 'ta' ? '通篇第三人称。' : '通篇用"你"称呼主角。'}**这一段里至少要有三处人物直接说话，用引号写原话**，不许把对话转述成"他说……"。
-- 手机消息写进 messages，1-3 条，短。
-- moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事。其中至少一条要来自【认识的人】里已经有的某个人——可以是废话、可以是没头没尾、可以是跟这一段无关的日常（约饭、转发、抱怨、问一句在不在），像真人一样。
-- 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
-- 新出现的人写 newNpcs（最多2人）。**这一段里出场、被提到、或者跟主角有来往的每一个已有人物，都要在 npcUpdates 里写一条 mem**，写具体的事，以后他会凭这个记得主角干过什么。
-- 这一段里主角跟谁发生了关系（双方都是成年人），就在那个人的 npcUpdates（新认识的写在 newNpcs）里写 intimate:true，没有就写 false。正文点到为止，不写露骨细节。
-- 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
 - options 给四条，具体到能直接做（"去找周野问问那家公司"好过"寻找机会"），互相不重样，其中至少一条跟理想有关、一条跟眼下这件事有关。
-- 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
-${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；不许在剧情里直接写成办成了。
-- 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
-
-只输出一个合法 JSON，不要任何别的字。格式：
-${SCHEMA}`;
+${S.job.out ? `- 主角眼下没有工作，房租和生活费照扣。这一段要让这件事有分量：要么写他去找活（投简历、托人、接零活），要么写钱怎么撑住。他真谈成一份工作时，写进 newJob（给出东家、职位、月薪），引擎据此记账。\n` : ''}${S.broke ? '- 主角账上已经是负数了。这一段不许风花雪月，钱的窟窿必须出现在剧情里。\n' : ''}
+按系统说明里的格式，只输出一个合法 JSON。`;
 }
 
 // 就地办一件事：只写这一两天
@@ -3977,10 +4011,8 @@ ${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的
 - 这件事当场是个什么结果就写什么结果，成了就成了，没成就没成，别拖到下次。
 - ${ap && ap.promise ? `收尾停在他想起今天约了这件事：${ap.detail}。不许写他去没去，去不去由玩家定。` : ap ? `收尾接上撞见的那件事：${ap.detail}。` : limitAsks().length ? '结尾停在玩家限制的那个地方，把选择留给主角。' : styleAsks().length ? '结尾照括号里的要求来；括号没提的话，停在事情办完的那一刻。' : (styleOf() === '网文' ? '结尾停在事情办完的那一刻，可以留一个钩子（一条消息、一个人出现），不要感慨。' : '结尾停在事情办完的那一刻，不要展望，不要感慨，不要写天色。')}
 - options 给四条，都得是**今天明天就能做的具体事**，别给需要几周的计划。
-- 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
 
-只输出一个合法 JSON：
-${SCHEMA}`;
+按系统说明里的格式，只输出一个合法 JSON。`;
 }
 
 function bootPrompt(o) {
@@ -4186,13 +4218,7 @@ function renderOptions(opts) {
 
 /* ================= 一段推进 ================= */
 // 玩家亲手写的一句话，先拆成引擎能执行的步骤（不写故事）
-const PARSE_SYSTEM = '你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。';
-function parsePrompt(act) {
-  const p = S.player;
-  const npcs = S.npcs.slice(-40).map(n => `${n.name}${callName(n) ? '（' + callName(n) + '）' : ''}`).join('、') || '（还没有）';
-  return `【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
-【认识的人】${npcs}
-【玩家写的】${act}
+const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。
 
 把玩家这句话拆成步骤。步骤类型只能从这里选：
 - quit：辞职
@@ -4221,6 +4247,14 @@ function parsePrompt(act) {
 
 只输出 JSON：
 {"steps":[{"type":"other","text":"","diff":"普通","attr":"表达","who":"","amount":0,"days":0,"kind":"","name":"","target":"","borrow":false}],"days":1,"limits":[],"style":[],"stopWhen":null}`;
+function parsePrompt(act) {
+  const p = S.player;
+  const npcs = S.npcs.slice(-40).map(n => `${n.name}${callName(n) ? '（' + callName(n) + '）' : ''}`).join('、') || '（还没有）';
+  return `【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
+【认识的人】${npcs}
+【玩家写的】${act}
+
+按系统说明拆成步骤，只输出 JSON。`;
 }
 async function doAction(action, typed) {
   if (busy || !S || S.over) return;
@@ -4797,8 +4831,7 @@ ${K}
 - ${res.result === '谈成' ? '谈成之后不要写主角感慨万千，写他走出门第一件具体的事。' : '没谈成不要写他发誓要怎样，写他当下做了什么。'}
 ${meta.kind === 'job' && res.result === '谈成' ? '- 这场是面试而且谈成了：必须把 newJob 填上（东家、职位、月薪、是否试用期），月薪要跟剧情里说的对得上。\n' : ''}${meta.kind === 'love' ? (res.result === '谈成' ? '- 话挑明了，对方也接了：写两个人怎么把这层窗户纸捅破的，别写成偶像剧，写具体的地点和那几句话。\n' : '- 没接住：写清楚是拒绝、是躲开了、还是说再看看，之后两个人怎么把场面收掉。\n') : ''}${meta.kind === 'marry' ? (res.result === '谈成' ? '- 婚事定下来了：写谁先开的口、钱怎么算、家里人什么态度。\n' : '- 婚事没谈成：写卡在哪儿——钱、房、家里、还是对方本来就没想好。\n') : ''}${meta.kind === 'job' && res.result !== '谈成' ? '- 这场面试没成，不要安慰他，写他怎么走出那栋楼。\n' : ''}
 
-只输出一个合法 JSON：
-${SCHEMA}`;
+按系统说明里的格式，只输出一个合法 JSON。`;
 }
 
 async function askKey(mileId) {
@@ -4980,13 +5013,11 @@ function aboutNpc(n) {
 function convoHead(n) {
   return `${worldRules(true)}
 
-你现在扮演的是【${n.name}】，不是主角。只说${n.name}的话，一次一两句，像真人发微信或者当面讲话：短、有口语、可以答非所问、可以不接主角的话茬。
-不许旁白，不许描写主角的动作和心理，不许替主角说话。不许说教，不许煽情。
-
+你现在扮演的是【${n.name}】。
 【${n.name}是谁】${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【你们之间的来往（按日子，${n.name}都记得）】
 ${(n.mem || []).join('\n') || '没什么特别的'}
-【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。手头存款${S.player.money}元。
+【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。
 【主角这阵子干的事】（${n.name}知道多少看关系：走得近的、家里人大体都知道；不熟的只知道跟自己有关的和传到耳朵里的。知道的就要对得上，别装不知道，也别说错）
 ${S.history.slice(-10).map(h => `${h.date}｜${h.act ? '他去' + h.act + '：' : ''}${h.summary}`).join('\n') || '（刚开始）'}
 ${(S.pledges || []).filter(p => !p.done && p.who === n.name).length ? `【你们之间说定的事】${S.pledges.filter(p => !p.done && p.who === n.name).map(pledgeLine).join('；')}\n` : ''}${aboutNpc(n)}【就在刚才】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(-220)}`;
@@ -5007,32 +5038,16 @@ function convoPrompt(n, say, judge) {
   const c = S.convo;
   const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : n.name}：${lineText(m)}`).join('\n');
   const said = c.lines.filter(l => l.who === 'ta' && l.text).map(l => l.text);
+  // 顺序：这个人是谁（整场不变）→ 以前的来往（整场不变）→ 这次的对话（只往后加）→ 每轮会变的放最后
   return `${convoHead(n)}
-${past ? `\n【手机里以前的来往（已经过去的事，不是刚说的）】\n${past}\n` : ''}${c.gist ? `\n【这次聊到现在的要点】${c.gist}\n` : ''}
+${past ? `\n【手机里以前的来往（已经过去的事，不是刚说的）】\n${past}\n` : ''}
 【这次的对话（按先后）】
 ${convoLog(n)}
 
+${c.gist ? `【这次聊到现在的要点】${c.gist}\n` : ''}${said.length ? `【你这次已经说过的，别再说】${said.slice(-6).map(t => '「' + String(t).slice(0, 24) + '」').join('')}\n` : ''}【主角手头】存款${S.player.money}元${c.paidNote ? `\n【刚才】${c.paidNote}` : ''}
 ${judge
-    ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}
-这一轮写${n.name}对这件事的答复，必须照这个结果来。答应也可以有条件、有犹豫；不答应也可以留余地或者干脆拒绝，但不许含糊其辞糊弄过去。`
-    : ''}
-【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}
-
-怎么回：
-- 只接主角刚发的这句。他问什么就答什么，他说什么就接什么；上文只用来让你的话前后对得上，不许回头去接很早以前的话茬，除非主角刚好提到。
-- 这次对话里你已经说过的意思和句子不许再说一遍${said.length ? `（你已经说过：${said.slice(-6).map(t => '「' + String(t).slice(0, 24) + '」').join('')}）` : ''}。
-- 就算你不想聊了，主角发来的话也照样回，可以冷淡、敷衍、只回一两个字，但得是对这句的回应。
-- 你记得以前跟主角的来往和说定的事，对得上就自然带出来，别装不知道。
-- 主角给你转账、发红包，要对这笔钱有反应：收下、道谢、嘴上推两句、或者真不要退回去（refund 填 true），看你们的关系和你的性子。${c.paidNote ? `\n- 刚才：${c.paidNote}。` : ''}
-- 你真要给主角钱（借他、给他、发红包、还他钱）时才填 pay，数目要跟你的身份和家底对得上。
-
-只输出一个合法 JSON：
-{"reply":"${n.name}这一轮说的话","mood":"他此刻什么状态（4字内）","rel":关系增减(-3到3的整数),
-"gist":"这次对话从头到现在的要点，按先后，60字内；说定的事、提过的请求、吵过的架都要留着",
-"ask":${judge ? 'null' : 'null 或 {"what":"主角求的事","kind":"borrow（借钱）|interview（帮忙约面试、推工作）|intro（介绍人）|favor（别的忙）","attr":"表达|情绪|谋划|专业","need":40到85,"money":借钱就写数额否则0,"days":借钱写多少天内还，帮忙写几天内办}（只有主角在刚发的这句里明确开口求你帮忙才填；你求主角的事不算，主角答应不答应由他自己说）'},
-"deal":[{"kind":"主角答应|对方答应|主角拒绝","what":"这一来一回里说定或回绝的具体事（20字内）","inDays":几天内办，没期限填0}]（只有这一轮真说定了才写，没有就空数组）,
-"pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"},"refund":主角刚给你的钱你退回去就true,
-"cold":你不想再聊了就true,"summary":"一句话（20字内）"}`;
+    ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}\n这一轮写${n.name}对这件事的答复。\n`
+    : ''}【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}`;
 }
 
 let convoFrom = '';     // 从哪个面板点进来的，返回时回那儿
@@ -5166,7 +5181,7 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CHAT_SYSTEM }));
+    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CONVO_SYSTEM }));
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12

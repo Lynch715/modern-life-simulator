@@ -225,7 +225,8 @@ console.log('—— 引擎 ——');
   ok(mid.days - before.days === 1, '失败那一段只过了一天', `${before.days}→${mid.days}`);
   // 刷新读档
   await pg.reload();
-  await pg.waitForSelector('#acts .act-btn', { timeout: 15000 });
+  try { await pg.waitForSelector('#acts .act-btn', { timeout: 15000 }); }
+  catch (e) { console.log('DEBUG', JSON.stringify(await pg.evaluate(() => ({ S: typeof S !== 'undefined' && !!S, pend: typeof S !== 'undefined' && S && !!S.pending, acts: document.getElementById('acts').innerHTML.slice(0, 300), start: document.getElementById('startMask').className, busy: document.getElementById('busy').className, ls: (localStorage.getItem('mls_save') || '').length })))); console.log('ERRS', errs.join('|')); throw e; }
   const re = await pg.evaluate(() => ({ pending: !!S.pending, btn: document.querySelector('#acts .act-btn').textContent }));
   ok(re.pending && /再写一次/.test(re.btn), '刷新以后还能接着写');
   failNext = 0;
@@ -304,7 +305,7 @@ console.log('—— 引擎 ——');
   ok(await pg.evaluate(() => S.groups[0].msgs.length >= 3 && S.npcs.find(n => n.name === '孙姐').mem.some(m => /一家人/.test(m))), '退出群聊，消息和要点都留下了');
 
   // 到期提醒卡
-  await pg.evaluate(() => { closePanel(); S.pledges = []; S.rifts = []; E.addPledge(S, { who: '孙姐', what: '帮她带份材料', kind: '主角答应', inDays: 2 }); S.flags.cool = 0; renderOptions(S.lastOptions); });
+  await pg.evaluate(() => { closePanel(); S.pledges = []; S.rifts = []; E.addPledge(S, { who: '孙姐', what: '帮她带份材料', kind: '主角答应', inDays: 1 }); S.flags.cool = 0; renderOptions(S.lastOptions); });
   await pg.click('#skipBtn'); await idle();
   const pc = await pg.evaluate(() => ({ ask: !!S.promiseAsk, card: !!document.querySelector('#acts .promise'), skip: !!document.getElementById('skipBtn') }));
   ok(pc.ask && pc.card && !pc.skip, '往下过日子碰上到期的事：停下来推一张卡，别的按钮收起');
