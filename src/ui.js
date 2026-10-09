@@ -3237,26 +3237,34 @@ function loadGame() {
   let raw = localStorage.getItem(LS_SAVE);
   if (!raw) { raw = localStorage.getItem(LS_SAVE + '_bak'); if (raw) { try { localStorage.setItem(LS_SAVE, raw); } catch (_) { } console.warn('主存档不见了，从备份接上'); } }
   if (!raw) return false;
-  try { S = JSON.parse(raw); } catch (_) { return false; }
-  if (!S || !S.player) return false;
-  if (S.pending && !S.pending.prompt) S.pending = null;      // 老版本存的 pending 没有请求原文，接不上
-  E.fixJob(S);
-  E.fixPace(S);
-  E.fixWho(S);
-  ensureFaces(S);
-  $('story').innerHTML = S.chapters.join('');
+  let data = null;
+  try { data = JSON.parse(raw); } catch (_) { data = null; }
+  if (data && data.save && data.save.player) data = data.save;     // 整个导出包被塞进来的
+  try { S = data ? E.migrate(data) : null; } catch (e) { console.error('存档补齐出错', e); S = null; }
+  if (!S) {
+    // 读不出来：先把原样留一份，别让新开的一局把它盖掉
+    try { localStorage.setItem(LS_SAVE + '_broken', raw); } catch (_) { }
+    loadErr = '上次的存档读不出来，原样另存了一份，没有被盖掉';
+    return false;
+  }
+  try { ensureFaces(S); } catch (e) { console.error(e); }
+  try { $('story').innerHTML = S.chapters.join(''); } catch (_) { $('story').innerHTML = ''; }
   if (S.runId) bookAll(S.runId).then(rows => {
     if (!rows || rows.length <= S.chapters.length) return;
     $('story').innerHTML = rows.map(r => r.html).join('');
     scrollDown();
   }).catch(() => { });
-  rebuildTop();
-  renderOptions(S.lastOptions && S.lastOptions.length ? S.lastOptions : ['接着过日子']);
-  scrollDown();
-  if (S.convo) { $('chat').classList.add('on'); renderConvo(); }
-  if (S.key) openKey();
+  try {
+    rebuildTop();
+    renderOptions(S.lastOptions && S.lastOptions.length ? S.lastOptions : ['接着过日子']);
+    scrollDown();
+  } catch (e) { console.error('读档后画界面出错', e); S.lastOptions = ['接着过日子']; try { renderOptions(S.lastOptions); } catch (_) { } }
+  try { if (S.convo) { $('chat').classList.add('on'); renderConvo(); } } catch (e) { S.convo = null; $('chat').classList.remove('on'); }
+  try { if (S.key) openKey(); } catch (e) { S.key = null; $('key').classList.remove('on'); }
+  saveGame();
   return true;
 }
+let loadErr = '';
 async function restart() {
   if (!await ask({ title: '重开一局？', text: '这一局的存档就没了。', no: '不了', ok: '重开', danger: true })) return;
   localStorage.removeItem(LS_SAVE);
@@ -3291,12 +3299,27 @@ function importSave(file) {
   const fr = new FileReader();
   fr.onload = async () => {
     let pack;
-    try { pack = JSON.parse(fr.result); } catch (_) { toast('这个文件读不出来'); return; }
+    const txt = String(fr.result || '').replace(/^\uFEFF/, '').trim();
+    try { pack = JSON.parse(txt); } catch (_) { toast('这个文件读不出来，可能下载时没下完整'); return; }
+    if (pack && pack.player && !pack.save) pack = { save: pack, book: [], who: `${pack.player.name || ''}` };   // 直接存的状态，不是导出包
     if (!pack || !pack.save || !pack.save.player) { toast('这不是这个游戏的存档'); return; }
+    let fixed = null;
+    try { fixed = E.migrate(JSON.parse(JSON.stringify(pack.save))); } catch (e) { console.error(e); }
+    if (!fixed) { toast('这个存档缺的东西太多，接不上'); return; }
     if (S && !await ask({ title: `导入「${pack.who || '别处的存档'}」？`, text: '这台设备上现在这局会被盖掉。', ok: '导入', danger: true })) return;
     try {
-      localStorage.setItem(LS_SAVE, JSON.stringify(pack.save));
-      for (const r of (pack.book || [])) { try { await bookPut(r); } catch (_) { } }
+      // 先腾地方：旧的主存档和备份都占着空间，新存档大一点就写不进去
+      const j = JSON.stringify(fixed);
+      try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.removeItem(LS_SAVE + '_broken'); } catch (_) { }
+      try { localStorage.setItem(LS_SAVE, j); }
+      catch (_) {
+        localStorage.removeItem(LS_SAVE);
+        if (fixed.chapters && fixed.chapters.length > 4) fixed.chapters = fixed.chapters.slice(-4);   // 全本在 IndexedDB 里，这里只留最近几章
+        localStorage.setItem(LS_SAVE, JSON.stringify(fixed));
+      }
+      for (const r of (pack.book || [])) { try { if (r && r.id && r.html) await bookPut(r); } catch (_) { } }
+      // 关页面时会自动存一次当前这局：先把它摘掉，不然刚导入的存档又被盖回去
+      S = null;
       toast('导入了，正在重开页面');
       setTimeout(() => location.reload(), 700);
     } catch (e) { toast('写不进去：' + (e.message || e)); }
@@ -3429,6 +3452,8 @@ function boot() {
   }, { passive: false });
   window.addEventListener('pagehide', saveGame);
   window.addEventListener('beforeunload', saveGame);
-  if (!loadGame()) { renderStart(); mask('startMask', true); }
+  let okLoad = false;
+  try { okLoad = loadGame(); } catch (e) { console.error('读档出错', e); loadErr = '存档读到一半出错了：' + (e.message || e); S = null; }
+  if (!okLoad) { renderStart(); mask('startMask', true); if (loadErr) setTimeout(() => toast(loadErr), 600); }
 }
 boot();

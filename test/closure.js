@@ -666,6 +666,52 @@ console.log('—— 银行 ——');
   await pg.click('#acts .act-btn'); await idle();
   ok(/【手里的东西】有二手电脑/.test(lastSeg) && /【兼职】家教/.test(lastSeg) && /租的是单身公寓/.test(lastSeg) && /日子里的规矩/.test(JSON.parse(lastSegRaw).messages[0].content) && /凭空给主角添东西/.test(lastSeg), '写故事带着住处、兼职、手里的东西，自查有这一条');
 
+  // —— 存档：老存档、导出包、直接的状态都要读得进来 ——
+  const oldSave = (() => {
+    const O = E.newState({ name: '老档', gender: '女', city: '一线', origin: '一人进城', track: '创作', freedom: '写实人生', startYear: 2025, rngSeed: 3 });
+    E.addNpcs(O, [{ name: '老周', tie: '同事', rel: 40 }], 1);
+    O.chapters = ['<div class="chapter"><p>老存档里的一段。</p></div>'];
+    O.lastOptions = ['接着过'];
+    O.date = { y: 2026, m: 3, d: 9 };
+    // 早期版本没有的东西全删掉
+    for (const k of ['bank', 'gigs', 'bag', 'board', 'pays', 'groups', 'pledges', 'stopWhen', 'doneRecent', 'pings', 'daySlots', 'years', 'rifts', 'moments', 'momentId', 'acct', 'pace', 'schedule', 'era', 'wind', 'peers', 'endedOnce', 'retireAge', 'bizPast', 'chronic', 'focus', 'plan', 'scene', 'volumes', 'stats']) delete O[k];
+    delete O.home.tier; delete O.job.post; delete O.job.strain; delete O.player.attrF; delete O.player.资历天; delete O.player.bg;
+    O.flags = { nightCnt: 0 }; O.ledger = { rent: 2600, living: 2400, salary: 6000 };
+    for (const n of O.npcs) { delete n.mem; delete n.facts; delete n.talk; }
+    return O;
+  })();
+  await pg.evaluate(j => { S = null; localStorage.setItem('mls_save', j); localStorage.removeItem('mls_save_bak'); }, JSON.stringify(oldSave));
+  errs.length = 0;
+  await pg.reload();
+  await pg.waitForSelector('#acts .act-btn', { timeout: 15000 }).catch(() => {});
+  const ol = await pg.evaluate(() => typeof S !== 'undefined' && S ? { name: S.player.name, rent: S.ledger.rent, tier: S.home.tier, bank: !!S.bank, story: document.getElementById('story').textContent.slice(0, 20), start: document.getElementById('startMask').classList.contains('on') } : null);
+  ok(ol && ol.name === '老档' && !ol.start && ol.bank && ol.tier === '合租次卧' && ol.rent === 1900 && /老存档里的一段/.test(ol.story), '缺了一大堆字段的老存档也读得进来', JSON.stringify(ol));
+  for (const t of ['phone', 'ideal', 'home', 'book', 'me']) await pg.evaluate(t2 => gotoTab(t2), t);
+  await pg.evaluate(() => { closePanel(); });
+  await pg.click('#skipBtn'); await idle();
+  await pg.evaluate(() => { S.promiseAsk = null; S.pending = null; openConvo('老周'); });
+  await send('还记得我吗');
+  await pg.click('#chatDone'); await idle();
+  ok(!errs.length, '老存档读进来以后各个面板、过日子、聊天都不报错', errs.join(' | '));
+  // 直接导入状态（不是导出包）、带 BOM 的导出包
+  const pack = '﻿' + JSON.stringify({ what: '现代生活模拟器·存档', v: 1, who: '老档', save: oldSave, book: [] });
+  for (const [label, body] of [['导出包带BOM', pack], ['直接是状态', JSON.stringify(oldSave)]]) {
+    await pg.evaluate(() => { localStorage.setItem('mls_save', JSON.stringify(S)); });
+    await pg.evaluate(() => { window.__toast = ''; const t0 = toast; window.toast = m => { window.__toast = m; t0(m); }; });
+    await pg.setInputFiles('#setFile', { name: 'x.mls.json', mimeType: 'application/octet-stream', buffer: Buffer.from(body) });
+    await pg.waitForTimeout(400);
+    await pg.click('#askOk').catch(() => {});
+    await pg.waitForTimeout(1600);
+    await pg.waitForSelector('#acts .act-btn', { timeout: 15000 }).catch(() => {});
+    const r = await pg.evaluate(() => typeof S !== 'undefined' && S ? S.player.name + '|' + S.date.m + '月' : null);
+    ok(r === '老档|3月', `导入${label}`, r);
+  }
+  // 存档坏了：不盖掉，原样留一份
+  await pg.evaluate(() => { S = null; localStorage.setItem('mls_save', '{"player":'); localStorage.removeItem('mls_save_bak'); });
+  await pg.reload();
+  await pg.waitForSelector('#startMask.on', { timeout: 15000 });
+  ok(await pg.evaluate(() => localStorage.getItem('mls_save_broken') === '{"player":'), '读不出来的存档原样另存，不被新开的一局盖掉');
+
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();
   done();

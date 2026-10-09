@@ -3530,6 +3530,62 @@ function useSlot(S) {
   return true;
 }
 
+
+/* ---------- 老存档补齐：缺什么照新开局的样子补上，已有的一样不动 ---------- */
+const MERGE_DEEP = ['player', 'ledger', 'job', 'flags', 'stats', 'home', 'family', 'schedule', 'ideal'];
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
+function migrate(S) {
+  if (!isObj(S) || !isObj(S.player)) return null;
+  const p0 = S.player;
+  const tpl = newState({ name: p0.name, gender: p0.gender, city: CITIES[S.city] ? S.city : '新一线', origin: ORIGINS[S.origin] ? S.origin : '普通家庭',
+    track: TRACKS[p0.track] ? p0.track : '职场', freedom: FREEDOM[S.freedom] ? S.freedom : '都市传奇', startYear: (S.startDate && S.startDate.y) || (S.date && S.date.y) || 2026 });
+  if (!CITIES[S.city]) S.city = '新一线';
+  if (!ORIGINS[S.origin]) S.origin = '普通家庭';
+  if (!FREEDOM[S.freedom]) S.freedom = '都市传奇';
+  const hadRent2 = !!(S.flags && S.flags.rent2);           // 房租按新行情调过没有：老存档没调过，别让模板顶掉
+  for (const k in tpl) {
+    if (S[k] === undefined || S[k] === null && tpl[k] !== null) { S[k] = tpl[k]; continue; }
+    if (MERGE_DEEP.includes(k) && isObj(S[k]) && isObj(tpl[k])) {
+      for (const k2 in tpl[k]) if (S[k][k2] === undefined) S[k][k2] = tpl[k][k2];
+    }
+    if (Array.isArray(tpl[k]) && !Array.isArray(S[k])) S[k] = tpl[k];
+  }
+  if (!hadRent2) delete S.flags.rent2;
+  const p = S.player;
+  if (!TRACKS[p.track]) p.track = '职场';
+  for (const a of ATTRS) { p.attrs[a] = num(p.attrs[a]) || 20; if (p.attrF[a] === undefined) p.attrF[a] = p.attrs[a]; }
+  for (const k of ['money', 'energy', '信誉', '人品', 'age']) p[k] = num(p[k]);
+  if (!p.age) p.age = 22;
+  for (const k of ['rent', 'living', 'remit', 'subsidy', 'salary', 'loan', 'base']) S.ledger[k] = num(S.ledger[k]);
+  if (!isObj(S.date) || !num(S.date.y)) S.date = Object.assign({}, S.startDate || tpl.date);
+  if (!isObj(S.startDate)) S.startDate = Object.assign({}, S.date);
+  if (!isObj(S.schedule.work)) S.schedule.work = Object.assign({}, DEF_SCHEDULE.work);
+  if (!isObj(S.schedule.rest)) S.schedule.rest = Object.assign({}, DEF_SCHEDULE.rest);
+  if (!Array.isArray(S.ideal.stages)) S.ideal.stages = [];
+  for (const st of S.ideal.stages) if (!Array.isArray(st.milestones)) st.milestones = [];
+  if (!Array.isArray(S.family.kids)) S.family.kids = [];
+  S.npcs = S.npcs.filter(n => isObj(n) && n.name);
+  for (const n of S.npcs) {
+    n.name = String(n.name); n.rel = num(n.rel);
+    if (!Array.isArray(n.mem)) n.mem = [];
+    if (!Array.isArray(n.facts)) n.facts = [];
+    if (n.tie === undefined) n.tie = '认识的人';
+  }
+  S.chapters = S.chapters.filter(x => typeof x === 'string');
+  S.msgs = S.msgs.filter(isObj);
+  S.debts = S.debts.filter(d => isObj(d) && d.due);
+  S.appts = S.appts.filter(isObj);
+  if (S.convo && !Array.isArray(S.convo.lines)) S.convo = null;
+  if (S.key && (!S.key.opp || !Array.isArray(S.key.log))) S.key = null;
+  if (S.pending && !S.pending.prompt) S.pending = null;
+  if (S.plan && !Array.isArray(S.plan.steps)) S.plan = null;
+  S.v = SAVE_VERSION;
+  fixJob(S);
+  fixPace(S);
+  fixWho(S);
+  return S;
+}
+
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
@@ -3541,6 +3597,7 @@ const API = {
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
   housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,
+  migrate,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
   PEER_MOVES, PEER_HOOK, selfLevel, peerWord,
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
