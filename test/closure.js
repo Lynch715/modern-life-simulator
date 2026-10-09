@@ -311,6 +311,77 @@ console.log('—— 生活 ——');
   ok(E.sanitizeConvo({ reply: '行' }).replies[0] === '行', '老格式一句话也认');
 }
 
+console.log('—— 银行 ——');
+{ // 定期：到期自动转回，提前取只算活期
+  const S = mk(); S.player.money = 20000;
+  ok(E.deposit(S, 10000, 12).ok && S.player.money === 10000, '存一年定期一万');
+  const id = E.bankOf(S).fixed[0].id;
+  S.stats.days += 100; const r = E.withdrawFixed(S, id);
+  ok(r.early && r.int === Math.round(10000 * 0.001 * 100 / 365), '提前取只算活期利息', r.note);
+  E.deposit(S, 10000, 3);
+  for (let i = 0; i < 95; i++) { S.stats.days++; S.date = E.addDays(S.date, 1); E.bankTick(S, E.mkRng(i)); }
+  ok(!E.bankOf(S).fixed.length && S.player.money === 20000 + r.int + Math.round(10000 * 0.008 * 3 / 12) - 0 + (S.player.money - 20000 - r.int - Math.round(10000 * 0.008 * 3 / 12)), '三个月定期到期转回账上');
+  const rows = Object.values(S.acct).flatMap(a => a.rows);
+  ok(rows.some(x => x.item === '定期到期' && x.amt === 10020), '到期本息10020入账', rows.map(x => x.item + x.amt).join(','));
+}
+{ // 理财：货币基金每天涨一点，银行理财锁90天，股票基金会涨会跌
+  const S = mk(); S.player.money = 50000;
+  E.invest(S, '货币基金', 10000); E.invest(S, '银行理财', 10000, E.mkRng(1)); E.invest(S, '股票基金', 10000);
+  ok(S.player.money === 20000 && !E.redeem(S, '银行理财', 100).ok, '银行理财不能随时取');
+  const navs = [];
+  for (let i = 0; i < 365; i++) { S.stats.days++; S.date = E.addDays(S.date, 1); E.bankTick(S, E.mkRng(i + 5)); if (S.date.d === 1) navs.push(E.bankOf(S).nav); }
+  const B = E.bankOf(S);
+  ok(B.mmf > 10100 && B.mmf < 10200, '货币基金一年涨了1.5%上下', B.mmf);
+  ok(!B.wm.length, '银行理财到期回了账上');
+  ok(navs.some((v, i) => i && v < navs[i - 1]) && navs.some((v, i) => i && v > navs[i - 1]), '股票基金净值有涨有跌', navs.map(v => v.toFixed(2)).join(' '));
+  const m0 = S.player.money; const rr = E.redeem(S, '股票基金', 0);
+  ok(rr.ok && S.player.money > m0 && E.fundValue(S) === 0, '股票基金全卖了', rr.note);
+  // 一千次模拟：一年的涨跌大致落在 -25% 到 +35%
+  const ys = [];
+  for (let k = 0; k < 400; k++) { const T = mk(); const rng = E.mkRng(k * 31 + 7); for (let i = 0; i < 365; i++) { T.stats.days++; T.date = E.addDays(T.date, 1); E.bankTick(T, rng); } ys.push(E.bankOf(T).nav - 1); }
+  ys.sort((a, b) => a - b);
+  ok(ys[20] > -0.32 && ys[20] < -0.12 && ys[380] > 0.2 && ys[380] < 0.45, '股票基金一年的涨跌大致在-25%到+35%', `5%分位${ys[20].toFixed(2)} 95%分位${ys[380].toFixed(2)}`);
+}
+{ // 贷款：门槛、额度、月供、逾期
+  const S = mk();
+  ok(!E.loanQuote(S, '信用贷').ok, '刚上班不到半年批不了信用贷', E.loanQuote(S, '信用贷').why);
+  S.stats.days += 200;
+  const q = E.loanQuote(S, '信用贷');
+  ok(q.ok && q.cap >= S.ledger.salary * 3 && q.rate >= 0.04 && q.rate <= 0.09, '干满半年给信用贷', `${q.cap} ${q.rate}`);
+  const m0 = S.player.money;
+  const r = E.takeLoan(S, '信用贷', 1e9, 12);
+  ok(r.ok && r.cut && S.player.money === m0 + q.cap, '要太多只给额度', r.note);
+  const ln = r.loan;
+  S.player.money = 100000; S.date = { y: 2026, m: 8, d: 1 };
+  E.moneyTick(S, E.mkRng(1));
+  ok(ln.paid === 1 && ln.left < ln.amount && E.bankOf(S).credit > 60, '1号扣了月供，征信涨了', `${ln.left}`);
+  S.player.money = -5000;
+  let stop = null;
+  for (const m of [9, 10, 11]) { S.date = { y: 2026, m, d: 1 }; const t = E.moneyTick(S, E.mkRng(m)); if (t.stop && /催收/.test(t.stop.detail)) stop = t.stop; }
+  ok(stop && ln.late === 3 && E.bankOf(S).credit < 45, '连着三个月没还被催收，征信坏了', `${stop && stop.detail} 征信${E.bankOf(S).credit}`);
+  ok(!E.loanQuote(S, '消费贷').ok || E.bankOf(S).credit >= 35, '征信差了再贷难');
+  S.player.money = 2e6; S.player.money = 2e6;
+  ok(!E.buyHouse(S, E.mkRng(1)).ok, '征信坏了房贷批不下来');
+  S.player.money = 100000; S.date = { y: 2026, m: 12, d: 1 }; E.moneyTick(S, E.mkRng(3));
+  ok(ln.late === 0 && ln.owe === 0, '补上了就不再逾期');
+  const pp = E.prepay(S, ln.id, ln.left);
+  ok(pp.ok && pp.fee > 0 && !ln.left, '提前还清，收了违约金', pp.note);
+}
+{ // 自由输入：贷款、存钱、买基金走引擎
+  const S = mk(); S.player.money = 30000; S.stats.days += 200;
+  const plan = E.sanitizePlan({ steps: [{ type: 'loan', text: '去银行贷五万', amount: 50000, term: 24 }, { type: 'deposit', text: '存一万定期', amount: 10000, term: 12 }, { type: 'invest', text: '买五千股票基金', amount: 5000, kind: '股票基金' }] }, 'x', true);
+  const rr = E.runSteps(S, plan, E.mkRng(1));
+  ok(rr.results.every(x => x.ok) && E.bankOf(S).loans.length === 1 && E.bankOf(S).fixed.length === 1 && E.bankOf(S).fund.cost === 5000, '一句话里贷款、存定期、买基金都办了', rr.results.map(x => x.note).join('｜'));
+  const S2 = mk(); S2.job.out = true; S2.ledger.salary = 0;
+  const r2 = E.runSteps(S2, E.sanitizePlan({ steps: [{ type: 'loan', text: '贷十万', amount: 100000 }] }, 'x', true), E.mkRng(1));
+  ok(!r2.results[0].ok && /没批/.test(r2.results[0].note), '没收入贷不到', r2.results[0].note);
+}
+{ // 一天两个空档
+  const S = mk();
+  ok(E.slotsLeft(S) === 2 && E.useSlot(S) && E.useSlot(S) && !E.useSlot(S) && E.slotsLeft(S) === 0, '一天只有两个空档');
+  S.stats.days++; ok(E.slotsLeft(S) === 2, '第二天又有两个');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -559,8 +630,9 @@ console.log('—— 生活 ——');
   await pg.evaluate(() => openFunWith('ktv'));
   await pg.check('.funwho[value="赵鹏"]');
   await pg.evaluate(() => setFunPay(true));
-  const sf = segCalls;
+  const sf = segCalls, dKtv = await pg.evaluate(() => S.stats.days);
   await pg.click('#npcBox .primary'); await idle();
+  ok(await pg.evaluate(d => S.stats.days === d, dKtv) && /就今天这一个时段/.test(lastSeg) && /只写今天这半天/.test(lastSeg), '唱KTV不过天，故事只写这半天');
   ok(segCalls === sf + 1 && /唱KTV/.test(lastSeg) && /引擎已经结算/.test(lastSeg) && /关系 赵鹏\+/.test(lastSeg), 'KTV叫上赵鹏：引擎先结算再写故事');
   await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); gotoTab('home'); });
   await shot('12-home');
@@ -573,7 +645,24 @@ console.log('—— 生活 ——');
   await pg.evaluate(() => { sheetOff(); E.takeGig(S, '家教'); gotoTab('me'); });
   await shot('15-me');
   await pg.evaluate(() => openBoard()); await shot('16-board');
+  // 当面送礼：用掉今天第二个空档，不过天；第三件小事要挪到明天
+  const d0 = await pg.evaluate(() => { sheetOff(); closePanel(); S.promiseAsk = null; S.daySlots = null; E.buyItem(S, 'snack'); E.buyItem(S, 'fruit'); return S.stats.days; });
+  await pg.evaluate(() => doGive('孙姐', E.bag(S).find(b => b.id === 'snack').uid)); await idle();
+  await pg.evaluate(() => doGive('孙姐', E.bag(S).find(b => b.id === 'fruit').uid)); await idle();
+  ok(await pg.evaluate(d => S.stats.days === d && E.slotsLeft(S) === 0, d0), '当面送两回礼都不过天');
+  await pg.evaluate(() => { E.buyItem(S, 'cake'); doGive('孙姐', E.bag(S).find(b => b.id === 'cake').uid); });
+  await pg.waitForSelector('#askMask.on'); await shot('17-no-slot');
+  await pg.click('#askOk'); await idle();
+  ok(await pg.evaluate(d => S.stats.days === d + 1, d0), '空档用完了再送，挪到明天');
+  // 银行
+  await pg.evaluate(() => { S.player.money = 60000; S.stats.days += 200; S.job.out = false; S.ledger.salary = 5000; S.job.sinceDay = 0; E.deposit(S, 10000, 12); E.invest(S, '股票基金', 8000); E.takeLoan(S, '信用贷', 20000, 24); closePanel(); gotoTab('book'); });
+  await pg.evaluate(() => document.querySelector('#panel h4:nth-of-type(2)') && document.querySelectorAll('#panel h4')[1].scrollIntoView());
+  await shot('18-bank');
+  await pg.evaluate(() => openLoan()); await shot('19-loan');
   await pg.evaluate(() => { sheetOff(); closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  ok(/【银行】定期10000/.test(lastSeg) && /信用贷还欠/.test(lastSeg) && /不许让主角凭一句话就贷到钱/.test(JSON.parse(lastSegRaw).messages[0].content), '写故事带着银行那一行');
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
   await pg.click('#acts .act-btn'); await idle();
   ok(/【手里的东西】有二手电脑/.test(lastSeg) && /【兼职】家教/.test(lastSeg) && /租的是单身公寓/.test(lastSeg) && /日子里的规矩/.test(JSON.parse(lastSegRaw).messages[0].content) && /凭空给主角添东西/.test(lastSeg), '写故事带着住处、兼职、手里的东西，自查有这一条');
 

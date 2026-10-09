@@ -437,6 +437,9 @@ function moneyTick(S, rng) {
     S.flags.monthNet -= out;
     ev.push({ t: '钱', s: `${L.rent ? `房租${L.rent}、` : ''}${loan ? `月供${loan}、` : ''}生活${L.living}${kid ? `、孩子${kid}` : ''}${L.remit ? `、寄回家${L.remit}` : ''}，一共去了${out}` });
     if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
+    const lt = loanTick(S);
+    ev.push(...lt.ev);
+    if (lt.stop) stop = lt.stop;
   }
   if (d.d === L.salaryDay && !S.job.out) {
     // 看提成的活：每个月不一样，表达好的拿得多
@@ -456,7 +459,7 @@ function moneyTick(S, rng) {
   }
   if (d.d === 28) {   // 月末看账
     const net = S.flags.monthNet;
-    const floor = L.rent + L.living;
+    const floor = L.rent + L.living + bankOf(S).loans.reduce((a, x) => a + (x.left > 0 ? x.monthly : 0), 0);
     S.flags.monthNet = 0;
     if (p.money < 0) {
       S.broke = true; S.brokeMonths++;
@@ -593,7 +596,7 @@ function advance(S, opt) {
   opt = opt || {};
   const rng = opt.rng || Math.random;
   const quiet = !!opt.quiet;          // 就地办事的短段：只认躲不开的事，别拿闲事打断
-  const maxDays = opt.maxDays || 35;
+  const maxDays = opt.maxDays !== undefined ? opt.maxDays : 35;
   const from = S.date;
   const events = [];
   let stop = null, days = 0;
@@ -634,6 +637,10 @@ function advance(S, opt) {
     const dt = debtTick(S);
     events.push(...dt.ev);
     if (dt.stop) { stop = dt.stop; break; }
+
+    const bk = bankTick(S, rng);
+    events.push(...bk.ev);
+    if (bk.stop && !quiet) { stop = bk.stop; break; }
 
     const wd = windTick(S, rng);
     events.push(...wd.ev);
@@ -713,7 +720,7 @@ function advance(S, opt) {
 /* ---------- 玩家一句话 → 引擎动作 ---------- */
 // 难度档：按事情本身，不按年龄。属性起步二十来点，d20 修正 ±38
 const DIFFS = { '顺手': 0, '普通': 20, '费劲': 32, '难': 45, '很难': 60 };
-const STEP_TYPES = ['quit', 'repay', 'startBiz', 'closeBiz', 'spend', 'seekMoney', 'jobHunt', 'meet', 'focus', 'rest', 'other'];
+const STEP_TYPES = ['quit', 'repay', 'startBiz', 'closeBiz', 'spend', 'seekMoney', 'jobHunt', 'meet', 'focus', 'rest', 'loan', 'deposit', 'invest', 'other'];
 function guessAttr(a) {
   a = String(a || '');
   if (/谈|说服|聊|讲|面试|汇报|推销|争|解释|道歉/.test(a)) return '表达';
@@ -755,6 +762,7 @@ function sanitizePlan(raw, act, typed) {
     if (x.amount !== undefined) st.amount = Math.round(T.num(x.amount, 0, 1e9));
     if (x.days !== undefined) st.days = Math.round(T.num(x.days, 0, 365));
     if (x.kind) st.kind = T.str(x.kind, 6);
+    if (x.term !== undefined) st.term = Math.round(T.num(x.term, 0, 120));
     if (x.name) st.name = T.str(x.name, 14);
     if (x.target) st.target = T.str(x.target, 20);
     if (x.borrow === true) st.borrow = true;
@@ -914,6 +922,25 @@ function runSteps(S, plan, rng) {
         const n = st.who ? S.npcs.find(x => x.name === whoIs(S, st.who)) : null;
         if (n) { n.lastSeen = S.stats.days; r.who = n.name; }
         r.note = r.ok ? (n ? `见到了${n.name}` : '人见到了') : (st.who ? `${st.who}那边没接住` : '没见成');
+        break;
+      }
+      case 'loan': {
+        const kind = LOANS[st.kind] ? st.kind : (S.biz && !S.biz.dead && /店|生意|经营/.test(st.text) ? '经营贷' : loanQuote(S, '信用贷').ok ? '信用贷' : '消费贷');
+        const want = Math.round(num(st.amount)) || loanQuote(S, kind).cap;
+        const tl = takeLoan(S, kind, want, num(st.term) || 0);
+        r.ok = tl.ok; r.note = tl.ok ? tl.note : `去银行办${kind}，没批：${tl.why}`;
+        break;
+      }
+      case 'deposit': {
+        const t = DEPO[num(st.term)] ? num(st.term) : /三年/.test(st.text) ? 36 : /三个月|季/.test(st.text) ? 3 : 12;
+        const dp = deposit(S, num(st.amount) || Math.floor(p.money * 0.5), t);
+        r.ok = dp.ok; r.note = dp.ok ? dp.note : dp.why;
+        break;
+      }
+      case 'invest': {
+        const k = /货币|余额|零钱/.test(st.kind + st.text) ? '货币基金' : /理财/.test(st.kind + st.text) && !/股|基金/.test(st.text) ? '银行理财' : '股票基金';
+        const iv = invest(S, k, num(st.amount) || Math.floor(p.money * 0.3), rng);
+        r.ok = iv.ok; r.note = iv.ok ? iv.note : iv.why;
         break;
       }
       case 'focus':
@@ -1573,6 +1600,7 @@ function canBuy(S) {
 function buyHouse(S, rng) {
   const b = canBuy(S);
   if (!b.ok) return { ok: false, why: `首付要 ${b.down}，你手头 ${S.player.money}` };
+  if (bankOf(S).credit < 45) return { ok: false, why: `征信${creditWord(bankOf(S).credit)}，房贷批不下来` };
   const ck = rollCheck(S, '谋划', 48, rng || Math.random);
   const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
   S.player.money -= (b.down - cut);
@@ -2208,7 +2236,7 @@ function takeJob(S, o) {
   const R = salaryRange(S, lv);
   let pay = num(o.salary) ? Math.round(num(o.salary)) : 0;
   if (pay && (pay > R.hi || pay < R.lo)) { const c = clamp(pay, R.lo, R.hi); note = (note ? note + '；' : '') + `新工作月薪你写成${pay}，引擎只认${c}`; pay = c; }
-  J.out = false;
+  J.out = false; J.sinceDay = S.stats.days;
   J.employer = String(o.employer || J.employer || '新东家').slice(0, 16);
   J.post = String(o.title || o.post || J.post || '').slice(0, 10);
   J.lv = lv;
@@ -2761,7 +2789,7 @@ function applyPost(S, id, rng) {
   if (!P) return { ok: false, why: '这条招聘已经下了' };
   if (P.state) return { ok: false, why: '这家已经投过了' };
   if (P.cert && !hasItem(S, 'cert')) return { ok: false, why: '这个岗位要先考试，得先报个考证班' };
-  const ck = rollCheck(S, P.attr, P.need + (S.job.out ? 0 : 4), rng);
+  const ck = rollCheck(S, P.attr, P.need + (S.job.out ? 0 : 4) + (bankOf(S).credit < 40 ? 5 : 0), rng);
   S.stats.checks++; if (ck.success) S.stats.wins++;
   if (!ck.success) { P.state = '没回音'; return { ok: true, pass: false, ck, post: P }; }
   const inD = rnd(rng, 1, 3), dt = addDays(S.date, inD);
@@ -2782,7 +2810,7 @@ function takePost(S, P, rng) {
   J.out = false; J.employer = P.employer.slice(0, 16); J.post = P.job.slice(0, 10);
   J.lv = lv; J.title = LEVELS[lv].t; J.probation = true;
   J.perf = 0; J.mood = 0; J.quarters = 0;
-  J.strain = P.strain; J.vary = P.vary ? 1 : 0; J.lib = P.job;
+  J.strain = P.strain; J.vary = P.vary ? 1 : 0; J.lib = P.job; J.sinceDay = S.stats.days;
   S.ledger.salary = pay;
   S.ledger.base = Math.round(pay / LEVELS[lv].pay);
   S.player.job = `${J.employer}的${J.post}`;
@@ -3246,7 +3274,8 @@ function fixLife(S) {
   S.home = S.home || { kind: '租', since: '', place: '' };
   if (!S.home.tier) S.home.tier = '合租次卧';
   if (S.job && S.job.strain === undefined) S.job.strain = 1;
-  S.gigs = S.gigs || []; S.bag = S.bag || [];
+  S.gigs = S.gigs || []; S.bag = S.bag || []; bankOf(S);
+  if (S.job && S.job.sinceDay === undefined) S.job.sinceDay = 0;
   if (!S.flags.rent2 && S.home.kind !== '买') {
     S.flags.rent2 = 1;
     const r = rentFor(S, homeTier(S));
@@ -3258,6 +3287,247 @@ function fixLife(S) {
   S.flags.rent2 = 1;
   for (const n of S.npcs) if (!n.talk) n.talk = talkOf(n);
   return S;
+}
+
+
+/* ================= 银行：存款、理财、贷款、征信 ================= */
+const DEPO = { 3: 0.008, 12: 0.011, 36: 0.015 };        // 定期：月数 → 年利率
+const CUR_RATE = 0.001, MMF_RATE = 0.015;
+const LOANS = {
+  '信用贷': { lo: 0.04, hi: 0.09, terms: [12, 24, 36], fee: 0.01 },
+  '消费贷': { lo: 0.09, hi: 0.14, terms: [12], fee: 0.01 },
+  '经营贷': { lo: 0.05, hi: 0.08, terms: [36], fee: 0 }
+};
+function bankOf(S) {
+  if (!S.bank) S.bank = { fixed: [], mmf: 0, mmfGain: 0, wm: [], fund: { units: 0, cost: 0, mark: 0 }, nav: 1, loans: [], credit: 60, curAcc: 0, id: 0 };
+  return S.bank;
+}
+function creditWord(c) { return c >= 80 ? '很好' : c >= 65 ? '良好' : c >= 50 ? '一般' : c >= 35 ? '有污点' : '很差'; }
+function jobTenure(S) { return S.job && !S.job.out ? S.stats.days - num(S.job.sinceDay) : 0; }
+const mPay = (P, rate, n) => { const r = rate / 12; return r ? Math.round(P * r / (1 - Math.pow(1 + r, -n))) : Math.round(P / n); };
+// 能贷多少、多少利息：月薪、在职多久、口碑、征信
+function loanQuote(S, kind) {
+  const B = bankOf(S), L = LOANS[kind];
+  if (!L) return { ok: false, why: '没有这种贷款' };
+  const f = clamp((B.credit - 40) / 50, 0, 1);
+  const rep = clamp(num(S.player.信誉) / 100, 0, 0.6);
+  const sal = num(S.ledger.salary);
+  const owing = B.loans.filter(x => x.kind === kind && x.left > 0).reduce((a, x) => a + x.left, 0);
+  let cap = 0, why = '';
+  if (B.credit < 35) why = '征信太差，银行不批';
+  else if (kind === '信用贷') {
+    if (S.job.out || !sal) why = '没有工作，信用贷批不下来';
+    else if (jobTenure(S) < 180) why = `这份工作才干了${jobTenure(S)}天，要满半年`;
+    else cap = sal * (3 + 7 * f) * (1 + rep * 0.3);
+  } else if (kind === '消费贷') {
+    const inc = sal + (S.biz && !S.biz.dead ? Math.max(0, num(S.biz.net)) : 0) + (S.gigs || []).length * 600;
+    if (!inc) why = '没有收入，消费贷也批不下来';
+    else cap = Math.min(50000, Math.max(5000, inc * 3));
+  } else if (kind === '经营贷') {
+    if (!S.biz || S.biz.dead) why = '手上没有在开的店';
+    else cap = num(S.biz.setup) * 1.5;
+  }
+  cap = Math.max(0, Math.round((cap - owing) / 1000) * 1000);
+  if (!why && cap < 1000) why = '额度已经用完了';
+  const rate = r2((L.hi - (L.hi - L.lo) * f) * 1000) / 1000;
+  return { ok: !why, why, cap, rate, terms: L.terms, kind };
+}
+function takeLoan(S, kind, amount, months) {
+  const q = loanQuote(S, kind);
+  if (!q.ok) return { ok: false, why: q.why, q };
+  amount = Math.round(num(amount) / 100) * 100;
+  if (amount <= 0) return { ok: false, why: '金额不对' };
+  const cut = amount > q.cap;
+  amount = Math.min(amount, q.cap);
+  months = q.terms.includes(num(months)) ? num(months) : q.terms[0];
+  const B = bankOf(S);
+  B.id++;
+  const ln = { id: B.id, kind, amount, left: amount, rate: q.rate, months, paid: 0, monthly: mPay(amount, q.rate, months), owe: 0, late: 0, date: shortDate(S.date) + `（${S.date.y}年）` };
+  B.loans.push(ln);
+  S.player.money += amount;
+  acct(S, `${kind}到账`, amount, `${months}个月，年利率${(q.rate * 100).toFixed(1)}%`);
+  return { ok: true, loan: ln, cut, note: `${kind}批下来${amount}元${cut ? '（额度只有这么多）' : ''}，${months}个月，年利率${(q.rate * 100).toFixed(1)}%，每月还${ln.monthly}，账上${S.player.money}` };
+}
+function prepay(S, id, amount) {
+  const B = bankOf(S), ln = B.loans.find(x => x.id === id && x.left > 0);
+  if (!ln) return { ok: false, why: '没有这笔贷款' };
+  amount = Math.min(Math.round(num(amount)), ln.left);
+  const fee = Math.round(amount * (LOANS[ln.kind] ? LOANS[ln.kind].fee : 0));
+  if (amount <= 0) return { ok: false, why: '金额不对' };
+  if (S.player.money < amount + fee) return { ok: false, why: `要${amount + fee}（含违约金${fee}），账上只有${S.player.money}` };
+  S.player.money -= amount + fee;
+  acct(S, `提前还${ln.kind}`, -(amount + fee), fee ? `含违约金${fee}` : '');
+  ln.left -= amount;
+  const rest = ln.months - ln.paid;
+  ln.monthly = ln.left > 0 ? mPay(ln.left, ln.rate, Math.max(1, rest)) : 0;
+  return { ok: true, fee, left: ln.left, note: `提前还了${ln.kind}${amount}${fee ? `，违约金${fee}` : ''}，${ln.left ? `还欠${ln.left}，每月${ln.monthly}` : '还清了'}` };
+}
+// 定期
+function deposit(S, amount, term) {
+  amount = Math.round(num(amount));
+  term = DEPO[num(term)] ? num(term) : 12;
+  if (amount < 100) return { ok: false, why: '最少存一百' };
+  if (S.player.money < amount) return { ok: false, why: `账上只有${S.player.money}` };
+  const B = bankOf(S);
+  B.id++;
+  const due = addDays(S.date, Math.round(term * 30.4));
+  B.fixed.push({ id: B.id, amount, term, rate: DEPO[term], day: S.stats.days, dueDay: S.stats.days + Math.round(term * 30.4), due: shortDate(due) + `（${due.y}年）` });
+  S.player.money -= amount;
+  acct(S, `存定期${term === 36 ? '三年' : term === 12 ? '一年' : '三个月'}`, -amount);
+  return { ok: true, note: `存了${amount}定期，${term}个月，年利率${(DEPO[term] * 100).toFixed(1)}%，${shortDate(due)}到期` };
+}
+function withdrawFixed(S, id) {
+  const B = bankOf(S), i = B.fixed.findIndex(x => x.id === id);
+  if (i < 0) return { ok: false, why: '没有这笔定期' };
+  const f = B.fixed.splice(i, 1)[0];
+  const early = S.stats.days < f.dueDay;
+  const days = Math.max(0, S.stats.days - f.day);
+  const int = Math.round(f.amount * (early ? CUR_RATE : f.rate) * (early ? days / 365 : f.term / 12));
+  S.player.money += f.amount + int;
+  acct(S, early ? '定期提前取出' : '定期到期', f.amount + int, `利息${int}`);
+  return { ok: true, early, int, note: `${early ? '提前取出' : '到期取出'}定期${f.amount}，利息${int}${early ? '（提前取只算活期）' : ''}` };
+}
+// 理财
+function invest(S, kind, amount, rng) {
+  rng = rng || Math.random;
+  amount = Math.round(num(amount));
+  if (amount < 100) return { ok: false, why: '最少一百' };
+  if (S.player.money < amount) return { ok: false, why: `账上只有${S.player.money}` };
+  const B = bankOf(S);
+  S.player.money -= amount;
+  if (kind === '货币基金') { B.mmf = r2(B.mmf + amount); acct(S, '买货币基金', -amount); return { ok: true, note: `${amount}放进了货币基金，年化1.5%上下，随取随用` }; }
+  if (kind === '银行理财') {
+    B.id++;
+    const rate = r2((0.025 + rng() * 0.007) * 1000) / 1000;
+    B.wm.push({ id: B.id, amount, rate, day: S.stats.days, dueDay: S.stats.days + 90, due: shortDate(addDays(S.date, 90)) });
+    acct(S, '买银行理财', -amount, `90天，业绩基准${(rate * 100).toFixed(1)}%`);
+    return { ok: true, note: `买了${amount}银行理财，锁90天，业绩基准年化${(rate * 100).toFixed(1)}%` };
+  }
+  if (kind === '股票基金') {
+    const edge = S.player.track === '投资' ? Math.min(0.02, num(S.player.attrs['专业']) / 3000) : 0;
+    const units = amount / (B.nav * (1 - edge));
+    B.fund.units = r2(B.fund.units + units); B.fund.cost = Math.round(B.fund.cost + amount);
+    if (!B.fund.mark) B.fund.mark = B.fund.cost;
+    acct(S, '买股票基金', -amount, `净值${B.nav.toFixed(3)}`);
+    return { ok: true, note: `买了${amount}股票基金，净值${B.nav.toFixed(3)}${edge ? '，挑的点位不错' : ''}` };
+  }
+  S.player.money += amount;
+  return { ok: false, why: '没有这种理财' };
+}
+function fundValue(S) { const B = bankOf(S); return Math.round(B.fund.units * B.nav); }
+function redeem(S, kind, amount) {
+  const B = bankOf(S);
+  if (kind === '货币基金') {
+    amount = Math.min(Math.round(num(amount)) || Math.floor(B.mmf), Math.floor(B.mmf));
+    if (amount <= 0) return { ok: false, why: '货币基金里没钱' };
+    B.mmf = r2(B.mmf - amount); S.player.money += amount; acct(S, '取货币基金', amount);
+    return { ok: true, note: `从货币基金取了${amount}` };
+  }
+  if (kind === '股票基金') {
+    const val = fundValue(S);
+    if (val <= 0) return { ok: false, why: '没有股票基金' };
+    const want = Math.min(Math.round(num(amount)) || val, val);
+    const part = want / val;
+    const cost = Math.round(B.fund.cost * part);
+    const fee = Math.round(want * 0.005);
+    B.fund.units = r2(B.fund.units * (1 - part)); B.fund.cost -= cost;
+    if (B.fund.units < 0.01) { B.fund = { units: 0, cost: 0, mark: 0 }; }
+    else B.fund.mark = B.fund.cost;
+    S.player.money += want - fee;
+    acct(S, '卖股票基金', want - fee, `${want - cost >= 0 ? '赚' : '亏'}${Math.abs(want - cost)}，手续费${fee}`);
+    return { ok: true, gain: want - cost, note: `卖了${want}股票基金，${want - cost >= 0 ? '赚了' : '亏了'}${Math.abs(want - cost)}，手续费${fee}` };
+  }
+  return { ok: false, why: '这个不能随时取' };
+}
+// 每天挂在日历上
+function bankTick(S, rng) {
+  const B = bankOf(S), p = S.player, ev = [];
+  let stop = null;
+  if (p.money > 0) B.curAcc += p.money * CUR_RATE / 365;
+  if (B.mmf > 0) { const g = B.mmf * MMF_RATE / 365 * (0.85 + rng() * 0.3); B.mmf = r2(B.mmf + g); B.mmfGain = r2(B.mmfGain + g); }
+  // 季度末结活期息
+  if ([3, 6, 9, 12].includes(S.date.m) && S.date.d === 21 && B.curAcc >= 1) {
+    const int = Math.round(B.curAcc); B.curAcc = 0;
+    p.money += int; acct(S, '活期利息', int);
+  }
+  for (const f of B.fixed.slice()) if (S.stats.days >= f.dueDay) { const r = withdrawFixed(S, f.id); ev.push({ t: '钱', s: r.note.replace('到期取出', '到期了，转回账上：') }); }
+  for (const w of B.wm.slice()) if (S.stats.days >= w.dueDay) {
+    const lose = rng() < 0.03;
+    const back = Math.round(w.amount * (1 + (lose ? -rng() * 0.005 : w.rate * 90 / 365)));
+    B.wm = B.wm.filter(x => x.id !== w.id);
+    p.money += back; acct(S, '银行理财到期', back, `本金${w.amount}`);
+    ev.push({ t: '钱', s: `银行理财到期，${w.amount}变成${back}${lose ? '，没达到业绩基准' : ''}` });
+  }
+  // 股票基金：每周走一步，跟风向挂钩
+  if (dOf(S.date).getDay() === 5) {
+    const mood = (S.wind && S.wind.mood) || '平';
+    const mu = 0.001 + (mood === '热' ? 0.002 : mood === '冷' ? -0.002 : 0) - ((S.era || []).length ? 0.0005 : 0);
+    const z = (rng() + rng() + rng() + rng() - 2) * 1.73;
+    B.nav = Math.max(0.3, r2((B.nav * (1 + mu + z * 0.021)) * 1000) / 1000);
+    if (B.fund.units > 0) {
+      const val = fundValue(S), mark = B.fund.mark || B.fund.cost;
+      const ch = (val - mark) / Math.max(1, mark);
+      if (Math.abs(ch) >= 0.2 && B.fund.cost >= 3000) {
+        B.fund.mark = val;
+        stop = { kind: '钱', detail: `股票基金${ch > 0 ? '涨' : '跌'}了一大截，眼下值${val}（本金${B.fund.cost}）` };
+      }
+    }
+  }
+  return { ev, stop };
+}
+// 每月 1 号扣月供，挂在 moneyTick 里
+function loanTick(S) {
+  const B = bankOf(S), p = S.player, ev = [];
+  let stop = null;
+  for (const ln of B.loans) {
+    if (ln.left <= 0) continue;
+    const due = ln.monthly + ln.owe;
+    if (p.money >= due) {
+      p.money -= due;
+      acct(S, `${ln.kind}月供`, -due, ln.owe ? '含之前欠的' : '');
+      for (let k = 0; k < 1 + (ln.owe ? Math.round(ln.owe / ln.monthly) : 0); k++) {
+        const int = Math.round(ln.left * ln.rate / 12);
+        ln.left = Math.max(0, ln.left - Math.max(0, ln.monthly - int));
+        ln.paid++;
+      }
+      if (ln.paid >= ln.months) ln.left = 0;
+      ln.owe = 0; ln.late = 0;
+      B.credit = clamp(r2(B.credit + 0.4), 0, 95);
+      if (!ln.left) ev.push({ t: '钱', s: `${ln.kind}还清了` });
+    } else {
+      ln.late++;
+      ln.owe += ln.monthly;
+      if (ln.late >= 2) ln.owe += Math.round(ln.monthly * 0.05);     // 罚息
+      B.credit = clamp(B.credit - (ln.late >= 3 ? 12 : 6), 0, 95);
+      if (ln.late === 1) ev.push({ t: '钱', s: `${ln.kind}这个月的月供${ln.monthly}没扣出来，银行发了短信` });
+      else if (ln.late === 2) ev.push({ t: '钱', s: `${ln.kind}连着两个月没还上，开始算罚息` });
+      else stop = { kind: '钱', detail: `${ln.kind}连着${ln.late}个月没还，银行打电话来催收，欠着${ln.owe}` };
+    }
+  }
+  B.loans = B.loans.filter(x => x.left > 0 || S.stats.days - num(x.endDay || S.stats.days) < 60).map(x => { if (!x.left && !x.endDay) x.endDay = S.stats.days; return x; });
+  return { ev, stop };
+}
+function bankLine(S) {
+  const B = bankOf(S), a = [];
+  const fx = B.fixed.reduce((s, f) => s + f.amount, 0);
+  if (fx) a.push(`定期${fx}`);
+  if (B.mmf >= 1) a.push(`货币基金${Math.floor(B.mmf)}`);
+  const wm = B.wm.reduce((s, w) => s + w.amount, 0);
+  if (wm) a.push(`银行理财${wm}（锁着）`);
+  if (B.fund.units > 0) { const v = fundValue(S); a.push(`股票基金眼下值${v}（本金${B.fund.cost}，${v >= B.fund.cost ? '赚' : '亏'}${Math.abs(v - B.fund.cost)}）`); }
+  const L = B.loans.filter(x => x.left > 0);
+  for (const l of L) a.push(`${l.kind}还欠${l.left}，每月还${l.monthly}${l.late ? `，已经逾期${l.late}个月` : ''}`);
+  a.push(`征信${creditWord(B.credit)}`);
+  return a.join('；');
+}
+
+/* ---- 一天里能就地办事的空档：白天、晚上两个 ---- */
+function slotsLeft(S) { const D = S.daySlots; return D && D.day === S.stats.days ? Math.max(0, 2 - D.used) : 2; }
+function useSlot(S) {
+  if (!S.daySlots || S.daySlots.day !== S.stats.days) S.daySlots = { day: S.stats.days, used: 0 };
+  if (S.daySlots.used >= 2) return false;
+  S.daySlots.used++;
+  return true;
 }
 
 /* ---------- 导出 ---------- */
@@ -3286,6 +3556,7 @@ const API = {
   TIERS, relTier, TIER_LEND, TIER_ASK, TIER_OFF, askMod, isKinNpc, HOUSING, homeTier, rentFor, moveCost, moveHome,
   STRAIN, JOBS, jobBoard, boardNext, applyPost, findPost, takePost, postPay, GIGS, gigPay, gigWhen, takeGig, dropGig, gigToday,
   ITEMS, SHOP_CATS, itemOf, itemPrice, shopFriend, bag, hasItem, buyItem, bagFx, itemOld, useItem, careTags, giftValue, giveItem,
+  DEPO, LOANS, bankOf, creditWord, jobTenure, loanQuote, takeLoan, prepay, deposit, withdrawFixed, invest, fundValue, redeem, bankTick, loanTick, bankLine, slotsLeft, useSlot,
   FUN, funOf, funCost, doFun, BUSY, npcBusy, talkOf, fixNpcLife, pingTick, settlePings, helpTick, giveLiJin, lifeTick, fixLife
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;

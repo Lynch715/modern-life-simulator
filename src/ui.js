@@ -416,6 +416,7 @@ const LIFE_FIXED = `【日子里的规矩（账是引擎管的，你照写）】
 - 住处分四档：城中村单间（便宜、乱、离上班远）、合租次卧（跟生人合租，厨房厕所共用）、单身公寓（一个人住、安静、能带人回来）、整租一居（一室一厅、体面、伴侣能一起住）。主角住哪一档看【家】，写住的地方要对得上；搬家只走引擎。
 - 兼职看【兼职】：做什么、哪天哪个时段。写到那个时段就写他在干这个；钱引擎每周记，正文和 playerChanges 不另给。
 - 东西看【手里的东西】：有的才能用、能提；没有的不许让主角凭空拿出来。买东西、送东西都要经过引擎，playerChanges 和正文里不许另给主角添物件、添收入。
+- 存款、理财、贷款看【银行】，数目照引擎写：不许凭空给主角利息和收益，不许让主角凭一句话就贷到钱；银行的事只走引擎。
 - 看电影、KTV、健身、酒吧、旅行这类乐子，引擎已经算过花销、精力和谁一起去，你只写过程。
 - 每个人有自己的日子（【用得上的人】里写了他最近在忙什么），出场时带出他自己的事，别只围着主角转。
 ${TIER_ATTITUDE}`;
@@ -462,7 +463,7 @@ function finalCheck(extra) {
 5. 玩家括号里的限制和要求照办；玩家没让你替他做的决定，不许替他做。
 6. 不许替引擎宣布里程碑达成；不许跳过时间。
 7. 人物照【人物名册】写：名字一字不差，性别、年龄、跟主角的关系、干什么的、要一直记着的事都不许写错；名册里有的人是老相识，不许写成初次见面；名册里没有的人才算新登场，要写进 newNpcs。出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
-8. 住处、兼职、手里的东西照【家】【兼职】【手里的东西】写：不许凭空给主角添东西、换住处、加兼职收入，买东西、送东西只认引擎结算的。
+8. 住处、兼职、手里的东西、银行里的钱照【家】【兼职】【手里的东西】【银行】写：不许凭空给主角添东西、换住处、加兼职收入，买东西、送东西只认引擎结算的。
 9. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
 }
 function NARR_COMMON() {
@@ -612,6 +613,7 @@ ${peers}
 【志业阶梯】${E.ladderBlock(S)}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，${E.STRAIN[E.num(S.job.strain === undefined ? 1 : S.job.strain)]}活，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
 ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.gigs || []).length ? `【兼职】${S.gigs.map(g => `${g.name}（${E.gigWhen(g.name)}）`).join('；')}\n` : ''}【手里的东西】${bagLine()}
+【银行】${E.bankLine(S)}
 ${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【这一段多半用得上的人·最近的来往（他们记得这些，写的时候要对得上）】
 ${npc}
 ${pledgeBlock()}${waitBlock()}${momentsBlock()}【往事提要】
@@ -772,10 +774,10 @@ ${stateBlocks()}
 【本段引擎判定（不可更改）】
 ${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。数值按引擎认的那个来。\n` : ''}
 【这两天里引擎记下的】${events.length ? events.slice(-6).map(e => `[${e.t}] ${e.s}`).join('；') : '（没什么）'}
-【时间】${E.shortDate(from)} 到 ${E.shortDate(to)}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
+【时间】${seg.adv.days === 0 ? `${E.shortDate(from)}，就今天这一个时段` : `${E.shortDate(from)} 到 ${E.shortDate(to)}`}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
 
 要求：
-${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **只写这一两天，就写他去做「${S.plan ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${styleAsks().length ? '篇幅按括号里的要求来：要求写细就写长，没提篇幅就 300-500 字。' : '300-500 字。'}
+${E.fdm(S).fiat && !planBlock() ? `- **这一段的头等大事**：玩家写的「${S.lastAction}」已经成了，你只负责写它怎么成的，写足、写出后续的好处。这一条压过下面所有要求。\n` : ''}- **${seg.adv.days === 0 ? '只写今天这半天，不许写到第二天' : seg.adv.days >= 2 ? `只写这${seg.adv.days}天` : '只写这一两天'}，就写他去做「${S.plan ? splitAct(S.lastAction).doing : S.lastAction}」这件事**。${styleAsks().length ? '篇幅按括号里的要求来：要求写细就写长，没提篇幅就 300-500 字。' : '300-500 字。'}
 - 照玩家写的原样去办，一个细节都不许丢：他写了几件事就写几件，写了去哪、找谁、带什么、怎么说、想达到什么，都要在剧情里落到实处。玩家没写的细节由你补足，但不许改他写的。
 - 写过程，不写梗概：怎么去的、到了看见什么、跟人怎么一来一回谈的、中间哪里卡住了又怎么过去的，最后得到了什么。不许用"经过一番努力""几经周折"这类话把过程跳过去。
 - 不许跳过时间，不许写成"接下来的几周""一个月后"，不许把后面的事提前写掉。
@@ -1005,6 +1007,9 @@ const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只�
 - meet：去见某个人、找某人说事。who=谁（尽量用【认识的人】里的名字）
 - focus：接连好几天闷头做一件事（写作、学东西、练手艺、做项目）。days=几天
 - rest：休养、养病。days=几天
+- loan：去银行贷款。amount=贷多少，kind 填 信用贷/消费贷/经营贷（没说就空），term=几个月（没说填0）
+- deposit：存定期。amount=多少，term=3/12/36 个月
+- invest：买理财。amount=多少，kind 填 货币基金/银行理财/股票基金
 - other：以上都不是
 
 每一步都要有：
@@ -1020,7 +1025,7 @@ const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只�
 - 玩家说了几件事就拆几步，顺序照他说的，最多三步。括号里的话是要求，不算步骤。
 
 只输出 JSON：
-{"steps":[{"type":"other","text":"","diff":"普通","attr":"表达","who":"","amount":0,"days":0,"kind":"","name":"","target":"","borrow":false}],"days":1,"limits":[],"style":[],"stopWhen":null}`;
+{"steps":[{"type":"other","text":"","diff":"普通","attr":"表达","who":"","amount":0,"days":0,"kind":"","name":"","target":"","borrow":false,"term":0}],"days":1,"limits":[],"style":[],"stopWhen":null}`;
 function parsePrompt(act) {
   const p = S.player;
   const npcs = S.npcs.slice(-40).map(n => `${n.name}${callName(n) ? '（' + callName(n) + '）' : ''}`).join('、') || '（还没有）';
@@ -1085,7 +1090,7 @@ async function runSegment(opt) {
   const quick = !!opt.quick && !!S.lastAction && !(ran && (ran.long || S.plan.stopWhen));
 
   const focusing = !!S.focus;
-  const adv = E.advance(S, { rng, maxDays: quick ? 1 : 35, quiet: quick });
+  const adv = E.advance(S, { rng, maxDays: quick ? (opt.span !== undefined ? opt.span : 1) : 35, quiet: quick });
   if (focusing && adv.stop.kind === '投入') judge.focus = E.settleFocus(S, rng);
   if (adv.stop.kind === '运') judge.fate = adv.stop.fate;
   else judge.fate = E.d20(rng);
@@ -1192,7 +1197,7 @@ async function promiseGo() {
     const v = await ask({ title: `${pr.wed.who}${pr.wed.what}，随多少？`, text: `账上有 ${S.player.money}。写 0 就是空手去。`, input: { value: String(sug), number: true }, ok: '就这么多' });
     const r = E.giveLiJin(S, pr.wed.who, Math.max(0, Number(v) || 0), pr.wed.what);
     if (!r.ok) { toast(r.why); S.promiseAsk = pr; renderOptions(S.lastOptions); return; }
-    await lifeSeg(`去${pr.wed.who}的${pr.wed.what}酒席`, r.note, pr.wed.who);
+    await lifeSeg(`去${pr.wed.who}的${pr.wed.what}酒席`, r.note, pr.wed.who, 0);
     return;
   }
   const what = pr.type === 'pledge' ? pr.what : pr.title;
@@ -1405,7 +1410,8 @@ function renderPanel() {
   } else if (curTab === 'book') {
     const loan = E.num(L.loan), kid = E.kidCost(S);
     const bizNet = S.biz && !S.biz.dead ? E.num(S.biz.net) : 0;
-    const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit;
+    const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 ? x.monthly : 0), 0);
+    const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit + bankPay;
     const net = (S.job.out ? L.subsidy : inc) - out + bizNet;
     const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${Math.abs(v).toLocaleString('zh-CN')}</span></div>`;
     box.innerHTML = `<h3>账本</h3>
@@ -1417,6 +1423,7 @@ function renderPanel() {
       ${bizNet ? row(`${esc(S.biz.name)}（上个月净）`, bizNet, bizNet < 0 ? -1 : 1) : ''}
       ${L.rent ? row(`房租（${L.rentDay}号）`, L.rent, -1) : ''}
       ${loan ? row(`房贷月供（${L.rentDay}号）`, loan, -1) : ''}
+      ${bankPay ? row(`贷款月供（${L.rentDay}号）`, bankPay, -1) : ''}
       ${row('吃穿用度', L.living, -1)}
       ${kid ? row('养孩子', kid, -1) : ''}
       ${L.remit ? row('寄回家', L.remit, -1) : ''}
@@ -1425,6 +1432,7 @@ function renderPanel() {
     <div class="tip" style="margin-top:6px">${S.broke ? '账上已经是负的了，做什么都差一口气。'
       : net >= 0 ? `照这样过，一个月能剩 ${net}${bizNet ? '（生意按上个月算）' : ''}。剧情里额外的进出不算在内，看下面的明细。`
       : `每个月倒贴 ${-net}，手上的钱还能撑 ${Math.max(0, Math.floor(p.money / -net))} 个月。`}</div></div>
+    ${bankCard()}
     <h4>明细</h4>
     <div class="card">${renderAcct()}</div>
     ${renderBiz()}
@@ -2804,7 +2812,9 @@ function canAct() {
 }
 const sgn = v => (v >= 0 ? '+' : '') + v;
 // 引擎先把账办完，再写一段故事：结果写死，模型只写过程
-async function lifeSeg(action, note, who) {
+async function lifeSeg(action, note, who, span) {
+  span = span || 0;
+  if (span === 0) E.useSlot(S);
   S.lastAction = action; S.actTyped = false;
   const st = { type: who ? 'meet' : 'other', who: who || undefined, text: action.slice(0, 30), diff: '顺手' };
   S.plan = { steps: [st], results: [{ type: st.type, text: st.text, ok: true, note, ck: null, who: who || undefined }], limits: [], style: [], days: 1, stopWhen: null, parsed: true };
@@ -2812,7 +2822,7 @@ async function lifeSeg(action, note, who) {
   if (S.convo) endConvo(false);
   closePanel();
   saveGame(); rebuildTop();
-  await runSegment({ quick: true });
+  await runSegment({ quick: true, span });
 }
 
 /* ---- 住处 ---- */
@@ -2835,7 +2845,7 @@ async function doMove(k) {
   const r = E.moveHome(S, k);
   if (!r.ok) { toast(r.why); return; }
   toast(`搬进了${k}`);
-  await lifeSeg(`搬家：从${r.from}搬进${k}`, r.note);
+  await lifeSeg(`搬家：从${r.from}搬进${k}`, r.note, '', 1);
 }
 
 /* ---- 商店、背包、送礼 ---- */
@@ -2920,6 +2930,8 @@ async function doGive(name, uid) {
   const c = S.convo;
   const inChat = c && !c.group && c.name === name;
   if (!inChat && !canAct()) return;
+  const span = inChat ? 0 : await pickSpan(0);
+  if (span === null) return;
   const r = E.giveItem(S, name, uid, Math.random);
   if (!r.ok) { toast(r.why); return; }
   saveGame();
@@ -2932,7 +2944,7 @@ async function doGive(name, uid) {
     return;
   }
   toast(r.back ? `${name}没收` : `${name}收下了`);
-  await lifeSeg(`去给${name}送${r.item.name}`, r.note, name);
+  await lifeSeg(`去给${name}送${r.item.name}`, r.note, name, span);
 }
 function chatGift() {
   $('plusMenu').classList.remove('on');
@@ -2978,11 +2990,14 @@ function setFunPay(t) {
 }
 async function doFunGo() {
   const who = [...document.querySelectorAll('.funwho:checked')].map(x => x.value).slice(0, 3);
+  sheetOff();
+  const span = await pickSpan(funPick.id === 'trip' ? 2 : funPick.id === 'show' ? 1 : 0);
+  if (span === null) return;
   const r = E.doFun(S, funPick.id, who, funPick.treat, Math.random);
   if (!r.ok) { toast(r.why); return; }
   sheetOff();
   if (r.no.length) toast(`${r.no.join('、')}没来`);
-  await lifeSeg(`${r.came.length ? `叫上${r.came.join('、')}` : '一个人'}去${r.fun.name}`, r.note, r.came[0]);
+  await lifeSeg(`${r.came.length ? `叫上${r.came.join('、')}` : '一个人'}去${r.fun.name}`, r.note, r.came[0], span);
 }
 
 /* ---- 招聘 ---- */
@@ -3033,6 +3048,104 @@ async function doDropGig(k) {
   const g = E.dropGig(S, k);
   if (g) toast(`${k}不做了${g.owed ? `，结了${g.owed}` : ''}`);
   saveGame(); rebuildTop(); renderPanel();
+}
+
+
+/* ---- 银行：手机银行办，不占时间 ---- */
+const yuan = v => Math.round(v).toLocaleString('zh-CN');
+function bankCard() {
+  const B = E.bankOf(S);
+  const fv = E.fundValue(S);
+  const L = B.loans.filter(x => x.left > 0);
+  const li = (title, right, tip, btns) => `<div class="li"><div class="lirow"><b>${title}</b><span class="rel">${right}</span></div>${tip ? `<div class="tip">${tip}</div>` : ''}${btns ? `<div class="lirow">${btns}</div>` : ''}</div>`;
+  const rows = [];
+  for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，到期自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
+  if (B.mmf >= 1) rows.push(li('货币基金', yuan(Math.floor(B.mmf)), `年化1.5%上下，累计收益${yuan(B.mmfGain)}`, `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>`));
+  for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜${esc(w.due)}到期，之前取不出来`));
+  if (B.fund.units > 0) rows.push(li('股票基金', yuan(fv), `本金${yuan(B.fund.cost)}，<span class="${fv >= B.fund.cost ? 'good' : 'bad'}">${fv >= B.fund.cost ? '赚' : '亏'}${yuan(Math.abs(fv - B.fund.cost))}</span>｜净值${B.nav.toFixed(3)}`, `<button class="ghost sm" onclick="bankDo('fundOut')">卖掉</button>`));
+  for (const l of L) rows.push(li(l.kind, `还欠${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.late ? `｜<u>逾期${l.late}个月，欠着${yuan(l.owe)}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">提前还</button>`));
+  return `<h4>银行</h4><div class="card">
+    <div class="lines"><div><b>征信</b><span class="${B.credit < 45 ? 'bad' : B.credit >= 65 ? 'good' : ''}">${E.creditWord(B.credit)}</span></div>
+    <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
+    ${rows.join('') || '<div class="tip">没有存款、理财和贷款。</div>'}
+    <div class="btns"><button class="ghost" onclick="openDeposit()">存定期</button><button class="ghost" onclick="openInvest()">买理财</button><button class="ghost" onclick="openLoan()">贷款</button></div>
+    <div class="tip">月供扣不出来就是逾期：连着三个月会被催收，征信坏了买房、贷款都难。</div></div>`;
+}
+function bankAfter(r) {
+  if (!r.ok) { toast(r.why); return false; }
+  toast(r.note);
+  sheetOff(); saveGame(); rebuildTop(); renderPanel();
+  return true;
+}
+async function bankDo(what, id) {
+  if (busy) return;
+  if (what === 'fixedOut') {
+    if (!await ask({ title: '提前取出这笔定期？', text: '提前取，利息只按活期算。', ok: '取' })) return;
+    return bankAfter(E.withdrawFixed(S, id));
+  }
+  if (what === 'mmfOut') {
+    const v = await ask({ title: '从货币基金取多少', text: `里面有 ${Math.floor(E.bankOf(S).mmf)}。`, input: { value: String(Math.floor(E.bankOf(S).mmf)), number: true }, ok: '取' });
+    if (v === null) return;
+    return bankAfter(E.redeem(S, '货币基金', Number(v)));
+  }
+  if (what === 'fundOut') {
+    const v = await ask({ title: '卖多少股票基金', text: `眼下值 ${E.fundValue(S)}，卖出收0.5%手续费。`, input: { value: String(E.fundValue(S)), number: true }, ok: '卖' });
+    if (v === null) return;
+    return bankAfter(E.redeem(S, '股票基金', Number(v)));
+  }
+  if (what === 'prepay') {
+    const l = E.bankOf(S).loans.find(x => x.id === id);
+    const v = await ask({ title: `提前还${l.kind}`, text: `还欠 ${l.left}，账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+    if (v === null) return;
+    return bankAfter(E.prepay(S, id, Number(v)));
+  }
+}
+function openDeposit() {
+  sheet(`<h2>存定期</h2><div class="tip" style="margin-top:-10px">定期里的钱扣不了房租和月供，提前取只算活期利息。</div>
+    <div class="card" style="margin-top:14px">${[3, 12, 36].map(t => `<div class="li tap" onclick="doDeposit(${t})"><b>${t === 36 ? '三年' : t === 12 ? '一年' : '三个月'}</b><span class="rel">年利率${(E.DEPO[t] * 100).toFixed(1)}%</span></div>`).join('')}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
+}
+async function doDeposit(t) {
+  sheetOff();
+  const v = await ask({ title: `存${t === 36 ? '三年' : t === 12 ? '一年' : '三个月'}定期`, text: `账上有 ${S.player.money}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 2 / 100) * 100)), number: true }, ok: '存' });
+  if (v === null) return;
+  bankAfter(E.deposit(S, Number(v), t));
+}
+const INV_DESC = { '货币基金': '年化1.5%上下，几乎不亏，随存随取', '银行理财': '年化2.5%–3.2%，极少亏，锁90天', '股票基金': '一年下来可能亏四分之一，也可能赚三成多；跟行业风向走，卖出收0.5%' };
+function openInvest() {
+  sheet(`<h2>买理财</h2>
+    <div class="card">${Object.keys(INV_DESC).map(k => `<div class="li tap" onclick="doInvest('${k}')"><b>${k}</b><div class="tip">${INV_DESC[k]}${k === '股票基金' ? `｜眼下净值${E.bankOf(S).nav.toFixed(3)}` : ''}</div></div>`).join('')}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
+}
+async function doInvest(k) {
+  sheetOff();
+  const v = await ask({ title: `买${k}`, text: `账上有 ${S.player.money}。${INV_DESC[k]}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 3 / 100) * 100)), number: true }, ok: '买' });
+  if (v === null) return;
+  bankAfter(E.invest(S, k, Number(v), Math.random));
+}
+function openLoan() {
+  sheet(`<h2>贷款</h2><div class="tip" style="margin-top:-10px">额度和利率看月薪、在职多久、口碑和征信。每月1号跟房租一起扣月供。</div>
+    <div class="card" style="margin-top:14px">${Object.keys(E.LOANS).map(k => {
+      const q = E.loanQuote(S, k);
+      return q.ok
+        ? `<div class="li"><div class="lirow"><b>${k}</b><span class="rel">最多${yuan(q.cap)}｜年利率${(q.rate * 100).toFixed(1)}%</span></div><div class="lirow">${q.terms.map(t => `<button class="ghost sm" onclick="doLoan('${k}',${t})">${t}个月</button>`).join('')}</div></div>`
+        : `<div class="li"><b>${k}</b><div class="tip">${esc(q.why)}</div></div>`;
+    }).join('')}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
+}
+async function doLoan(k, t) {
+  sheetOff();
+  const q = E.loanQuote(S, k);
+  const v = await ask({ title: `${k}，${t}个月`, text: `最多 ${q.cap}，年利率${(q.rate * 100).toFixed(1)}%。贷多少？`, input: { value: String(q.cap), number: true }, ok: '贷' });
+  if (v === null) return;
+  bankAfter(E.takeLoan(S, k, Number(v), t));
+}
+
+/* ---- 小事占多久：一天两个空档 ---- */
+async function pickSpan(base) {
+  if (base > 0) return base;
+  if (E.slotsLeft(S) > 0) return 0;
+  return await ask({ title: '今天没空了', text: '白天、晚上都已经安排了事。', ok: '那就明天', no: '算了' }) ? 1 : null;
 }
 
 /* ================= 设置 / 存档 ================= */
