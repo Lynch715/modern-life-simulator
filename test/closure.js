@@ -161,6 +161,156 @@ console.log('—— 引擎 ——');
   ok(!S.npcs.some(n => n.name === '测'), '不许造跟主角同名的人');
 }
 
+console.log('—— 生活 ——');
+{ // 房租、住处
+  const S = mk();
+  ok(S.ledger.rent === 1100 && S.home.tier === '合租次卧', '新一线合租次卧1100', S.ledger.rent);
+  ok(E.housePrice(S) === Math.round(1700 * 290 / 10000) * 10000, '房价不跟着房租往下掉');
+  S.player.money = 5000;
+  const r = E.moveHome(S, '城中村单间');
+  ok(r.ok && S.ledger.rent === E.rentFor(S, '城中村单间') && S.ledger.rent < 700 && S.player.money === 5000 - r.cost, '搬进城中村，房租降、扣了搬家费', r.note);
+  ok(!E.moveHome(S, '城中村单间').ok, '同一档不能再搬');
+  S.player.money = 100;
+  ok(!E.moveHome(S, '整租一居').ok, '钱不够搬不了');
+  // 老存档：房租按新行情调下来，下个月交租时账本有一行
+  const O = mk(); O.ledger.rent = 1700; delete O.flags.rent2; delete O.home.tier;
+  E.fixJob(O);
+  ok(O.ledger.rent === 1100 && O.flags.rentAdj && O.flags.rentAdj.from === 1700, '老存档房租调成1100');
+  O.date = { y: 2026, m: 7, d: 31 }; E.advance(O, { rng: E.mkRng(2), maxDays: 1, quiet: true });
+  const rows = Object.values(O.acct || {}).flatMap(a => a.rows);
+  ok(rows.some(x => x.item === '房租调整') && rows.some(x => x.item === '房租' && x.amt === -1100), '交租那天记了房租调整', rows.map(x => x.item + x.amt).join(','));
+}
+{ // 住处影响精力
+  const A = mk(), B = mk();
+  B.home.tier = '整租一居'; A.home.tier = '城中村单间';
+  A.player.energy = B.player.energy = 60;
+  A.date = B.date = { y: 2026, m: 7, d: 6 };   // 星期一
+  E.dayTick(A, E.mkRng(1)); E.dayTick(B, E.mkRng(1));
+  ok(B.player.energy - A.player.energy === 10, '整租一居比城中村每天多回10点精力（睡得好、离得近）', `${A.player.energy} / ${B.player.energy}`);
+}
+{ // 关系档：借钱上限、求人难度
+  const S = mk();
+  const n = S.npcs.find(x => x.name === '赵鹏');
+  const caps = [5, 20, 40, 60, 90].map(v => { n.rel = v; return E.lendCap(S, n); });
+  ok(caps[0] === 0 && caps[1] < caps[2] && caps[2] < caps[3] && caps[3] < caps[4] && caps[4] === 4800 * 4, '借钱上限照五档走', caps.join('/'));
+  n.rel = 90; const a = E.stepNeed(S, { type: 'seekMoney', who: '赵鹏', diff: '普通', attr: '表达' });
+  n.rel = 5; const b = E.stepNeed(S, { type: 'seekMoney', who: '赵鹏', diff: '普通', attr: '表达' });
+  ok(b - a === 30, '交心的人好开口，生分的难', `${a} / ${b}`);
+}
+{ // 招聘：岗位库、过筛、面试谈成由引擎记账
+  const S = mk(); S.player.attrs['专业'] = 60; S.player.attrF['专业'] = 60;
+  const B = E.jobBoard(S, E.mkRng(5));
+  ok(B.list.length === 5 && B.list.every(p => p.lo > 0 && p.hi >= p.lo && E.STRAIN[p.strain]), '刷出五个岗位');
+  ok(E.jobBoard(S, E.mkRng(9)) === B, '七天内不换');
+  S.stats.days += 7;
+  ok(E.jobBoard(S, E.mkRng(9)) !== B, '过了七天换一批');
+  const P = S.board.list[0];
+  let r = null;
+  for (let i = 1; i < 40 && !(r && r.pass); i++) { P.state = ''; S.appts = []; r = E.applyPost(S, P.id, E.mkRng(i * 7919 + 13)); }
+  ok(r.pass && S.appts.some(a => a.post === P.id && a.kind === '面试'), '过筛约了面试', r.title);
+  E.startKey(S, { scene: '面试', kind: 'job', post: P, hard: 30, name: 'HR' });
+  S.key.result = '谈成'; S.key.over = true;
+  const out = E.settleKey(S);
+  ok(S.ledger.salary >= P.lo && S.ledger.salary <= P.hi && S.job.employer === P.employer && S.job.post === P.job && S.job.strain === P.strain, '谈成后岗位月薪照招聘记', out.job);
+  const pub = E.JOBS.find(j => j.cert);
+  const S2 = mk(); S2.board = { day: S2.stats.days, list: [{ id: 99, job: pub.name, employer: '街道办', lo: 4000, hi: 5000, attr: '谋划', strain: 0, need: 50, cert: true, state: '' }] };
+  ok(!E.applyPost(S2, 99).ok, '公务员没考证班投不了');
+  const S3 = mk(); S3.player.bg.edu = '大专'; ok(E.jobBoard(S3, E.mkRng(1)).list.every(p => !E.JOBS.find(j => j.name === p.job).edu), '大专刷不出要本科的');
+}
+{ // 累不累：很累的活每天多耗精力、绩效涨得快
+  const A = mk(), B = mk();
+  A.job.strain = 0; B.job.strain = 3;
+  A.date = B.date = { y: 2026, m: 7, d: 6 };
+  A.player.energy = B.player.energy = 60;
+  E.dayTick(A, E.mkRng(1)); E.dayTick(B, E.mkRng(1));
+  ok(A.player.energy - B.player.energy === 6 && B.job.perf > A.job.perf, '很累的活多耗6点精力，绩效涨得快', `${A.player.energy}/${B.player.energy}　${A.job.perf}/${B.job.perf}`);
+}
+{ // 兼职：每周结算、占时段、最多两份
+  const S = mk(); const m0 = S.player.money;
+  ok(E.takeGig(S, '家教').ok && E.takeGig(S, '跑外卖').ok, '接两份兼职');
+  ok(!E.takeGig(S, '发传单').ok, '最多两份');
+  S.date = { y: 2026, m: 7, d: 6 };      // 周一，跑七天
+  for (let k = 0; k < 10 && !(S.date.m === 7 && S.date.d >= 12); k++) E.advance(S, { rng: E.mkRng(3 + k), maxDays: E.daysBetween(S.date, { y: 2026, m: 7, d: 12 }), quiet: true });
+  const g = S.gigs.find(x => x.name === '家教');
+  const rows = Object.values(S.acct || {}).flatMap(a => a.rows).filter(x => /兼职/.test(x.item));
+  ok(g.times === 2 && S.gigs.find(x => x.name === '跑外卖').times === 2 && rows.length === 2, '一周家教两次、外卖两次，周日结', rows.map(x => x.item + x.amt).join(','));
+  S.date = { y: 2026, m: 7, d: 14 };
+  ok(E.todayPlan(S).find(x => x.slot === '晚上').act === '兼职', '家教那天晚上被占掉');
+  const d = E.dropGig(S, '家教'); ok(d && S.gigs.length === 1, '不干了');
+}
+{ // 商店、背包、送礼
+  const S = mk(); S.player.money = 20000;
+  const r = E.buyItem(S, 'suit');
+  ok(r.ok && E.hasItem(S, 'suit') && S.player.money === 20000 - r.price, '买正装进背包', r.price);
+  ok(!E.buyItem(S, 'suit').ok, '耐用品不重复买');
+  ok(E.stepNeed(S, { type: 'jobHunt', diff: '普通', attr: '表达', text: '投简历' }) === 15, '有正装面试好过');
+  E.buyItem(S, 'bed');
+  const A = mk(); A.date = S.date = { y: 2026, m: 7, d: 6 }; A.player.energy = S.player.energy = 50;
+  E.dayTick(A, E.mkRng(1)); E.dayTick(S, E.mkRng(1));
+  ok(S.player.energy - A.player.energy === 2, '好床垫每天精力+2');
+  E.buyItem(S, 'massage');
+  const ms = E.bag(S).find(b => b.id === 'massage');
+  E.useItem(S, ms.uid); ok(E.bag(S).find(b => b.id === 'massage').uses === 2, '按摩卡用一次少一次');
+  // 送礼：合心意翻倍，太贵关系又不到可能被退
+  const n = S.npcs.find(x => x.name === '赵鹏'); n.rel = 50; n.care = '健康';
+  E.buyItem(S, 'fruit'); E.buyItem(S, 'snack');
+  const v1 = E.giftValue(S, n, E.bag(S).find(b => b.id === 'fruit'));
+  const v2 = E.giftValue(S, n, E.bag(S).find(b => b.id === 'snack'));
+  ok(v1.match.includes('健康') && v1.gain > v2.gain * 1.5, '对上在意的翻倍', `${v1.gain} / ${v2.gain}`);
+  const rel0 = n.rel; const g = E.giveItem(S, '赵鹏', E.bag(S).find(b => b.id === 'fruit').uid, E.mkRng(1));
+  ok(g.ok && !g.back && n.rel > rel0 && !E.bag(S).some(b => b.id === 'fruit') && n.mem.some(m => /水果/.test(m)), '送出去了，关系涨，他记得', g.note);
+  const st = S.npcs.find(x => x.name === '孙姐'); st.rel = 5;
+  E.buyItem(S, 'jewel');
+  const vj = E.giftValue(S, st, E.bag(S).find(b => b.id === 'jewel'));
+  ok(vj.awkward && vj.gain <= 1.5, '给生分的人送项链，尴尬不涨', vj.gain);
+  // 熟人价
+  E.addNpcs(S, [{ name: '老冯', tie: '朋友', job: '开水果店', rel: 60 }], 1);
+  const fr = E.shopFriend(S, '吃的喝的');
+  ok(fr && fr.name === '老冯' && fr.off === 0.8, '朋友开水果店，八折');
+  const m0 = S.player.money; const rb = E.buyItem(S, 'tea', true);
+  ok(rb.price === Math.round(E.itemPrice(S, E.itemOf('tea')) * 0.8 / 10) * 10 && m0 - S.player.money === rb.price, '找朋友买付的是熟人价', rb.price);
+}
+{ // 找点乐子
+  const S = mk(); S.player.money = 3000; S.player.energy = 40;
+  const n = S.npcs.find(x => x.name === '赵鹏'); n.rel = 60;
+  const r = E.doFun(S, 'ktv', ['赵鹏'], true, E.mkRng(1));
+  ok(r.ok && r.came[0] === '赵鹏' && r.cost === 240 && S.player.energy === 45 && n.rel > 63, 'KTV请赵鹏：两人份、精力+5、关系涨', r.note);
+  const r2 = E.doFun(S, 'ktv', [], false, E.mkRng(1));
+  ok(/没那么新鲜/.test(r2.note) && S.player.energy === 48, '接着去效果减半', r2.note);
+  S.player.money = 10;
+  ok(!E.doFun(S, 'trip', [], false).ok, '钱不够去不了旅行');
+  ok(E.doFun(S, 'walk', [], false).ok, '散步不花钱');
+}
+{ // 对方有自己的日子、说话习惯、主动找你
+  const S = mk();
+  E.addNpcs(S, [{ name: '王婶', tie: '邻居', age: 58 }, { name: '小陈', tie: '同事', age: 25, job: '运营' }], 2);
+  const w = S.npcs.find(x => x.name === '王婶'), c = S.npcs.find(x => x.name === '小陈');
+  ok(/长句/.test(w.talk) && /客气/.test(c.talk), '长辈发长句、同事说话客气', `${w.talk}｜${c.talk}`);
+  E.fixNpcLife(S, w, E.mkRng(2)); ok(w.busy && w.busy.t && w.busy.until > S.stats.days, '每个人有最近在忙的事', w.busy.t);
+  let got = 0;
+  for (let i = 0; i < 200 && !got; i++) { S.stats.days += 1; if (E.pingTick(S, E.mkRng(i))) got = 1; }
+  ok(got && S.pings.length === 1 && S.pings[0].busy, '隔几天有人主动发消息', JSON.stringify(S.pings[0]));
+  const m0 = S.msgs.length; E.settlePings(S, m0);
+  ok(S.msgs.length === m0 + 1 && !S.pings.length, '故事没替他写，引擎补一条');
+}
+{ // 缺钱时交心的人转一笔，收了算借
+  const S = mk(); S.player.money = 100;
+  const n = S.npcs.find(x => x.name === '赵鹏'); n.rel = 90;
+  let ev = [];
+  for (let i = 0; i < 400 && !ev.length; i++) { S.stats.days += 1; ev = E.helpTick(S, E.mkRng(i)).filter(e => /赵鹏/.test(e.s)); }
+  ok(ev.length > 0, '账上见底，交心的人主动来问', ev[0] && ev[0].s);
+  const py = E.payList(S).find(p => p.loan);
+  if (py) { E.claimPay(S, py.id, true); ok(S.debts.some(d => d.who === '赵鹏' && d.left === py.amount), '收下这笔记成借的'); }
+  // 随礼
+  const r = E.giveLiJin(S, '赵鹏', 0, '结婚');
+  ok(r.ok && r.gain === 0.5, '空手去也算到场');
+}
+{ // 私聊：一次回几条、快捷回复
+  const d = E.sanitizeConvo({ reply: ['哈哈哈', '你说真的？', '我不信'], quick: ['真的', '骗你的', '爱信不信', '多余的'] });
+  ok(d.replies.length === 3 && d.quick.length === 3 && d.reply === '哈哈哈 你说真的？ 我不信', '回复能拆成几条，快捷回复三条');
+  ok(E.sanitizeConvo({ reply: '行' }).replies[0] === '行', '老格式一句话也认');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -203,6 +353,7 @@ console.log('—— 引擎 ——');
       else if (say.includes('[给你转账') && say.includes('不要')) body = { reply: '你留着吧 我不要', mood: '推', rel: 0, ask: null, deal: [], refund: true, summary: '退回' };
       else if (say.includes('[给你')) body = { reply: '谢了啊', mood: '高兴', rel: 1, ask: null, deal: [], summary: '收钱' };
       else if (say.includes('给我点钱')) body = { reply: '拿着', mood: '大方', rel: 0, ask: null, deal: [], pay: { kind: '红包', amount: 1000000, note: '别乱花' }, summary: '给钱' };
+      else if (say.includes('多说几句')) body = { reply: ['第一条', '第二条', '第三条'], quick: ['好', '不了', '再说吧'], mood: '平常', rel: 1, ask: null, deal: [], summary: '聊' };
       else if (say.includes('来住')) body = { reply: '那我周五搬过来', mood: '高兴', rel: 2, ask: null, deal: [{ kind: '主角答应', what: '让她来借住两天', inDays: 5 }], summary: '借住' };
       return route.fulfill({ status: 200, headers: { 'Content-Type': 'text/event-stream' }, body: sse(body) });
     }
@@ -387,6 +538,44 @@ console.log('—— 引擎 ——');
   await pg.evaluate(() => { for (let i = 0; i < 20; i++) E.addNpcs(S, [{ name: '路人' + i, tie: '同事', job: '跑业务', gender: '男', age: 30 }], 1); closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
   await pg.click('#acts .act-btn'); await idle();
   ok(/【人物名册/.test(lastSeg) && /路人0：男｜30岁/.test(lastSeg) && /路人19：/.test(lastSeg), '写故事时名册里所有人都在');
+
+  // —— 生活玩法 ——
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; S.pending = null; renderOptions(S.lastOptions); });
+  await pg.evaluate(() => openConvo('赵鹏')); await send('多说几句');
+  const mb = await pg.evaluate(() => ({ n: S.convo.lines.filter(l => l.who === 'ta').slice(-3).map(l => l.text), q: document.querySelectorAll('#chatQuick button').length }));
+  ok(mb.n.join('|') === '第一条|第二条|第三条' && mb.q === 3, '一次回三条，下面给三条快捷回复', JSON.stringify(mb));
+  ok(/【他的说话习惯/.test(lastConvo) && /【他最近在忙】/.test(lastConvo) && /档）/.test(lastConvo) && /关系五档/.test(JSON.parse(lastConvoRaw).messages[0].content), '私聊带着说话习惯、最近在忙、关系档');
+  await shot('9-chat-quick');
+  await pg.click('#chatQuick button'); await idle();
+  ok(await pg.evaluate(() => S.convo.lines.some(l => l.who === 'me' && l.text === '好')), '点快捷回复就发出去');
+  await pg.evaluate(() => { S.player.money = 30000; E.buyItem(S, 'fruit'); });
+  await pg.evaluate(() => chatGift()); await shot('10-chat-gift');
+  await pg.click('#npcBox .li.tap'); await idle();
+  ok(/主角刚送了你一箱水果/.test(lastConvo) && await pg.evaluate(() => !E.bag(S).some(b => b.id === 'fruit')), '聊天里送东西，引擎算好再让他回');
+  await pg.click('#chatDone'); await idle();
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  await shot('8a-acts');
+  await pg.click('#funBtn'); await shot('11-fun');
+  await pg.evaluate(() => openFunWith('ktv'));
+  await pg.check('.funwho[value="赵鹏"]');
+  await pg.evaluate(() => setFunPay(true));
+  const sf = segCalls;
+  await pg.click('#npcBox .primary'); await idle();
+  ok(segCalls === sf + 1 && /唱KTV/.test(lastSeg) && /引擎已经结算/.test(lastSeg) && /关系 赵鹏\+/.test(lastSeg), 'KTV叫上赵鹏：引擎先结算再写故事');
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); gotoTab('home'); });
+  await shot('12-home');
+  await pg.evaluate(() => openMove()); await shot('13-move');
+  await pg.click('#npcBox .li.tap >> nth=1'); await pg.click('#askOk'); await idle();
+  ok(await pg.evaluate(() => S.home.tier === '单身公寓' && S.ledger.rent === E.rentFor(S, '单身公寓')) && /搬家/.test(lastSeg), '搬进单身公寓，房租跟着变');
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; openShop('数码', ''); });
+  await shot('14-shop');
+  await pg.evaluate(() => doBuy('pc_old', false));
+  await pg.evaluate(() => { sheetOff(); E.takeGig(S, '家教'); gotoTab('me'); });
+  await shot('15-me');
+  await pg.evaluate(() => openBoard()); await shot('16-board');
+  await pg.evaluate(() => { sheetOff(); closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  ok(/【手里的东西】有二手电脑/.test(lastSeg) && /【兼职】家教/.test(lastSeg) && /租的是单身公寓/.test(lastSeg) && /日子里的规矩/.test(JSON.parse(lastSegRaw).messages[0].content) && /凭空给主角添东西/.test(lastSeg), '写故事带着住处、兼职、手里的东西，自查有这一条');
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();

@@ -416,7 +416,7 @@ const SEG = n => ({
   await pg.evaluate(() => { ENGINE.quitJob(S); saveGame(); renderPanel(); });
   await pg.click('.tab[data-t="me"]');
   await pg.waitForTimeout(150);
-  await pg.click('button:has-text("去面一场")');
+  await pg.evaluate(() => askJob());
   await pg.waitForSelector('#key.on', { timeout: 15000 });
   await pg.evaluate(() => { S.key.interest = 74; S.key.guard = 30; });   // 直接推到谈成那一步
   await pg.click('.kmove[data-m="摆事实"]');

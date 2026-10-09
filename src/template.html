@@ -134,7 +134,16 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .act-go{padding:7px 13px;border-radius:8px;background:var(--gold);color:var(--onGold);font-size:13.5px;font-weight:600;flex:none}
 .act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:var(--btn2);color:var(--dim);font-size:13.5px;flex:none}
 .act-row input{min-width:0}
-.act-row3{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:0}
+.act-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:0}
+#chatQuick{display:none;gap:6px;padding:8px 12px 0;background:var(--bar);border-top:1px solid var(--line);overflow-x:auto}
+#chatQuick.on{display:flex}
+#chatQuick button{flex:none;max-width:70%;padding:7px 11px;border-radius:16px;background:var(--btn);border:1px solid var(--line);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li.tap{cursor:pointer}
+.li.chk{display:flex;align-items:center;gap:8px}
+.li.chk .rel{margin-left:auto}
+.lirow>b{flex:1;min-width:0}
+.li s{color:var(--dim2)}
+.shopcats{margin:0 0 10px}
 .skip{width:100%;padding:5px 6px;border:1px dashed var(--line);border-radius:9px;font-size:13px;color:var(--dim);background:transparent;white-space:nowrap}
 .skip i{font-style:normal;font-size:11.5px;color:var(--dim2)}
 .skip:active{background:var(--btn2)}
@@ -447,6 +456,7 @@ html,body{max-width:100%;overflow-x:hidden}
       <button id="chatDone">聊完了</button>
     </div>
     <div id="chatBody"></div>
+    <div id="chatQuick"></div>
     <div id="plusMenu"></div>
     <div id="chatFoot"><button id="chatPlus" aria-label="转账和红包">＋</button><input id="chatIn" placeholder="说点什么" maxlength="80"/><button class="act-go" id="chatSend">发</button></div>
   </section>

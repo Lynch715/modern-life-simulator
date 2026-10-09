@@ -59,9 +59,10 @@ const ORIGINS = {
 };
 
 const CITIES = {
-  '一线': { rent: 2600, living: 2400, pay: 6300, dense: 1.25, desc: '机会多，人也多，房租能吃掉你小半个月工资。' },
-  '新一线': { rent: 1700, living: 1800, pay: 4800, dense: 1.0, desc: '不上不下的地方，日子能过，风口小一些。' },
-  '老家县城': { rent: 700, living: 1200, pay: 3000, dense: 0.62, desc: '花销低，熟人多，想干点新鲜事没什么人接得住。' }
+  // rent：合租一间次卧的行情；shop：铺面、房价、办酒照这个算（老数，别跟着房租动）
+  '一线': { rent: 1900, shop: 2600, living: 2400, pay: 6300, dense: 1.25, desc: '机会多，人也多，房租能吃掉你小三成工资。' },
+  '新一线': { rent: 1100, shop: 1700, living: 1800, pay: 4800, dense: 1.0, desc: '不上不下的地方，日子能过，风口小一些。' },
+  '老家县城': { rent: 450, shop: 700, living: 1200, pay: 3000, dense: 0.62, desc: '花销低，熟人多，想干点新鲜事没什么人接得住。' }
 };
 
 const FREEDOM = {
@@ -112,7 +113,8 @@ const ACTS = {
   '学习': { en: -7,  gain: { '谋划': 0.028, '专业': 0.018 } },
   '顾家': { en: -3,  gain: { '情绪': 0.02 }, home: 1 },
   '闲着': { en: 4,   gain: {} },
-  '睡觉': { en: 0,   gain: {}, sleep: 1 }
+  '睡觉': { en: 0,   gain: {}, sleep: 1 },
+  '兼职': { en: 0,   gain: {}, gig: 1 }
 };
 const SLEEP_EN = { '早': 5, '白天': 6, '晚上': 7, '深夜': 14 };
 const ATTRS = ['专业', '表达', '谋划', '情绪', '体能'];
@@ -250,10 +252,11 @@ function newState(o) {
       remit: org.remit, subsidy: org.subsidy, salary: pay,
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
-    job: { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false },
+    job: { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false, strain: 1 },
     debts: [], rifts: [], ailLog: {}, moments: [], momentId: 0,
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
-    home: { kind: '租', since: '', place: '' },
+    home: { kind: '租', since: '', place: '', tier: '合租次卧' },
+    gigs: [], bag: [],
     family: { partner: null, kids: [], past: [] },
     retireAge: 60, endedOnce: [],
     pace: '两头兼顾',
@@ -267,7 +270,7 @@ function newState(o) {
     recent: [], history: [], volumes: [], chapters: [],
     pending: null, lastOptions: [], lastAction: null, lastJudge: null,
     stats: { segs: 0, days: 0, stops: {}, checks: 0, wins: 0, keys: 0, keyWins: 0 },
-    flags: { nightCnt: 0, cool: 0, firstPay: false, firstRent: false, lastPeer: 0, lastEvt: -99, monthNet: 0 },
+    flags: { nightCnt: 0, cool: 0, firstPay: false, firstRent: false, lastPeer: 0, lastEvt: -99, monthNet: 0, rent2: 1 },
     broke: false, brokeMonths: 0, over: false, ending: null,
     booted: false
   };
@@ -285,6 +288,7 @@ function fixJob(S) {
     const m = String(S.player.job).match(/^(.{2,10}?)(的)?(实习|助理|专员|编辑|设计|运营|职员|工程师|学徒|服务员|销售)?$/);
     S.job.employer = (m && m[1]) ? m[1] : String(S.player.job).slice(0, 10);
   }
+  fixLife(S);
   return S.job;
 }
 
@@ -294,7 +298,9 @@ function todayPlan(S) {
   // 在养病就不上班：这几天的作息由不得你排
   if (S.focus && S.focus.heal) return SLOTS.map(sl => ({ slot: sl, act: HEAL_PLAN[sl] }));
   const t = isRest(S.date) ? S.schedule.rest : S.schedule.work;
-  return SLOTS.map(sl => ({ slot: sl, act: t[sl] || '闲着' }));
+  const gig = {};
+  for (const g of gigToday(S)) gig[GIGS[g.name].slot] = g.name;
+  return SLOTS.map(sl => gig[sl] ? { slot: sl, act: '兼职', gig: gig[sl] } : { slot: sl, act: t[sl] || '闲着' });
 }
 
 function growAttr(S, name, amt) {
@@ -311,15 +317,21 @@ function dayTick(S, rng) {
   const ev = [];
   const p = S.player;
   const plan = todayPlan(S);
+  const BF = bagFx(S);
   let en = -6, slept = 0;   // 活着本身的消耗
 
   for (const it of plan) {
     const a = ACTS[it.act] || ACTS['闲着'];
     if (a.sleep) { slept++; en += Math.round((SLEEP_EN[it.slot] || 8) * (slept >= 3 ? 0.4 : 1)); }
+    else if (a.gig) {
+      const G = GIGS[it.gig];
+      en -= G ? G.en : 6;
+      if (G) growAttr(S, G.attr, 0.02);
+    }
     else {
       en += a.en;
       for (const k in a.gain) growAttr(S, k, a.gain[k]);
-      if (a.work) p.资历天 = (p.资历天 || 0) + 1;
+      if (a.work) { p.资历天 = (p.资历天 || 0) + 1; if (!S.job.out && !(S.biz && !S.biz.dead)) en += STRAIN_EN[clamp(num(S.job.strain === undefined ? 1 : S.job.strain), 0, 3)]; }
       if (a.ideal) S.ideal.progress = r2(S.ideal.progress + 0.6 + p.attrs['专业'] / 150);
       if (a.social) S.flags.socialToday = 1;
       if (a.home) S.flags.homeDays = (S.flags.homeDays || 0) + 0.5;
@@ -332,12 +344,18 @@ function dayTick(S, rng) {
     const f = S.focus;
     if (f.heal) { f.left--; en += 4; }        // 养病：反过来往回补
     else {                                     // 干活：投入期间压榨自己
-      const eff = 1 + (p.attrs[f.attr] || 20) / 80 + (p.energy > 60 ? 0.2 : -0.2);
+      const eff = (1 + (p.attrs[f.attr] || 20) / 80 + (p.energy > 60 ? 0.2 : -0.2)) * (1 + num(BF.workX) * (/专业|谋划/.test(f.attr) ? 1 : 0.5) + num(BF.camera) * (/拍|视频|博主|摄影|vlog/i.test(f.what) ? 1 : 0));
       f.progress = r2(f.progress + eff);
       f.left--;
       en -= 3;
     }
   }
+  // 住处、床垫、通勤、宿醉
+  if (S.home && S.home.kind !== '买') { const H = HOUSING[homeTier(S)]; en += H.en - (plan.some(x => x.act === '主业') ? H.commute : 0); }
+  else if (S.home && S.home.kind === '买') en += 2;
+  en += Math.round(num(BF.sleep));
+  if (BF.back && S.chronic.length) en += 1;
+  if (S.flags.hangover) { en -= 10; S.flags.hangover = 0; }
   for (const st of S.status) { en -= 3; st.days--; }
   const healed = S.status.filter(s => s.days <= 0);
   if (healed.length) { S.status = S.status.filter(s => s.days > 0); for (const h of healed) ev.push({ t: '身体', s: `${h.name}好了` }); }
@@ -409,6 +427,7 @@ function moneyTick(S, rng) {
     if (loan) homeTick(S);
     const out = L.rent + loan + L.living + L.remit + kid;
     const m0 = p.money;
+    if (S.flags.rentAdj) { acctNote(S, '房租调整', `${S.flags.rentAdj.from}→${S.flags.rentAdj.to}，按行情`); S.flags.rentAdj = null; }
     p.money -= out;
     if (L.rent) acct(S, '房租', -L.rent, '', m0);
     if (loan) acct(S, '房贷月供', -loan, '', m0);
@@ -420,13 +439,15 @@ function moneyTick(S, rng) {
     if (!S.flags.firstRent) { S.flags.firstRent = true; stop = { kind: '钱', detail: '第一次自己交这些钱' }; }
   }
   if (d.d === L.salaryDay && !S.job.out) {
-    const inc = L.salary + L.subsidy;
+    // 看提成的活：每个月不一样，表达好的拿得多
+    const sal = S.job.vary ? Math.round(L.salary * clamp(0.7 + (attrVal(S, '表达') - 25) / 90 + rng() * 0.35, 0.55, 1.6) / 10) * 10 : L.salary;
+    const inc = sal + L.subsidy;
     const m0 = p.money;
     p.money += inc;
-    acct(S, '工资', L.salary, S.job.employer || '', m0);
+    acct(S, S.job.vary ? '工资（含提成）' : '工资', sal, S.job.employer || '', m0);
     if (L.subsidy) acct(S, '家里给的', L.subsidy, '', m0);
     S.flags.monthNet += inc;
-    ev.push({ t: '钱', s: `发了${L.salary}${L.subsidy ? `，家里又打来${L.subsidy}` : ''}` });
+    ev.push({ t: '钱', s: `发了${sal}${S.job.vary ? '（底薪加提成）' : ''}${L.subsidy ? `，家里又打来${L.subsidy}` : ''}` });
     if (!S.flags.firstPay) { S.flags.firstPay = true; stop = { kind: '钱', detail: '第一笔自己挣的工资到账' }; }
   }
   if (d.d === L.salaryDay && S.job.out) {
@@ -551,6 +572,7 @@ function evtChance(S) {
   if (pl.energy < 35) p += 0.025;
   if (S.unresolved.length >= 3) p += 0.02;
   if (S.broke) p += 0.03;
+  if (S.home && homeTier(S) === '城中村单间' && S.home.kind !== '买') p += 0.008;
   p *= (CITIES[S.city] || CITIES['新一线']).dense;
   return p;
 }
@@ -647,7 +669,7 @@ function advance(S, opt) {
 
     // 约好的事
     const ap = S.appts.find(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done);
-    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '', promise: { type: 'appt', title: ap.title, kind: ap.kind || '', who: apptWho(S, ap) } }; break; }
+    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '', promise: { type: 'appt', title: ap.title, kind: ap.kind || '', who: ap.wed ? ap.wed.who : apptWho(S, ap), post: ap.post || null, wed: ap.wed || null } }; break; }
     // 主角答应别人的事，到了日子：停下来问他去不去
     const pl = (S.pledges || []).find(x => !x.done && !x.asked && x.kind === '主角答应' && x.due && daysBetween(S.date, x.due) === 0);
     if (pl) { pl.asked = true; stop = { kind: '承诺', detail: `答应${pl.who}的「${pl.what}」`, promise: { type: 'pledge', who: pl.who, what: pl.what, title: `答应${pl.who}：${pl.what}` } }; break; }
@@ -657,6 +679,8 @@ function advance(S, opt) {
     if (sw) { stop = sw; break; }
     const pt = pledgeTick(S);
     events.push(...pt.ev);
+
+    events.push(...lifeTick(S, rng));
 
     const nt = npcTick(S, rng);
     if (nt.stop && !quiet && S.flags.cool <= 0) { stop = nt.stop; break; }
@@ -756,6 +780,8 @@ function sanitizePlan(raw, act, typed) {
 function stepNeed(S, st) {
   let need = DIFFS[st.diff] !== undefined ? DIFFS[st.diff] : 20;
   if (st.attr === '体能') need += Math.max(0, S.player.age - 35) * 0.8;
+  if (st.who && /seekMoney|meet|other|jobHunt/.test(st.type)) need += askMod(S, st.who);
+  if (st.type === 'jobHunt' || /面试|谈判|见客户/.test(st.text || '')) need -= num(bagFx(S).formal);
   return Math.round(need);
 }
 function stepCheck(S, st, rng) {
@@ -777,7 +803,10 @@ function lendCap(S, n) {
   let k = 0.5;
   for (const [re, v] of LEND_K) if (re.test(tie)) { k = v; break; }
   if (partnerOf(S) && n && partnerOf(S).name === n.name) k = Math.max(k, 4);
-  let cap = city.pay * k * clamp(num(n && n.rel) / 60, 0.2, 1.6);
+  // 关系档定倍数；家里人、伴侣再宽一些
+  const tier = relTier(n && n.rel);
+  let cap = city.pay * TIER_LEND[tier] * (k >= 6 ? 1.5 : k >= 4 ? 1.3 : 1);
+  if (tier >= 1 && k >= 6) cap = Math.max(cap, city.pay * 0.8);
   if (fdm(S).fiat) cap *= 5;
   return Math.round(cap / 100) * 100;
 }
@@ -1007,6 +1036,12 @@ function claimPay(S, id, take) {
   const p = findPay(S, id);
   if (!p || p.to !== '我' || p.state !== '待收') return null;
   const n = npcByName(S, p.from);
+  if (take && p.loan) {
+    addDebt(S, p.from, p.amount, 90);
+    p.state = '已收';
+    if (n) npcMem(S, n, `主角手头紧，借给他${p.amount}元，说好不急着还`);
+    return p;
+  }
   if (take) {
     S.player.money += p.amount;
     acct(S, `收到${p.from}的${p.kind}`, p.amount, p.note);
@@ -1025,8 +1060,10 @@ function newYearPackets(S) {
   const base = org.money >= 30000 ? 2000 : org.money >= 8000 ? 800 : 300;
   const out = [];
   for (const n of S.npcs) {
-    if (!KIN_RE.test(String(n.tie || '') + n.name) || num(n.rel) < 40) continue;
-    const p = payIn(S, n.name, base, '红包', '过年了', 'year');
+    if (!KIN_RE.test(String(n.tie || '') + n.name)) continue;
+    if (num(n.rel) < 25) { S.msgs.push({ from: n.name, text: '过年也不说寄点钱回来', date: shortDate(S.date), kind: 'chat', read: false }); continue; }
+    if (num(n.rel) < 40) continue;
+    const p = payIn(S, n.name, Math.round(base * (num(n.rel) >= 80 ? 2 : num(n.rel) >= 60 ? 1.4 : 1)), '红包', '过年了', 'year');
     if (!p) continue;
     S.msgs.push({ from: n.name, text: '过年了 拿着', date: shortDate(S.date), kind: 'chat', read: false, payId: p.id });
     out.push(p);
@@ -1303,7 +1340,9 @@ function sanitizeConvo(d) {
   d = T.obj(d) || {};
   const a = T.obj(d.ask);
   return {
-    reply: T.str(d.reply, 300) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -3, 3),
+    replies: (Array.isArray(d.reply) ? d.reply : [d.reply]).map(x => T.str(x, 160)).filter(Boolean).slice(0, 3),
+    quick: T.arr(d.quick, 3).map(x => T.str(x, 20)).filter(Boolean),
+    reply: (Array.isArray(d.reply) ? d.reply.map(x => T.str(x, 160)).filter(Boolean).join(' ') : T.str(d.reply, 300)) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -3, 3),
     gist: T.str(d.gist, 80), cold: T.bool(d.cold) || T.bool(d.end),
     pay: sanitizePay(d.pay), refund: T.bool(d.refund),
     deal: T.arr(d.deal, 2).map(T.obj).filter(x => x && x.what).map(x => ({ kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', what: T.str(x.what, 40), inDays: T.num(x.inDays, 0, 365) })),
@@ -1522,7 +1561,7 @@ function applyConvo(S, name, res) {
 /* ================= 家：住处、伴侣、孩子 ================= */
 function housePrice(S) {
   const city = CITIES[S.city] || CITIES['新一线'];
-  return Math.round(city.rent * 290 / 10000) * 10000;        // 一套普通两居，按房租倒推
+  return Math.round(city.shop * 290 / 10000) * 10000;        // 一套普通两居，按房租倒推
 }
 function canBuy(S) {
   const price = housePrice(S);
@@ -1728,12 +1767,12 @@ function bizBase(S) {
   const city = CITIES[S.city] || CITIES['新一线'];
   const K = BIZ_KINDS[S.biz ? S.biz.kind : '工作室'];
   // 营业额按城市的铺面贵贱校准：本钱是照房租算的，营业额也得跟着房租走，不然一线城市开店永远回不了本
-  const cityK = Math.pow((city.rent / city.pay) / (1700 / 4800), 0.45);
+  const cityK = Math.pow((city.shop / city.pay) / (1700 / 4800), 0.45);
   return Math.round(city.pay * K.baseX * BIZ_REV * cityK);
 }
 function bizSetup(S, kind) {
   const city = CITIES[S.city] || CITIES['新一线'];
-  return Math.round(city.rent * BIZ_KINDS[kind].setupX);
+  return Math.round(city.shop * BIZ_KINDS[kind].setupX);
 }
 function openBiz(S, o, rng) {
   rng = rng || Math.random;
@@ -1748,7 +1787,7 @@ function openBiz(S, o, rng) {
   S.biz = {
     name: String(o.name || '没名字的店').slice(0, 14), kind,
     since: shortDate(S.date), sinceY: S.date.y,
-    rent: Math.round(city.rent * K.rentX), staff: [],
+    rent: Math.round(city.shop * K.rentX), staff: [],
     rep: ck.success ? 42 : 30, tend: 0, months: 0,
     rev: 0, cost: 0, net: 0, lossMonths: 0, best: 0, total: 0, dead: false, setup: need
   };
@@ -2067,7 +2106,7 @@ function noteAil(S, name) {
 function chronicLoad(S) {
   return (S.chronic || []).reduce((a, c) => a + Math.max(0, 1 - num(c.eased) * 0.34), 0);
 }
-function energyCap(S) { return Math.round(100 - chronicLoad(S) * 7); }
+function energyCap(S) { return Math.round(100 - chronicLoad(S) * 7 + Math.min(8, num(S.gym && S.gym.cap))); }
 
 /* ================= 单位与饭碗 ================= */
 const LEVELS = [
@@ -2090,7 +2129,7 @@ function jobTick(S, plan) {
   let work = 0;
   for (const it of plan) if (it.act === '主业') work += (it.slot === '晚上' || it.slot === '深夜') ? 1.4 : 1;
   if (!work) return;
-  J.perf = r2(J.perf + work * (0.5 + p.attrs['专业'] / 220) * (p.energy < 35 ? 0.6 : 1));
+  J.perf = r2(J.perf + work * (0.5 + p.attrs['专业'] / 220) * (p.energy < 35 ? 0.6 : 1) * STRAIN_PERF[clamp(num(J.strain === undefined ? 1 : J.strain), 0, 3)]);
   J.days = (J.days || 0) + 1;
 }
 // 季度考核：升、涨、平、谈话、走人
@@ -2335,13 +2374,14 @@ const MOVES = {
 function startKey(S, o) {
   const t = OPP_TYPES[o.type] ? o.type : pick(o.rng || Math.random, Object.keys(OPP_TYPES));
   const T = OPP_TYPES[t];
-  const hard = clamp((num(o.hard) || 50) - num(fdm(S).keyEase), 18, 95);
+  const BF = bagFx(S);
+  const hard = clamp((num(o.hard) || 50) - num(fdm(S).keyEase) - (/面试|谈判/.test(o.scene || '') || o.kind === 'raise' || o.kind === 'job' ? num(BF.formal) : 0) - (o.kind === 'love' || o.kind === 'marry' ? num(BF.charm) : 0), 18, 95);
   S.key = {
     scene: o.scene || '谈判',
     stake: String(o.stake || '').slice(0, 40),
     mileId: o.mileId || null,
     kind: o.kind || 'mile',
-    who: o.who || null,
+    who: o.who || null, post: o.post || null,
     opp: { name: String(o.name || '对方').slice(0, 12), type: t, note: String(o.note || T.desc).slice(0, 40) },
     hard,
     guard: clamp(T.guard + (hard - 50) * 0.35, 10, 95),
@@ -2441,7 +2481,7 @@ function settleKey(S) {
     if (K.result === '谈成') {
       if (K.kind === 'love') { startRomance(S, K.who || who, '在一起'); out.love = K.who || who; }
       else {
-        const cost = Math.round((CITIES[S.city] || CITIES['新一线']).rent * 30);
+        const cost = Math.round((CITIES[S.city] || CITIES['新一线']).shop * 30);
         marry(S, cost);
         out.married = K.who || who; out.cost = cost;
       }
@@ -2465,6 +2505,16 @@ function settleKey(S) {
     } else if (K.result === '谈崩') { S.job.mood = (S.job.mood || 0) - 10; out.price.push('老板那边记了一笔'); }
     S.job.askedRaise = shortDate(S.date);
     S.player.energy = clamp(S.player.energy - 6, 0, 100);
+    S.stats.keys = (S.stats.keys || 0) + 1;
+    if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
+    S.key = null;
+    return out;
+  }
+  if (K.kind === 'job' && K.post) {
+    if (K.result === '谈成') { const tk = takePost(S, K.post, Math.random); out.job = tk.text; out.pay = tk.pay; }
+    else if (K.result === '谈崩') { S.player.energy = clamp(S.player.energy - 6, 0, 100); out.price.push('灰头土脸'); }
+    S.lastPost = K.post;
+    S.player.energy = clamp(S.player.energy - 5, 0, 100);
     S.stats.keys = (S.stats.keys || 0) + 1;
     if (K.result === '谈成') S.stats.keyWins = (S.stats.keyWins || 0) + 1;
     S.key = null;
@@ -2538,6 +2588,7 @@ function addNpcs(S, list, max) {
       close: !!n.close, mem: [], facts: [], lastSeen: S.stats.days, met: shortDate(S.date) + (S.date.y !== (S.startDate || S.date).y ? `（${S.date.y}年）` : ''),
       gender: guessGender(n.gender, n.tie, n.job, n.name), ageY: S.date.y
     });
+    S.npcs[S.npcs.length - 1].talk = talkOf(S.npcs[S.npcs.length - 1]);
     if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
 }
@@ -2588,6 +2639,627 @@ const NUDGES = [
 ];
 function pickNudge(rng) { return pick(rng || Math.random, NUDGES); }
 
+
+/* ================= 生活：住处、找活、兼职、乐子、商店、关系档 ================= */
+// 关系分五档：生分 / 点头之交 / 熟人 / 朋友 / 交心。家里人换个叫法，作用照档位算
+const TIERS = ['生分', '点头之交', '熟人', '朋友', '交心'];
+function relTier(v) { v = num(v); return v >= 80 ? 4 : v >= 55 ? 3 : v >= 30 ? 2 : v >= 12 ? 1 : 0; }
+const TIER_LEND = [0, 0.3, 0.8, 2, 4];          // 借钱上限：城市月薪的几倍
+const TIER_ASK = [15, 8, 0, -8, -15];           // 开口求人：难度加减
+const TIER_OFF = [1, 1, 0.9, 0.8, 0.7];         // 熟人价
+const TIER_GIFT = [0.5, 0.8, 1, 1.1, 1.2];      // 送礼、一起玩，关系涨多少
+const KIN_TIE = /家里人|妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅|姑|表|堂|亲戚|哥哥|姐姐|弟弟|妹妹|婶|侄|外甥/;
+function isKinNpc(n) { return KIN_TIE.test(String((n && n.tie) || '') + '|' + String((n && n.name) || '')) && !/同事|同学|朋友|室友|邻居/.test(String((n && n.tie) || '')); }
+function askMod(S, name) {
+  const n = name ? npcByName(S, name) : null;
+  return n ? TIER_ASK[relTier(n.rel)] : 0;
+}
+
+/* ---- 住处 ---- */
+const HOUSING = {
+  '城中村单间': { x: 0.55, en: -3, commute: 2, desc: '便宜，楼道里堆着电动车，隔音差，偶尔出点事', far: '离上班远' },
+  '合租次卧':   { x: 1,    en: 0,  commute: 0, desc: '跟不认识的人合租，厨房厕所共用', far: '通勤一般' },
+  '单身公寓':   { x: 1.7,  en: 2,  commute: -1, desc: '一个人一间，安静，可以带人回来', far: '离上班的地方近' },
+  '整租一居':   { x: 2.4,  en: 4,  commute: -1, desc: '一室一厅，体面，伴侣能一起住', far: '离上班的地方近' }
+};
+function homeTier(S) { const t = S.home && S.home.tier; return HOUSING[t] ? t : '合租次卧'; }
+function rentFor(S, tier) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const org = ORIGINS[S.origin] || ORIGINS['普通家庭'];
+  return Math.round(city.rent * org.rentCut * (HOUSING[tier] || HOUSING['合租次卧']).x / 50) * 50;
+}
+function moveCost(S, tier) { return Math.max(300, Math.round(rentFor(S, tier) * 0.5 / 50) * 50); }
+function moveHome(S, tier) {
+  if (!HOUSING[tier]) return { ok: false, why: '没有这种房子' };
+  if (S.home && S.home.kind === '买') return { ok: false, why: '已经住在自己的房子里了' };
+  if (homeTier(S) === tier) return { ok: false, why: '眼下住的就是这种' };
+  const cost = moveCost(S, tier);
+  if (S.player.money < cost) return { ok: false, why: `中介费加搬家要${cost}，账上只有${S.player.money}` };
+  const from = homeTier(S), r0 = S.ledger.rent;
+  S.player.money -= cost;
+  acct(S, '搬家', -cost, `${from}→${tier}`);
+  S.home.tier = tier; S.home.since = shortDate(S.date); S.home.place = '';
+  S.ledger.rent = rentFor(S, tier);
+  return { ok: true, from, tier, cost, rent: S.ledger.rent, rent0: r0,
+    note: `从${from}搬进了${tier}，中介费加搬家花了${cost}，房租从每月${r0}变成${S.ledger.rent}，账上剩${S.player.money}` };
+}
+
+/* ---- 岗位库：月薪是城市基准的倍数；strain 0轻 1一般 2累 3很累 ---- */
+const STRAIN = ['轻', '一般', '累', '很累'];
+const STRAIN_EN = [2, 0, -2, -4];                // 每个上班时段多耗的精力
+const STRAIN_PERF = [0.85, 1, 1.12, 1.2];        // 绩效涨得快慢
+const EDU_LV = { '大专': 0, '本科': 1, '硕士': 2 };
+const JOBS = [
+  { name: '外卖骑手', org: '配送站', lo: 1.1, hi: 1.4, attr: '体能', strain: 3, edu: 0, need: 18 },
+  { name: '店员', org: '便利店', lo: 0.8, hi: 0.95, attr: '表达', strain: 1, edu: 0, need: 18 },
+  { name: '收银', org: '超市', lo: 0.8, hi: 0.95, attr: '情绪', strain: 1, edu: 0, need: 16 },
+  { name: '客服', org: '客服中心', lo: 0.85, hi: 1, attr: '情绪', strain: 1, edu: 0, need: 22 },
+  { name: '销售', org: '销售公司', lo: 0.8, hi: 1.8, attr: '表达', strain: 2, edu: 0, need: 26, vary: 1 },
+  { name: '行政文员', org: '商贸公司', lo: 0.9, hi: 1.05, attr: '谋划', strain: 0, edu: 0, need: 28 },
+  { name: '前台', org: '写字楼', lo: 0.85, hi: 1, attr: '表达', strain: 0, edu: 0, need: 22 },
+  { name: '新媒体运营', org: '文化传媒', lo: 1, hi: 1.3, attr: '表达', strain: 1, edu: 1, need: 32 },
+  { name: '电商运营', org: '电商公司', lo: 1, hi: 1.4, attr: '谋划', strain: 2, edu: 0, need: 32 },
+  { name: '平面设计', org: '设计工作室', lo: 1, hi: 1.4, attr: '专业', strain: 1, edu: 0, need: 36 },
+  { name: '程序员', org: '科技公司', lo: 1.4, hi: 2.2, attr: '专业', strain: 2, edu: 1, need: 46 },
+  { name: '数据分析', org: '信息技术', lo: 1.2, hi: 1.8, attr: '谋划', strain: 2, edu: 1, need: 44 },
+  { name: '产品助理', org: '网络科技', lo: 1.1, hi: 1.5, attr: '谋划', strain: 2, edu: 1, need: 40 },
+  { name: '会计', org: '财务公司', lo: 1, hi: 1.3, attr: '谋划', strain: 1, edu: 1, need: 36 },
+  { name: '人事专员', org: '人力资源', lo: 0.95, hi: 1.2, attr: '情绪', strain: 1, edu: 1, need: 32 },
+  { name: '编辑文案', org: '出版文化', lo: 0.95, hi: 1.3, attr: '专业', strain: 1, edu: 1, need: 36 },
+  { name: '教培老师', org: '培训学校', lo: 1, hi: 1.5, attr: '表达', strain: 1, edu: 1, need: 32 },
+  { name: '银行柜员', org: '农商银行', lo: 1, hi: 1.2, attr: '情绪', strain: 1, edu: 1, need: 42 },
+  { name: '公务员', org: '街道办', lo: 0.9, hi: 1.1, attr: '谋划', strain: 0, edu: 1, need: 50, cert: 1 },
+  { name: '护工', org: '康复医院', lo: 1, hi: 1.3, attr: '体能', strain: 3, edu: 0, need: 24 },
+  { name: '帮厨', org: '酒楼', lo: 0.9, hi: 1.3, attr: '专业', strain: 2, edu: 0, need: 20 },
+  { name: '咖啡师', org: '咖啡馆', lo: 0.85, hi: 1.05, attr: '专业', strain: 1, edu: 0, need: 20 },
+  { name: '工厂普工', org: '电子厂', lo: 1, hi: 1.2, attr: '体能', strain: 3, edu: 0, need: 12 },
+  { name: '快递员', org: '快递网点', lo: 1.1, hi: 1.5, attr: '体能', strain: 2, edu: 0, need: 16 },
+  { name: '网约车司机', org: '出行公司', lo: 1.1, hi: 1.5, attr: '体能', strain: 2, edu: 0, need: 18 },
+  { name: '保险经纪', org: '保险代理', lo: 0.6, hi: 2, attr: '表达', strain: 1, edu: 0, need: 18, vary: 1 },
+  { name: '房产中介', org: '地产经纪', lo: 0.7, hi: 2, attr: '表达', strain: 2, edu: 0, need: 22, vary: 1 },
+  { name: '导购', org: '商场专柜', lo: 0.85, hi: 1.3, attr: '表达', strain: 1, edu: 0, need: 20, vary: 1 },
+  { name: '仓库管理', org: '物流园', lo: 0.95, hi: 1.15, attr: '谋划', strain: 1, edu: 0, need: 24 },
+  { name: '健身教练', org: '健身房', lo: 0.9, hi: 1.6, attr: '体能', strain: 2, edu: 0, need: 30, vary: 1 },
+  { name: '摄影师', org: '影像工作室', lo: 1, hi: 1.5, attr: '专业', strain: 1, edu: 0, need: 38 },
+  { name: '物业管家', org: '物业公司', lo: 0.85, hi: 1.05, attr: '情绪', strain: 1, edu: 0, need: 18 },
+  { name: '直播场控', org: '直播公司', lo: 0.9, hi: 1.4, attr: '表达', strain: 2, edu: 0, need: 24 }
+];
+const ORG_PRE = ['恒信', '启航', '华禾', '明远', '安达', '鑫和', '青禾', '卓越', '新程', '长风', '万象', '和润', '嘉禾', '致远', '光合', '同舟', '东升', '南星', '北辰', '一品', '众诚', '顺丰源', '福满', '宏图'];
+function jobByName(name) { return JOBS.find(j => j.name === name) || null; }
+function eduLv(S) { return num(EDU_LV[(S.player.bg || {}).edu]); }
+function postPay(S, j) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const ek = Math.sqrt((EDUS[(S.player.bg || {}).edu] || EDUS['本科']).pay);
+  return { lo: Math.round(city.pay * j.lo * ek / 100) * 100, hi: Math.round(city.pay * j.hi * ek / 100) * 100 };
+}
+function jobBoard(S, rng, force) {
+  rng = rng || Math.random;
+  const B = S.board;
+  if (B && !force && S.stats.days - num(B.day) < 7) return B;
+  const el = eduLv(S);
+  const pool = JOBS.filter(j => j.edu <= el && !(S.city === '老家县城' && /程序员|数据分析|产品助理|直播场控/.test(j.name)));
+  const w = pool.map(j => 1 + Math.max(0, attrVal(S, j.attr) - j.need) / 20 + rng());
+  const picked = [];
+  const idx = pool.map((j, i) => i).sort((a, b) => w[b] - w[a]);
+  // 前三个挑合适的，后两个随手抓：不全是顺手的活
+  for (const i of idx.slice(0, 3)) picked.push(pool[i]);
+  const rest = idx.slice(3);
+  while (picked.length < 5 && rest.length) picked.push(pool[rest.splice(Math.floor(rng() * rest.length), 1)[0]]);
+  S.boardId = num(S.boardId);
+  S.board = { day: S.stats.days, list: picked.map(j => {
+    S.boardId++;
+    const pay = postPay(S, j);
+    return { id: S.boardId, job: j.name, employer: pick(rng, ORG_PRE) + j.org, lo: pay.lo, hi: pay.hi,
+      attr: j.attr, strain: j.strain, need: j.need + (j.cert ? 0 : 0), vary: !!j.vary, cert: !!j.cert, state: '' };
+  }) };
+  return S.board;
+}
+function boardNext(S) { return S.board ? Math.max(0, 7 - (S.stats.days - num(S.board.day))) : 0; }
+function applyPost(S, id, rng) {
+  rng = rng || Math.random;
+  const P = S.board && S.board.list.find(x => x.id === id);
+  if (!P) return { ok: false, why: '这条招聘已经下了' };
+  if (P.state) return { ok: false, why: '这家已经投过了' };
+  if (P.cert && !hasItem(S, 'cert')) return { ok: false, why: '这个岗位要先考试，得先报个考证班' };
+  const ck = rollCheck(S, P.attr, P.need + (S.job.out ? 0 : 4), rng);
+  S.stats.checks++; if (ck.success) S.stats.wins++;
+  if (!ck.success) { P.state = '没回音'; return { ok: true, pass: false, ck, post: P }; }
+  const inD = rnd(rng, 1, 3), dt = addDays(S.date, inD);
+  P.state = '约了面试';
+  const title = `${P.employer}${P.job}的面试`;
+  S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title, kind: '面试', done: false, post: P.id });
+  return { ok: true, pass: true, ck, post: P, date: dt, title };
+}
+function findPost(S, id) { return (S.board && S.board.list.find(x => x.id === id)) || (S.lastPost && S.lastPost.id === id ? S.lastPost : null); }
+// 面试谈成：岗位、月薪、累不累都由引擎写进账
+function takePost(S, P, rng) {
+  rng = rng || Math.random;
+  const val = attrVal(S, P.attr);
+  const t = clamp((val - P.need) / 40 + 0.25 + rng() * 0.3, 0, 1);
+  const pay = Math.round((P.lo + (P.hi - P.lo) * t) / 100) * 100;
+  const J = S.job;
+  const lv = (S.player.资历天 || 0) >= 300 ? 1 : 0;
+  J.out = false; J.employer = P.employer.slice(0, 16); J.post = P.job.slice(0, 10);
+  J.lv = lv; J.title = LEVELS[lv].t; J.probation = true;
+  J.perf = 0; J.mood = 0; J.quarters = 0;
+  J.strain = P.strain; J.vary = P.vary ? 1 : 0; J.lib = P.job;
+  S.ledger.salary = pay;
+  S.ledger.base = Math.round(pay / LEVELS[lv].pay);
+  S.player.job = `${J.employer}的${J.post}`;
+  if (S.board) { const b = S.board.list.find(x => x.id === P.id); if (b) b.state = '入职了'; }
+  return { kind: '新工作', text: `${J.employer}，${J.post}，月薪${pay}，${STRAIN[P.strain]}活，先试用`, pay };
+}
+
+/* ---- 兼职：每周按次数结算 ---- */
+// days：星期几（0=周日）；slot：占哪个时段
+const GIGS = {
+  '家教':     { pay: 180, days: [2, 4], slot: '晚上', en: 5, attr: '表达', edu: 1, desc: '一周两个晚上，给初中生补课' },
+  '代驾':     { pay: 160, days: [1, 3, 5], slot: '深夜', en: 9, attr: '体能', desc: '一周三个晚上，接喝了酒的客人' },
+  '跑外卖':   { pay: 230, days: [0, 6], slot: '白天', en: 12, attr: '体能', desc: '周末两天，骑着电动车跑单' },
+  '摆摊':     { pay: 200, days: [5, 6], slot: '晚上', en: 7, attr: '表达', desc: '周五周六晚上，在夜市摆个小摊', vary: 1 },
+  '做翻译':   { pay: 260, days: [3], slot: '晚上', en: 6, attr: '专业', edu: 1, desc: '一周一个晚上，接点文档翻译' },
+  '剪视频':   { pay: 220, days: [2, 6], slot: '晚上', en: 6, attr: '专业', desc: '一周两个晚上，帮人剪短视频' },
+  '发传单':   { pay: 100, days: [6], slot: '白天', en: 6, attr: '体能', desc: '周六白天，在商场门口发传单' },
+  '超市理货': { pay: 140, days: [0], slot: '白天', en: 8, attr: '体能', desc: '周日白天，帮超市上货' },
+  '写稿':     { pay: 200, days: [4], slot: '晚上', en: 6, attr: '专业', desc: '一周一个晚上，给公众号写稿' },
+  '陪练':     { pay: 150, days: [0], slot: '晚上', en: 5, attr: '情绪', desc: '周日晚上，陪人练口语、练车' },
+  '活动礼仪': { pay: 280, days: [6], slot: '白天', en: 7, attr: '表达', desc: '周六白天，商场活动站台' },
+  '代写简历': { pay: 120, days: [1], slot: '晚上', en: 4, attr: '谋划', desc: '一周一个晚上，在网上接单' }
+};
+const WD_NAME = ['日', '一', '二', '三', '四', '五', '六'];
+function gigPay(S, name) {
+  const g = GIGS[name], city = CITIES[S.city] || CITIES['新一线'];
+  return Math.round(g.pay * city.pay / 4800 * (1 + (attrVal(S, g.attr) - 30) / 160) / 10) * 10;
+}
+function gigWhen(name) { const g = GIGS[name]; return `每周${g.days.slice().sort((a, b) => (a + 6) % 7 - (b + 6) % 7).map(d => '周' + WD_NAME[d]).join('、')}${g.slot}`; }
+function takeGig(S, name) {
+  const g = GIGS[name];
+  if (!g) return { ok: false, why: '没有这种兼职' };
+  S.gigs = S.gigs || [];
+  if (S.gigs.some(x => x.name === name)) return { ok: false, why: '已经在做了' };
+  if (S.gigs.length >= 2) return { ok: false, why: '最多同时做两份' };
+  if (g.edu && eduLv(S) < g.edu) return { ok: false, why: '这活要本科以上' };
+  const clash = S.gigs.find(x => GIGS[x.name].slot === g.slot && GIGS[x.name].days.some(d => g.days.includes(d)));
+  if (clash) return { ok: false, why: `跟${clash.name}的时间撞了` };
+  S.gigs.push({ name, since: shortDate(S.date), times: 0, owed: 0, total: 0 });
+  return { ok: true, note: `接了${name}：${gigWhen(name)}，一次大概${gigPay(S, name)}` };
+}
+function dropGig(S, name) {
+  S.gigs = (S.gigs || []);
+  const i = S.gigs.findIndex(x => x.name === name);
+  if (i < 0) return null;
+  const g = S.gigs.splice(i, 1)[0];
+  if (g.owed) { S.player.money += g.owed; acct(S, `兼职·${g.name}`, g.owed, '结清'); }
+  return g;
+}
+// 今天哪份兼职占了哪个时段
+function gigToday(S) {
+  const w = dOf(S.date).getDay();
+  return (S.gigs || []).filter(x => GIGS[x.name] && GIGS[x.name].days.includes(w));
+}
+
+/* ---- 物品 ---- */
+// keep：耐用品；gift：专门送人；tags：送礼时对心意用
+const ITEMS = [
+  { id: 'fruit', cat: '吃的喝的', name: '一箱水果', price: 120, use: { en: 4 }, tags: ['健康', '实用'] },
+  { id: 'snack', cat: '吃的喝的', name: '一袋零食', price: 60, use: { en: 3 }, tags: ['好吃', '孩子'] },
+  { id: 'tea', cat: '吃的喝的', name: '一盒好茶叶', price: 380, use: { en: 5 }, tags: ['体面', '健康'] },
+  { id: 'baijiu', cat: '吃的喝的', name: '两瓶白酒', price: 520, use: { en: 2 }, tags: ['体面', '爱喝'] },
+  { id: 'coffee', cat: '吃的喝的', name: '一盒挂耳咖啡', price: 90, use: { en: 4 }, tags: ['实用'] },
+  { id: 'cake', cat: '吃的喝的', name: '一个蛋糕', price: 200, use: { en: 3 }, tags: ['好吃', '孩子', '心意'] },
+  { id: 'suit', cat: '衣服', name: '一身正装', price: 900, keep: 1, fx: { formal: 5 }, tags: ['体面'] },
+  { id: 'sport', cat: '衣服', name: '一套运动服', price: 300, keep: 1, fx: { gymX: 0.15 }, tags: ['健康', '实用'] },
+  { id: 'coat', cat: '衣服', name: '一件好看的外套', price: 700, keep: 1, fx: { charm: 4 }, tags: ['体面', '心意'] },
+  { id: 'shoes', cat: '衣服', name: '一双好鞋', price: 500, keep: 1, fx: { charm: 2 }, tags: ['体面', '实用'] },
+  { id: 'pc_old', cat: '数码', name: '二手电脑', price: 1800, keep: 1, fx: { workX: 0.08 }, wear: 720, tags: ['实用'] },
+  { id: 'pc_new', cat: '数码', name: '新电脑', price: 6500, keep: 1, fx: { workX: 0.15 }, wear: 1095, tags: ['实用', '体面'] },
+  { id: 'phones', cat: '数码', name: '一副好耳机', price: 900, keep: 1, fx: { sleep: 1 }, tags: ['实用', '心意'] },
+  { id: 'camera', cat: '数码', name: '一台相机', price: 4200, keep: 1, fx: { camera: 0.2 }, wear: 1460, tags: ['体面'] },
+  { id: 'tablet', cat: '数码', name: '一台平板', price: 2600, keep: 1, fx: { workX: 0.05 }, wear: 1095, tags: ['实用', '孩子'] },
+  { id: 'book', cat: '书和课', name: '几本专业书', price: 150, use: { attr: { '专业': 0.6 } }, tags: ['上进'] },
+  { id: 'book2', cat: '书和课', name: '几本闲书', price: 90, use: { attr: { '情绪': 0.4 }, en: 2 }, tags: ['上进', '心意'] },
+  { id: 'course', cat: '书和课', name: '一门网课', price: 699, use: { attr: { '专业': 1.2, '谋划': 0.4 } }, tags: ['上进'] },
+  { id: 'speak', cat: '书和课', name: '口才课', price: 899, use: { attr: { '表达': 1.2 } }, tags: ['上进'] },
+  { id: 'cert', cat: '书和课', name: '考证班', price: 3800, keep: 1, fx: { cert: 1 }, tags: ['上进'], note: '考公务员、考证的门槛' },
+  { id: 'bed', cat: '家用', name: '一张好床垫', price: 2200, keep: 1, fx: { sleep: 2 }, tags: ['实用', '健康'] },
+  { id: 'plant', cat: '家用', name: '几盆绿植', price: 120, keep: 1, fx: { sleep: 0.5 }, tags: ['心意'] },
+  { id: 'cooker', cat: '家用', name: '一个小电饭煲', price: 260, keep: 1, fx: { sleep: 0.5 }, tags: ['实用'] },
+  { id: 'fan', cat: '家用', name: '一台空气净化器', price: 1200, keep: 1, fx: { sleep: 1 }, tags: ['实用', '健康'] },
+  { id: 'check', cat: '健康', name: '体检套餐', price: 680, use: { heal: 1, eased: 1 }, tags: ['健康'] },
+  { id: 'massage', cat: '健康', name: '按摩卡（三次）', price: 450, use: { en: 8, heal: 2 }, uses: 3, tags: ['健康'] },
+  { id: 'waist', cat: '健康', name: '护腰', price: 260, keep: 1, fx: { back: 1 }, tags: ['健康', '实用'] },
+  { id: 'vitamin', cat: '健康', name: '一瓶维生素', price: 160, use: { en: 3, heal: 1 }, tags: ['健康'] },
+  { id: 'flower', cat: '礼物', name: '一束花', price: 199, gift: 1, tags: ['心意', '浪漫'] },
+  { id: 'jewel', cat: '礼物', name: '一条项链', price: 1600, gift: 1, tags: ['浪漫', '体面'] },
+  { id: 'perfume', cat: '礼物', name: '一瓶香水', price: 780, gift: 1, tags: ['浪漫', '体面'] },
+  { id: 'smoke', cat: '礼物', name: '一条好烟', price: 650, gift: 1, tags: ['体面', '爱喝'] },
+  { id: 'toy', cat: '礼物', name: '一个玩具', price: 260, gift: 1, tags: ['孩子'] },
+  { id: 'wine', cat: '礼物', name: '一瓶红酒', price: 420, gift: 1, tags: ['体面', '浪漫', '爱喝'] },
+  { id: 'scarf', cat: '礼物', name: '一条羊毛围巾', price: 360, gift: 1, tags: ['实用', '心意'] },
+  { id: 'health', cat: '礼物', name: '一盒保健品', price: 480, gift: 1, tags: ['健康', '体面'] }
+];
+const SHOP_CATS = ['吃的喝的', '衣服', '数码', '书和课', '家用', '健康', '礼物'];
+const CITY_PRICE = { '一线': 1.15, '新一线': 1, '老家县城': 0.85 };
+// 心意：礼物的标签对上他在意的
+const TAG_CARE = {
+  '实用': /省钱|实用|过日子|钱|节俭|房|日子/, '体面': /面子|体面|排场|名声|地位|场面|规矩/, '健康': /健康|身体|养生|病|睡/,
+  '孩子': /孩子|娃|儿子|女儿|小孩|宝宝/, '好吃': /吃|美食|嘴|零食/, '浪漫': /感情|浪漫|对象|心意|陪|在乎/,
+  '爱喝': /酒|喝|烟/, '上进': /学习|上进|考|前途|工作|事业|升/, '心意': /心意|记得|被重视|陪|朋友|感情/
+};
+// 熟人价：认识的人里干这一行的
+const CAT_JOB = { '吃的喝的': /超市|水果|餐|饭|奶茶|烟酒|零食|食品|茶|酒/, '衣服': /服装|衣|导购|专柜|商场|鞋/, '数码': /数码|手机|电脑|电子|程序|科技|IT/, '书和课': /书店|老师|培训|教|讲师/, '家用': /家居|家具|建材|五金|电器/, '健康': /医|药|护|按摩|理疗|体检|健身/, '礼物': /花店|礼品|珠宝|首饰|香水/ };
+function itemOf(id) { return ITEMS.find(x => x.id === id) || null; }
+function itemPrice(S, it) { return Math.round(it.price * (CITY_PRICE[S.city] || 1) / 10) * 10; }
+function shopFriend(S, cat) {
+  const re = CAT_JOB[cat];
+  if (!re) return null;
+  const c = S.npcs.filter(n => re.test(String(n.job || '')) && relTier(n.rel) >= 2).sort((a, b) => b.rel - a.rel)[0];
+  return c ? { name: c.name, off: TIER_OFF[relTier(c.rel)] } : null;
+}
+function bag(S) { if (!S.bag) S.bag = []; return S.bag; }
+function hasItem(S, id) { return bag(S).some(b => b.id === id && b.keep); }
+function buyItem(S, id, viaFriend) {
+  const it = itemOf(id);
+  if (!it) return { ok: false, why: '没有这样东西' };
+  let price = itemPrice(S, it);
+  const fr = viaFriend ? shopFriend(S, it.cat) : null;
+  if (fr) price = Math.round(price * fr.off / 10) * 10;
+  if (S.player.money < price) return { ok: false, why: `要${price}，账上只有${S.player.money}` };
+  if (it.keep && hasItem(S, id)) return { ok: false, why: `已经有${it.name}了` };
+  S.player.money -= price;
+  acct(S, `买${it.name}`, -price, fr ? `${fr.name}那儿拿的，${Math.round(fr.off * 10)}折` : '');
+  S.bagId = num(S.bagId) + 1;
+  const b = { uid: S.bagId, id, name: it.name, cat: it.cat, keep: !!it.keep, gift: !!it.gift, tags: it.tags.slice(), price, day: S.stats.days, date: shortDate(S.date), uses: it.uses || 1 };
+  bag(S).push(b);
+  if (fr) { const n = npcByName(S, fr.name); if (n) { n.lastSeen = S.stats.days; npcMem(S, n, `主角在他那儿买了${it.name}，给了熟人价`); } }
+  return { ok: true, item: b, price, friend: fr };
+}
+// 耐用品加在一起的效果；旧了的减半
+function bagFx(S) {
+  const fx = {};
+  for (const b of bag(S)) {
+    if (!b.keep) continue;
+    const it = itemOf(b.id); if (!it || !it.fx) continue;
+    const old = it.wear && S.stats.days - b.day > it.wear;
+    for (const k in it.fx) fx[k] = num(fx[k]) + it.fx[k] * (old ? 0.5 : 1);
+  }
+  return fx;
+}
+function itemOld(S, b) { const it = itemOf(b.id); return !!(it && it.wear && S.stats.days - b.day > it.wear); }
+function useItem(S, uid) {
+  const i = bag(S).findIndex(b => b.uid === uid);
+  if (i < 0) return { ok: false, why: '包里没有这样东西' };
+  const b = bag(S)[i], it = itemOf(b.id);
+  if (!it || b.keep || it.gift || !it.use) return { ok: false, why: b.keep ? '这是一直摆着用的' : '这是送人的' };
+  const u = it.use, p = S.player, done = [];
+  if (u.en) { p.energy = clamp(p.energy + u.en, 0, energyCap(S)); done.push(`精力+${u.en}`); }
+  if (u.attr) for (const k in u.attr) { p.attrF[k] = r2(num(p.attrF[k]) + u.attr[k]); p.attrs[k] = Math.round(p.attrF[k]); done.push(`${k}+${u.attr[k]}`); }
+  if (u.heal && S.status.length) { for (const st of S.status) st.days = Math.max(1, st.days - u.heal); done.push('病好得快了点'); }
+  if (u.eased && S.chronic.length) { const c = S.chronic.find(x => !num(x.eased)); if (c) { c.eased = 1; done.push(`${c.name}松了些`); } }
+  b.uses = num(b.uses) - 1;
+  if (b.uses <= 0) bag(S).splice(i, 1);
+  return { ok: true, item: b, note: `用了${b.name}${done.length ? '：' + done.join('，') : ''}` };
+}
+// 送礼：价钱占他月收入多少、合不合心意、关系到哪一档
+function careTags(n) {
+  const c = String(n.care || '') + '|' + String(n.note || '');
+  const hit = Object.keys(TAG_CARE).filter(t => TAG_CARE[t].test(c));
+  const tie = String(n.tie || '');
+  if (KIN_TIE.test(tie) && /妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅|姑|婶/.test(tie + n.name)) hit.push('健康', '实用');
+  if (/对象|爱人|老公|老婆|女朋友|男朋友|伴侣/.test(tie)) hit.push('浪漫', '心意');
+  if (/孩子|儿子|女儿/.test(n.note || '') || /孩子/.test(n.care || '')) hit.push('孩子');
+  return [...new Set(hit)];
+}
+function giftValue(S, n, b) {
+  const city = CITIES[S.city] || CITIES['新一线'];
+  const tier = relTier(n.rel);
+  const ratio = b.price / city.pay;
+  let g = clamp(1 + ratio * 26, 1, 9);
+  const care = careTags(n);
+  const match = b.tags.filter(t => care.includes(t));
+  if (match.length) g *= 2;
+  g *= TIER_GIFT[tier];
+  let awkward = false;
+  if (ratio > 0.25 && tier <= 2) { awkward = true; g = Math.min(g, 1.5); }
+  if (n.giftItemDay && S.stats.days - n.giftItemDay < 7) g *= 0.4;
+  return { gain: Math.round(clamp(g, 0.5, 12) * 10) / 10, match, awkward, tier };
+}
+function giveItem(S, name, uid, rng) {
+  rng = rng || Math.random;
+  const n = npcByName(S, name);
+  if (!n) return { ok: false, why: '没有这个人' };
+  const i = bag(S).findIndex(b => b.uid === uid);
+  if (i < 0) return { ok: false, why: '包里没有这样东西' };
+  const b = bag(S)[i];
+  const v = giftValue(S, n, b);
+  // 太贵、关系又不到：有一半会被推回来
+  const back = v.awkward && rng() < 0.5;
+  if (back) {
+    n.rel = clamp(r2(n.rel + 0.5), 0, 100);
+    npcMem(S, n, `主角送来${b.name}，太贵重了，没收，推了回去`);
+    return { ok: true, back: true, item: b, gain: 0.5, match: v.match, awkward: true,
+      note: `${n.name}觉得${b.name}太贵重，没收，东西还在主角手里` };
+  }
+  bag(S).splice(i, 1);
+  n.rel = clamp(r2(n.rel + v.gain), 0, 100);
+  n.giftItemDay = S.stats.days; n.lastSeen = S.stats.days;
+  npcMem(S, n, `收了主角送的${b.name}${v.match.length ? '，正合心意' : ''}`);
+  const how = v.match.length ? `正对上他在意的（${v.match.join('、')}）` : '没特别对上他在意的';
+  return { ok: true, back: false, item: b, gain: v.gain, match: v.match, awkward: v.awkward,
+    note: `${n.name}收下了${b.name}，${how}${v.awkward ? '，不过有点太贵重，他收得不太自在' : ''}；关系+${v.gain}` };
+}
+
+/* ---- 找点乐子 ---- */
+// cost：每人；slot 只是说明；fx：引擎结算；rel：一起去的人关系涨多少
+const FUN = [
+  { id: 'movie', name: '看电影', cost: 50, per: 1, when: '半天', fx: { en: 6 }, rel: 2 },
+  { id: 'ktv', name: '唱KTV', cost: 120, per: 1, when: '晚上', fx: { en: 5, attr: { '表达': 0.3 } }, rel: 3 },
+  { id: 'gym', name: '去健身房', cost: 0, card: 200, when: '一个时段', fx: { en: -2, attr: { '体能': 0.4 }, cap: 1 }, rel: 1 },
+  { id: 'ball', name: '打球跑步', cost: 0, when: '一个时段', fx: { en: -3, attr: { '体能': 0.3 } }, rel: 2 },
+  { id: 'jubensha', name: '剧本杀桌游', cost: 100, per: 1, when: '晚上', fx: { en: 3, attr: { '谋划': 0.3 } }, rel: 3, meet: 0.35 },
+  { id: 'bar', name: '去酒吧', cost: 150, per: 1, when: '晚上', fx: { en: 4, drunk: 0.35 }, rel: 3, meet: 0.35 },
+  { id: 'walk', name: '公园江边走走', cost: 0, when: '半天', fx: { en: 4, attr: { '情绪': 0.2 } }, rel: 2 },
+  { id: 'game', name: '打游戏网吧', cost: 20, per: 1, when: '晚上', fx: { en: 5, game: 1 }, rel: 2 },
+  { id: 'show', name: '演唱会看展', cost: 500, per: 1, when: '一天', fx: { en: 10, attr: { '情绪': 0.5 } }, rel: 4 },
+  { id: 'trip', name: '短途旅行', cost: 1300, per: 1, when: '周末两天', fx: { en: 20, heal: 3 }, rel: 5 },
+  { id: 'fish', name: '钓鱼', cost: 30, per: 1, when: '半天', fx: { en: 6, attr: { '情绪': 0.3 } }, rel: 2 },
+  { id: 'cafe', name: '喝茶咖啡馆', cost: 40, per: 1, when: '半天', fx: { en: 3 }, rel: 3 }
+];
+function funOf(id) { return FUN.find(x => x.id === id) || null; }
+function funCost(S, f, k, treat) {
+  const pk = CITY_PRICE[S.city] || 1;
+  let c = Math.round(f.cost * pk / 10) * 10 * (f.per ? (treat ? 1 + k : 1) : 1);
+  if (f.card && !(S.gym && S.gym.until > S.stats.days)) c += Math.round(f.card * pk / 10) * 10;
+  return c;
+}
+function doFun(S, id, withNames, treat, rng) {
+  rng = rng || Math.random;
+  const f = funOf(id);
+  if (!f) return { ok: false, why: '没有这个' };
+  const p = S.player;
+  // 叫的人来不来，看关系
+  const asked = (withNames || []).map(x => npcByName(S, x)).filter(Boolean).slice(0, 3);
+  const came = [], no = [];
+  for (const n of asked) {
+    const t = relTier(n.rel);
+    const yes = t >= 2 || rng() < (t === 1 ? 0.6 : 0.3);
+    (yes ? came : no).push(n);
+  }
+  const cost = funCost(S, f, came.length, treat);
+  if (p.money < cost) return { ok: false, why: `要${cost}，账上只有${p.money}` };
+  const out = [];
+  if (cost) { p.money -= cost; acct(S, f.name, -cost, came.length ? `${treat ? '请' : '跟'}${came.map(n => n.name).join('、')}` : ''); out.push(`花了${cost}`); }
+  if (f.card && !(S.gym && S.gym.until > S.stats.days)) { S.gym = { until: S.stats.days + 30, cap: num(S.gym && S.gym.cap) }; out.push('办了一张健身月卡'); }
+  // 同一样天天去，效果减半
+  S.funLog = (S.funLog || []).filter(x => S.stats.days - x.day <= 7);
+  const same = S.funLog.filter(x => x.id === id && S.stats.days - x.day <= 3).length;
+  const k = same ? 0.5 : 1;
+  S.funLog.push({ id, day: S.stats.days });
+  const fx = f.fx;
+  if (fx.en) { const e = Math.round(fx.en * (fx.en > 0 ? k : 1)); p.energy = clamp(p.energy + e, 0, energyCap(S)); out.push(`精力${e >= 0 ? '+' : ''}${e}`); }
+  if (fx.attr) for (const a in fx.attr) { const v = r2(fx.attr[a] * k); p.attrF[a] = r2(num(p.attrF[a]) + v); p.attrs[a] = Math.round(p.attrF[a]); out.push(`${a}+${v}`); }
+  if (fx.cap) { S.gym = S.gym || { until: S.stats.days + 30, cap: 0 }; if (num(S.gym.cap) < 8) { S.gym.cap = num(S.gym.cap) + 0.25; } }
+  if (fx.heal && S.status.length) { for (const st of S.status) st.days = Math.max(1, st.days - fx.heal); out.push('身上的毛病松快了'); }
+  if (fx.drunk && rng() < fx.drunk) { S.flags.hangover = 1; out.push('喝多了，明天要难受'); }
+  if (fx.game) {
+    const n7 = S.funLog.filter(x => x.id === id).length;
+    if (n7 >= 3) { S.ideal.progress = r2(Math.max(0, S.ideal.progress - 1)); out.push('这礼拜玩得太多，正事落下了'); }
+  }
+  const rel = [];
+  for (const n of came) {
+    const g = r2(f.rel * TIER_GIFT[relTier(n.rel)] * k + (treat ? 1 : 0));
+    n.rel = clamp(r2(n.rel + g), 0, 100); n.lastSeen = S.stats.days;
+    npcMem(S, n, `跟主角一起${f.name}${treat ? '，主角请的' : ''}`);
+    rel.push(`${n.name}+${g}`);
+  }
+  for (const n of no) npcMem(S, n, `主角叫他去${f.name}，没去`);
+  const meet = f.meet && rng() < f.meet;
+  if (same) out.push('这几天去得勤，没那么新鲜了');
+  return { ok: true, fun: f, cost, came: came.map(n => n.name), no: no.map(n => n.name), meet, rel,
+    note: `${f.name}（${f.when}）${came.length ? `，${came.map(n => n.name).join('、')}一起${treat ? '，主角请客' : '，AA'}` : '，一个人'}${no.length ? `；叫了${no.map(n => n.name).join('、')}，没来` : ''}。${out.join('，')}${rel.length ? `；关系 ${rel.join(' ')}` : ''}${meet ? '；这回认识了一个新的人（写进 newNpcs）' : ''}` };
+}
+
+/* ---- 人物：最近在忙什么、说话习惯 ---- */
+const BUSY = {
+  '学生': ['在准备期末', '在赶论文', '在找实习', '在备考研究生', '在忙社团的事'],
+  '上班': ['这阵子天天加班', '在赶一个项目', '刚换了部门，还在适应', '跟领导较着劲', '在偷偷看机会想跳槽', '年假请不下来，憋着火', '在带一个新来的'],
+  '长辈': ['在拾掇老家的院子', '腰不太好，在调养', '在帮亲戚带孩子', '迷上了跳广场舞', '在操心家里装修', '在张罗一门亲戚的喜事'],
+  '生意': ['店里生意淡，在发愁', '在看一个新铺面', '在跟供货的扯皮', '刚进了一批货', '在琢磨换个做法'],
+  '通用': ['刚跟对象吵了架', '在考一个证', '在学车', '在相亲', '刚养了只猫', '在攒钱买车', '在减肥', '在找房子准备搬家', '家里有点事，焦头烂额', '最近迷上了钓鱼', '在装修新租的房子', '在追一部剧']
+};
+function busyKind(n) {
+  const t = String(n.tie || '') + '|' + String(n.job || '');
+  const age = num(n.age);
+  if (/学生|大学|研究生|中学/.test(t)) return '学生';
+  if ((KIN_TIE.test(t) && /妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅|姑|婶/.test(t + n.name)) || age >= 52) return '长辈';
+  if (/老板|店|摊|生意|个体/.test(t)) return '生意';
+  if (/同事|上司|领导|公司|职员|工程师|运营|设计|销售|经理|主管|编辑/.test(t)) return '上班';
+  return '';
+}
+function npcBusy(S, n, rng) {
+  rng = rng || Math.random;
+  const k = busyKind(n);
+  const pool = (k ? BUSY[k] : []).concat(BUSY['通用']);
+  const kids = /孩子|儿子|女儿/.test(String(n.note || '') + (n.facts || []).join('')) || num(n.age) >= 32;
+  if (kids && k !== '学生') pool.push('在忙孩子的事', '孩子病了，在家陪着');
+  let t = pick(rng, pool);
+  if (n.busy && n.busy.t === t) t = pick(rng, pool);
+  n.busy = { t, until: S.stats.days + rnd(rng, 18, 35) };
+  return n.busy;
+}
+const TALK_BASE = {
+  '长辈': '发长句，标点打全，爱用感叹号，偶尔一句话分好几段说，叫主角的小名或者全名',
+  '上班': '说话客气，带"哈""辛苦了""收到"，事说清楚就停',
+  '平辈': '短句，不爱打标点，一句话拆成几条连着发',
+  '对象': '说话随意，带撒娇或者抱怨，会接着上次没说完的话'
+};
+const TALK_EXTRA = ['爱用"哈哈哈"', '爱回"嗯嗯""好嘞"', '说话直，不绕弯子', '爱用反问', '爱带一两个方言词', '爱发省略号', '爱用表情代替说话（写成[捂脸][笑哭]这种）', '话少，能一个字就不两个字', '爱开玩笑损人', '说话慢条斯理，爱讲道理'];
+function hashStr(s) { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+function talkOf(n) {
+  const k = busyKind(n);
+  const tie = String(n.tie || '');
+  const base = /对象|爱人|老公|老婆|女朋友|男朋友|伴侣/.test(tie) ? '对象' : k === '长辈' ? '长辈' : /同事|上司|领导|老板|客户|房东|HR/.test(tie) ? '上班' : '平辈';
+  return `${TALK_BASE[base]}；${TALK_EXTRA[hashStr(n.name) % TALK_EXTRA.length]}`;
+}
+function fixNpcLife(S, n, rng) {
+  if (!n.talk) n.talk = talkOf(n);
+  if (!n.busy || num(n.busy.until) <= S.stats.days) npcBusy(S, n, rng);
+}
+
+/* ---- 别人主动找你：约饭、吐槽、借东西、问件事 ---- */
+const PING_TOPICS = [
+  { t: '约饭', min: 2, w: 3, text: '最近有空没 出来吃个饭' },
+  { t: '吐槽自己的事', min: 2, w: 3, text: '跟你说个事 气死我了' },
+  { t: '问你件事', min: 1, w: 2, text: '在吗 问你个事' },
+  { t: '借个东西', min: 2, w: 1, text: '你那有没有充电宝 借我用两天' },
+  { t: '分享个东西', min: 3, w: 2, text: '刚看到个东西 想起你了' },
+  { t: '约周末出去', min: 3, w: 2, text: '周末有安排没 出去转转' },
+  { t: '问你近况', min: 2, w: 2, text: '最近咋样 好久没你消息了' }
+];
+function pingTick(S, rng) {
+  if (S.stats.days - num(S.flags.pingDay) < 3 || rng() > 0.18) return null;
+  const cand = S.npcs.filter(n => relTier(n.rel) >= 1 && S.stats.days - num(n.lastSeen) >= 3 && S.stats.days - num(n.pingDay) >= 10 && !/前任|前妻|前夫/.test(n.tie || ''));
+  if (!cand.length) return null;
+  const w = cand.map(n => relTier(n.rel) * relTier(n.rel) + 0.5);
+  let r = rng() * w.reduce((a, b) => a + b, 0), n = cand[0];
+  for (let i = 0; i < cand.length; i++) { r -= w[i]; if (r <= 0) { n = cand[i]; break; } }
+  const tier = relTier(n.rel);
+  const tops = PING_TOPICS.filter(x => tier >= x.min);
+  let tw = tops.reduce((a, x) => a + x.w, 0) * rng(), tp = tops[0];
+  for (const x of tops) { tw -= x.w; if (tw <= 0) { tp = x; break; } }
+  fixNpcLife(S, n, rng);
+  n.pingDay = S.stats.days; S.flags.pingDay = S.stats.days;
+  S.pings = (S.pings || []).filter(p => S.stats.days - p.day <= 6).concat([{ who: n.name, topic: tp.t, busy: n.busy.t, day: S.stats.days, fall: tp.text }]).slice(-3);
+  return { t: '人情', s: `${n.name}发消息来（${tp.t}）` };
+}
+// 写故事那一段没替他写那条消息：引擎补一条
+function settlePings(S, msgs0) {
+  const P = S.pings || [];
+  for (const p of P) {
+    const got = S.msgs.slice(msgs0).some(m => m.from === p.who && !m.me);
+    if (!got) S.msgs.push({ from: p.who, text: p.fall, date: shortDate(S.date), kind: 'chat', read: false });
+  }
+  S.pings = [];
+}
+
+/* ---- 关系好的人主动帮忙 / 请柬 ---- */
+const INVITES = ['结婚', '搬新家', '孩子满月', '开业'];
+function helpTick(S, rng) {
+  const p = S.player, L = S.ledger;
+  const ev = [];
+  // 账上见底：朋友、交心的人可能问一句，或者直接转一笔（算借）
+  if (p.money < (L.rent + L.living) * 0.6 && S.stats.days - num(S.flags.helpDay) >= 20 && rng() < 0.05) {
+    const c = S.npcs.filter(n => relTier(n.rel) >= 3 && !/前任|前妻|前夫/.test(n.tie || '')).sort((a, b) => b.rel - a.rel);
+    const n = c[0] && (relTier(c[0].rel) === 4 || rng() < 0.5) ? c[0] : null;
+    if (n) {
+      S.flags.helpDay = S.stats.days;
+      const city = CITIES[S.city] || CITIES['新一线'];
+      const amt = Math.min(lendCap(S, n), Math.round(city.pay * (relTier(n.rel) === 4 ? 0.8 : 0.4) / 100) * 100);
+      if (amt > 0 && rng() < 0.6) {
+        const py = payIn(S, n.name, amt, '转账', '先拿着用 不急着还', 'help');
+        if (py) { py.loan = 1; S.msgs.push({ from: n.name, text: '听说你最近紧 先拿着用 不急着还', date: shortDate(S.date), kind: 'chat', read: false, payId: py.id }); ev.push({ t: '人情', s: `${n.name}听说你手头紧，转来${py.amount}，说不急着还` }); }
+      } else {
+        S.msgs.push({ from: n.name, text: '最近手头是不是紧 有事你说话', date: shortDate(S.date), kind: 'chat', read: false });
+        ev.push({ t: '人情', s: `${n.name}发消息问你手头紧不紧` });
+      }
+    }
+  }
+  // 介绍个活
+  if (S.stats.days - num(S.flags.introDay) >= 45 && rng() < 0.012) {
+    const c = S.npcs.filter(n => relTier(n.rel) >= 3);
+    const n = c.length ? pick(rng, c) : null;
+    if (n) {
+      S.flags.introDay = S.stats.days;
+      const gname = pick(rng, Object.keys(GIGS));
+      S.gigOffer = { who: n.name, gig: gname, day: S.stats.days };
+      S.msgs.push({ from: n.name, text: `我这有个${gname}的活 你要不要接`, date: shortDate(S.date), kind: 'chat', read: false });
+      ev.push({ t: '机会', s: `${n.name}给你介绍了一个${gname}的活（${gigWhen(gname)}）` });
+    }
+  }
+  // 请柬：熟人以上
+  if (S.stats.days - num(S.flags.inviteDay) >= 40 && rng() < 0.008) {
+    const c = S.npcs.filter(n => relTier(n.rel) >= 2 && !/前任|前妻|前夫/.test(n.tie || ''));
+    const n = c.length ? pick(rng, c) : null;
+    if (n) {
+      S.flags.inviteDay = S.stats.days;
+      const what = pick(rng, INVITES);
+      const dt = addDays(S.date, rnd(rng, 6, 15));
+      S.appts.push({ y: dt.y, m: dt.m, d: dt.d, title: `${n.name}${what}请吃饭`, kind: '随礼', done: false, wed: { who: n.name, what } });
+      S.msgs.push({ from: n.name, text: `${dt.m}月${dt.d}号我${what} 请大家吃个饭 你一定来啊`, date: shortDate(S.date), kind: 'chat', read: false });
+      ev.push({ t: '人情', s: `${n.name}${what}，${dt.m}月${dt.d}日请吃饭，叫了你` });
+    }
+  }
+  return ev;
+}
+function giveLiJin(S, name, amount, what) {
+  const n = npcByName(S, name);
+  amount = Math.round(num(amount));
+  if (!n) return { ok: false, why: '没有这个人' };
+  if (amount < 0 || S.player.money < amount) return { ok: false, why: `账上只有${S.player.money}` };
+  const city = CITIES[S.city] || CITIES['新一线'];
+  if (amount) { S.player.money -= amount; acct(S, '随礼', -amount, `${n.name}${what || ''}`); }
+  const g = amount ? r2(clamp(1.5 + amount / city.pay * 12, 1.5, 9) * TIER_GIFT[relTier(n.rel)]) : 0.5;
+  n.rel = clamp(r2(n.rel + g), 0, 100); n.lastSeen = S.stats.days;
+  npcMem(S, n, `${what || '办事'}那天主角来了${amount ? `，随了${amount}` : '，没随礼'}`);
+  return { ok: true, gain: g, note: `去了${n.name}的${what || '饭局'}${amount ? `，随礼${amount}` : '，没随礼'}；关系+${g}，账上剩${S.player.money}` };
+}
+
+/* ---- 每天挂在日历上的 ---- */
+function lifeTick(S, rng) {
+  const ev = [];
+  // 兼职：做了就记上，周日一起结
+  const w = dOf(S.date).getDay();
+  for (const g of gigToday(S)) {
+    const G = GIGS[g.name];
+    let pay = gigPay(S, g.name);
+    if (G.vary) pay = Math.round(pay * (0.6 + rng() * 0.8) / 10) * 10;
+    g.owed = num(g.owed) + pay; g.times = num(g.times) + 1;
+  }
+  if (w === 0) {
+    for (const g of (S.gigs || [])) {
+      if (!g.owed) continue;
+      const m0 = S.player.money;
+      S.player.money += g.owed;
+      acct(S, `兼职·${g.name}`, g.owed, '这一周', m0);
+      S.flags.monthNet += g.owed;
+      g.total = num(g.total) + g.owed;
+      ev.push({ t: '钱', s: `${g.name}这周挣了${g.owed}` });
+      g.owed = 0;
+    }
+  }
+  // 人物的日子自己往前走
+  if (S.stats.days % 3 === 0) for (const n of S.npcs) if (n.busy && num(n.busy.until) <= S.stats.days && relTier(n.rel) >= 1) npcBusy(S, n, rng);
+  if (S.gym && S.gym.until === S.stats.days) ev.push({ t: '身体', s: '健身月卡到期了' });
+  const pg = pingTick(S, rng);
+  if (pg) ev.push(pg);
+  ev.push(...helpTick(S, rng));
+  return ev;
+}
+
+function acctNote(S, item, note) {
+  acct(S, item, 1, note);
+  const rows = S.acct[acctKey(S.date)].rows;
+  rows[rows.length - 1].amt = 0;
+}
+// 老存档补齐：住处档次、房租按新行情
+function fixLife(S) {
+  S.home = S.home || { kind: '租', since: '', place: '' };
+  if (!S.home.tier) S.home.tier = '合租次卧';
+  if (S.job && S.job.strain === undefined) S.job.strain = 1;
+  S.gigs = S.gigs || []; S.bag = S.bag || [];
+  if (!S.flags.rent2 && S.home.kind !== '买') {
+    S.flags.rent2 = 1;
+    const r = rentFor(S, homeTier(S));
+    if (num(S.ledger.rent) && r < S.ledger.rent) {
+      S.flags.rentAdj = { from: S.ledger.rent, to: r };
+      S.ledger.rent = r;
+    }
+  }
+  S.flags.rent2 = 1;
+  for (const n of S.npcs) if (!n.talk) n.talk = talkOf(n);
+  return S;
+}
+
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
@@ -2610,7 +3282,11 @@ const API = {
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
   stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
   addFact, apptWho, sameThing, noteDone, recentlyDone, keepPromise, breakPromise, delayPromise,
-  sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket
+  sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket,
+  TIERS, relTier, TIER_LEND, TIER_ASK, TIER_OFF, askMod, isKinNpc, HOUSING, homeTier, rentFor, moveCost, moveHome,
+  STRAIN, JOBS, jobBoard, boardNext, applyPost, findPost, takePost, postPay, GIGS, gigPay, gigWhen, takeGig, dropGig, gigToday,
+  ITEMS, SHOP_CATS, itemOf, itemPrice, shopFriend, bag, hasItem, buyItem, bagFx, itemOld, useItem, careTags, giftValue, giveItem,
+  FUN, funOf, funCost, doFun, BUSY, npcBusy, talkOf, fixNpcLife, pingTick, settlePings, helpTick, giveLiJin, lifeTick, fixLife
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 root.ENGINE = API;
