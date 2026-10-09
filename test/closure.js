@@ -142,6 +142,25 @@ console.log('—— 引擎 ——');
   ok(S.pledges.length === 1, '同一个人同一件事只记一条');
 }
 
+{ // 16 人物记牢
+  const S = mk(); E.addNpcs(S, [{ name: '王丽', tie: '表姐', job: '护士', age: 30, gender: '女', note: '嘴硬心软' }], 1);
+  E.applyTurn(S, { npcUpdates: [{ name: '王丽', job: '老师', age: 45, gender: '男', note: '变了个人', fact: '离过婚', mem: '借了主角两千' }] });
+  const w = S.npcs.find(n => n.name === '王丽');
+  ok(w.job === '护士' && w.age === 30 && w.gender === '女' && w.note === '嘴硬心软', '模型改不了已有的身份', JSON.stringify([w.job, w.age, w.gender, w.note]));
+  ok(w.facts.includes('离过婚'), '要一直记着的事记下了');
+  for (let i = 0; i < 20; i++) E.applyTurn(S, { npcUpdates: [{ name: '王丽', mem: '第' + i + '回吃饭' }] });
+  ok(w.facts.includes('离过婚'), '普通记忆滚走了，要紧的事还在');
+  E.applyTurn(S, { npcUpdates: [{ name: '王丽（表姐）', mem: '带名号的也认得' }] });
+  ok(w.mem.some(m => /带名号的也认得/.test(m)), '名字带括号的更新也记到本人头上');
+  const r = E.runSteps(S, E.sanitizePlan({ steps: [{ type: 'meet', who: '老周', text: '去找大学室友老周' }] }, 'x', true));
+  ok(S.npcs.some(n => n.name === '老周') && r.results[0].newNpc === '老周', '玩家点名的新人先建进名册');
+  E.applyTurn(S, { npcUpdates: [{ name: '老周', job: '修车的', age: 24, gender: '男', tie: '大学室友', note: '话多' }] });
+  const z = S.npcs.find(n => n.name === '老周');
+  ok(z.job === '修车的' && z.age === 24 && z.tie === '大学室友', '空着的身份由模型补上', JSON.stringify([z.job, z.age, z.tie]));
+  E.addNpcs(S, [{ name: '测', tie: '朋友' }], 1);
+  ok(!S.npcs.some(n => n.name === '测'), '不许造跟主角同名的人');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -363,6 +382,11 @@ console.log('—— 引擎 ——');
   await pg.click('#acts .act-btn'); await idle();
   const bj = await pg.evaluate(() => ({ pend: !!S.pending, txt: document.querySelectorAll('.chapter')[document.querySelectorAll('.chapter').length - 1].textContent }));
   ok(!bj.pend && /坏掉的回复正文/.test(bj.txt) && segCalls === sc0 + 1, '格式坏了只留正文，不再请求一遍', bj.txt.slice(-30));
+
+  // 名册：人多了也都在
+  await pg.evaluate(() => { for (let i = 0; i < 20; i++) E.addNpcs(S, [{ name: '路人' + i, tie: '同事', job: '跑业务', gender: '男', age: 30 }], 1); closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  ok(/【人物名册/.test(lastSeg) && /路人0：男｜30岁/.test(lastSeg) && /路人19：/.test(lastSeg), '写故事时名册里所有人都在');
 
   ok(!errs.length, '没有 JS 报错', errs.join(' | '));
   await b.close();

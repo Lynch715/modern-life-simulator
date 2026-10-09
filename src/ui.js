@@ -437,8 +437,8 @@ function finalCheck(extra) {
 3. ${cfg.person === 'ta' ? '通篇第三人称' : '通篇用"你"称呼主角'}；有人出场就有直接对白，用中文引号，不许转述。
 4. 文风照系统说明里的【文风】写；不许感悟、不许升华、不许拿感慨收尾。
 5. 玩家括号里的限制和要求照办；玩家没让你替他做的决定，不许替他做。
-6. 不许替引擎宣布里程碑达成；不许跳过时间；没出现在【认识的人】里的人可以新登场，但要写进 newNpcs。
-7. 出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
+6. 不许替引擎宣布里程碑达成；不许跳过时间。
+7. 人物照【人物名册】写：名字一字不差，性别、年龄、跟主角的关系、干什么的、要一直记着的事都不许写错；名册里有的人是老相识，不许写成初次见面；名册里没有的人才算新登场，要写进 newNpcs。出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
 8. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
 }
 function NARR_COMMON() {
@@ -467,7 +467,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "check":null或{"type":"判定名","attr":"属性","need":70,"success":true},
 "playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
-"npcUpdates":[{"name":"","rel":0,"tie":null,"note":null,"mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","intimate":false}],
+"npcUpdates":[{"name":"【人物名册】里的名字，一字不差","rel":0,"tie":"关系变了才写（同事→恋人），否则 null","mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","fact":"他身上从此要一直记着的事（离了婚、成了你前任、搬去外地、生了孩子），没有就 null","job":null,"age":0,"gender":null,"note":null,"intimate":false}]（job/age/gender/note 只在名册里这一项还空着时补，已有的不许改）,
 "newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信","pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"}（这人真给主角打钱时才填，数目对得上他的家底）}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关","likes":["点赞的人，只能是【认识的人】里跟他也认识的"],"cs":[{"who":"底下留言的人（【认识的人】里跟他也认识的，不能是主角）","to":"回复谁，没有就空","text":"留言，十五字内"}]}],
@@ -494,6 +494,21 @@ function memBlocks() {
 }
 
 // 这一段要带给模型的人：玩家点名的、要去见的、最近剧情里在场的排前面，剩下按最近来往补满
+// 人物名册：所有认识的人，按认识先后排，身份写死在这儿，模型不许改、不许混
+function rosterBlock() {
+  if (!S.npcs.length) return '【人物名册】（还没认识什么人）';
+  return `【人物名册（主角认识的所有人，按认识先后；身份、性别、年龄、关系以这里为准，不许改，不许把两个人当成一个，不许让已经认识的人重新认识主角）】
+${S.npcs.slice(0, 80).map(n => {
+    const age = n.age ? `${n.age + (S.date.y - (n.ageY || S.date.y))}岁` : '年龄未定';
+    const bits = [n.gender || '性别未定', age, callName(n) || n.tie || '关系未定', n.job || '干什么的未定'].join('｜');
+    return `- ${n.name}：${bits}${n.note ? '｜' + n.note : ''}${(n.facts || []).length ? `｜要一直记着：${n.facts.join('；')}` : ''}`;
+  }).join('\n')}`;
+}
+// 前几年的年终小结：很少变，放前面
+function yearsBlock() {
+  const Y = (S.years || []).filter(y => y.summary);
+  return Y.length ? `【前几年】${Y.map(y => `${y.y}年：${y.summary}`).join('；')}\n` : '';
+}
 function pickNpcs(max) {
   const act = String(S.lastAction || '');
   const want = new Set(((S.plan && S.plan.steps) || []).map(x => x.who).filter(Boolean).map(w => E.whoIs(S, w)));
@@ -502,6 +517,10 @@ function pickNpcs(max) {
     const call = callName(n);
     if (want.has(n.name) || act.indexOf(n.name) >= 0 || (call && act.indexOf(call) >= 0) || (call && call.length >= 2 && act.indexOf(call.slice(0, 1)) >= 0 && /^(妈妈|爸爸)$/.test(call))) return 0;
     if (near.indexOf(n.name) >= 0) return 1;
+    // 欠着钱、有梁子、有约、说定了事、是伴侣的人，哪怕这几天没露面也得带上
+    const P = E.partnerOf(S);
+    if ((P && P.name === n.name) || (S.debts || []).some(d => d.who === n.name && d.left > 0) || (S.rifts || []).some(r => r.who === n.name && !r.done)
+      || (S.pledges || []).some(p => !p.done && p.who === n.name) || (S.appts || []).some(a => !a.done && String(a.title).indexOf(n.name) >= 0)) return 1;
     return 2;
   };
   return S.npcs.map((n, i) => ({ n, i, t: tier(n) }))
@@ -537,10 +556,8 @@ function momentsBlock() {
 function stateBlocks() {
   const p = S.player, L = S.ledger;
   const M = memBlocks();
-  const npc = pickNpcs(14).map(n => {
-    const meta = [n.age ? n.age + '岁' : '', n.job || '', n.tie || '', '关系' + relWord(n.rel, n.tie), n.care ? '在意' + n.care : ''].filter(Boolean).join('，');
-    return `${n.name}（${meta}）${(n.mem || []).slice(-4).join('；')}`;
-  }).join('\n') || '（还没认识什么人）';
+  const npc = pickNpcs(14).map(n =>
+    `${n.name}（眼下${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}）${(n.mem || []).slice(-4).join('；') || '还没什么来往'}`).join('\n') || '（还没认识什么人）';
   const peers = S.peers.map(pr => `${pr.name}：${(pr.track || []).slice(-2).join('，') || pr.note || '还是老样子'}（${E.peerWord(S, pr)}）`).join('\n') || '（无）';
   E.fixPace(S);
   const PC = E.PACES[S.pace];
@@ -560,14 +577,15 @@ function stateBlocks() {
   // 顺序：几乎不变的 → 偶尔变的 → 每段都变的（日期放最后），接口的前缀缓存能多吃一截
   return `【主角】${p.name}，${p.gender}，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}
 【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
+${rosterBlock()}
+${yearsBlock()}【家】${home}
+【这阵子的重心】${plan}
 【同期的人在做什么】
 ${peers}
-【家】${home}
 【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
-【这阵子的重心】${plan}
 【志业阶梯】${E.ladderBlock(S)}
 【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
-${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【认识的人】
+${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【这一段多半用得上的人·最近的来往（他们记得这些，写的时候要对得上）】
 ${npc}
 ${pledgeBlock()}${waitBlock()}${momentsBlock()}【往事提要】
 ${M.sums}
@@ -657,11 +675,12 @@ function judgeBlock(j) {
 function planBlock() {
   const P = S.plan;
   if (!P || !P.results) return '';
+  const fresh = P.results.filter(r => r.newNpc).map(r => r.newNpc);
   const lines = P.results.map((r, i) => `${i + 1}. ${r.text}：【${r.ok ? '成了' : '没成'}】${r.ck ? `（${r.ck.attr}${r.ck.val}，掷骰${r.ck.roll}＝${r.ck.total}，难度${r.ck.need}${r.ck.crit ? '，' + r.ck.crit : ''}）` : ''}${r.note ? '。' + r.note : ''}`).join('\n');
   return `【主角这次做的事·引擎已经结算，结果不许改】
 ${lines}
 - 他写了几件事就写几件，顺序照上面。成了的写成办成，没成的写卡在哪、怎么没成，不许翻过来，也不许拖到下一段。
-- 上面的钱数就是实际进出的数，叙事里照这个写；playerChanges.money 只记这几笔之外的零碎花销（打车、买水之类）。
+- 上面的钱数就是实际进出的数，叙事里照这个写；playerChanges.money 只记这几笔之外的零碎花销（打车、买水之类）。${fresh.length ? `\n- ${fresh.join('、')}是玩家这次新提到的人，已经加进名册了，名册里他的身份还空着：照玩家的说法在 npcUpdates 里给他补上 tie、job、age、gender、note，以后就按这个来。` : ''}
 ${limitAsks().length ? '\n' + LIMIT_RULE(limitAsks()) : ''}${styleAsks().length ? '\n' + ASK_RULE(styleAsks()) : ''}`;
 }
 
@@ -1728,7 +1747,7 @@ function convoHead(n) {
   return `${worldRules(true)}
 
 你现在扮演的是【${n.name}】。
-【${n.name}是谁】${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
+【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【你们之间的来往（按日子，${n.name}都记得）】
 ${(n.mem || []).join('\n') || '没什么特别的'}
 【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。
@@ -1959,7 +1978,7 @@ function openGroup(id) {
 function groupPrompt(g, say) {
   const c = S.convo;
   const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
-  const mem = who.map(n => `- ${n.name}：${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
+  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
   const L = c.lines.filter(l => l.who !== 'sys');
   const keep = L.slice(-30);
   const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
@@ -2162,7 +2181,7 @@ function doLike(id) {
 // 朋友圈里的人：身份、跟主角的关系、记得什么
 function momPeople(names) {
   return names.map(w => S.npcs.find(n => n.name === w)).filter(Boolean).map(n =>
-    `- ${n.name}：${n.age ? n.age + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
+    `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.facts || []).length ? `；要一直记着：${n.facts.join('；')}` : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
 }
 // 留言串：标清楚哪条是主角、哪条是发帖人自己
 function momThread(m) {

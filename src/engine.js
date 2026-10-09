@@ -878,6 +878,10 @@ function runSteps(S, plan, rng) {
       case 'meet': {
         r.ck = stepCheck(S, st, rng);
         r.ok = !r.ck || r.ck.success;
+        if (st.who && !S.npcs.some(x => x.name === whoIs(S, st.who)) && String(st.who).length <= 6) {
+          addNpcs(S, [{ name: st.who, tie: '', note: '', rel: 30 }], 1);
+          r.newNpc = st.who;
+        }
         const n = st.who ? S.npcs.find(x => x.name === whoIs(S, st.who)) : null;
         if (n) { n.lastSeen = S.stats.days; r.who = n.name; }
         r.note = r.ok ? (n ? `见到了${n.name}` : '人见到了') : (st.who ? `${st.who}那边没接住` : '没见成');
@@ -1249,7 +1253,8 @@ function sanitizeTurn(d) {
   o.playerChanges = P;
   o.npcUpdates = T.arr(d.npcUpdates, 12).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), rel: T.num(x.rel, -20, 20), tie: x.tie ? T.str(x.tie, 12) : null, note: x.note ? T.str(x.note, 50) : null,
-    mem: x.mem ? T.str(x.mem, 60) : null, intimate: T.bool(x.intimate) }));
+    mem: x.mem ? T.str(x.mem, 60) : null, intimate: T.bool(x.intimate),
+    fact: x.fact ? T.str(x.fact, 40) : null, job: x.job ? T.str(x.job, 20) : null, age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2) }));
   o.newNpcs = T.arr(d.newNpcs, 6).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
     tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close) }));
@@ -1361,11 +1366,16 @@ function applyTurn(S, d) {
 
   const memo = {};
   for (const u of (d.npcUpdates || [])) {
-    const n = S.npcs.find(x => x.name === u.name);
+    const n = S.npcs.find(x => x.name === whoIs(S, u.name));
     if (!n) continue;
     if (num(u.rel)) n.rel = clamp(r2(n.rel + num(u.rel)), 0, 100);
     if (u.tie) n.tie = String(u.tie).slice(0, 12);
-    if (u.note) n.note = String(u.note).slice(0, 50);
+    if (u.note && !n.note) n.note = String(u.note).slice(0, 50);      // 一句话的人设只补不改，免得写着写着变了个人
+    // 身份只补空着的：年龄、干什么的、性别一旦有了就不许模型改
+    if (u.job && !n.job) n.job = u.job;
+    if (num(u.age) && !num(n.age)) { n.age = Math.round(num(u.age)); n.ageY = S.date.y; }
+    if ((u.gender === '男' || u.gender === '女') && !n.gender) n.gender = u.gender;
+    if (u.fact) addFact(n, u.fact);
     if (u.mem) { npcMem(S, n, u.mem); memo[n.name] = 1; n.lastSeen = S.stats.days; }
     if (u.intimate === true) { markIntimate(S, n); n.lastSeen = S.stats.days; }
   }
@@ -2505,17 +2515,27 @@ function guessGender(given, tie, job, name) {
   if (/先生|大爷|大叔|小伙|哥们/.test(j)) return '男';
   return '';
 }
+// 一个人身上要一直记着的事（离过婚、是你前任、欠你钱、搬去了外地）：不随普通记忆滚走
+function addFact(n, f) {
+  f = String(f || '').trim().slice(0, 40);
+  if (!n || !f) return;
+  n.facts = n.facts || [];
+  if (n.facts.some(x => sameThing(x, f))) return;
+  n.facts.push(f);
+  n.facts = n.facts.slice(-8);
+}
 function addNpcs(S, list, max) {
   for (const n of (list || []).slice(0, max || 2)) {
     if (!n || !n.name) continue;
     n.name = String(n.name).replace(/[（(][^）)]*[）)]/g, '').trim() || n.name;
     if (S.npcs.some(x => x.name === n.name || x.name === whoIs(S, n.name))) continue;
+    if (S.player && n.name === S.player.name) continue;      // 不许造一个跟主角同名的人
     S.npcs.push({
       name: String(n.name).slice(0, 12), age: num(n.age) || 0,
       job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
       tie: String(n.tie || '认识的人').slice(0, 12),
       care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
-      close: !!n.close, mem: [], lastSeen: S.stats.days,
+      close: !!n.close, mem: [], facts: [], lastSeen: S.stats.days, met: shortDate(S.date) + (S.date.y !== (S.startDate || S.date).y ? `（${S.date.y}年）` : ''),
       gender: guessGender(n.gender, n.tie, n.job, n.name), ageY: S.date.y
     });
     if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
@@ -2589,7 +2609,7 @@ const API = {
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
   stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
-  apptWho, sameThing, noteDone, recentlyDone, keepPromise, breakPromise, delayPromise,
+  addFact, apptWho, sameThing, noteDone, recentlyDone, keepPromise, breakPromise, delayPromise,
   sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
