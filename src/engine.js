@@ -326,7 +326,7 @@ function newState(o) {
       remit: org.remit, subsidy: org.subsidy, salary: pay,
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
-    job: { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false, strain: 1 },
+    job: { employer: '', post: '', title: '', lv: 0, perf: 0, probation: false, quarters: 0, days: 0, mood: 0, out: false, strain: 1 },
     debts: [], rifts: [], ailLog: {}, moments: [], momentId: 0,
     biz: null, bizPast: [], wind: null, era: [], eraLeft: 0, years: [],
     home: { kind: '租', since: '', place: '', tier: '合租次卧' },
@@ -369,7 +369,8 @@ function applyOrigin(S, rng) {
 
 // 老存档补齐：开局那会儿没记单位名
 function fixJob(S) {
-  if (!S.job) S.job = { employer: '', post: '', title: '实习', lv: 0, perf: 0, probation: true, quarters: 0, days: 0, mood: 0, out: false };
+  if (!S.job) S.job = { employer: '', post: '', title: '', lv: 0, perf: 0, probation: false, quarters: 0, days: 0, mood: 0, out: false };
+  S.job.probation = false;                        // 不再有试用期
   // 老存档：岗位和职级以前搅在一起，拆出来
   if (S.job.post === undefined) {
     const t = String(S.job.title || '');
@@ -1432,7 +1433,7 @@ function sanitizeTurn(d) {
   o.newRifts = T.arr(d.newRifts, 1).map(T.obj).filter(x => x && x.who).map(x => ({ who: T.str(x.who, 12), reason: T.str(x.reason, 40), kind: RIFT_KINDS[x.kind] ? x.kind : '私怨', heat: T.num(x.heat, 5, 60) }));
   o.riftEased = T.arr(d.riftEased, 3).map(x => T.str(typeof x === 'object' && x ? x.who : x, 12)).filter(Boolean);
   const nj = T.obj(d.newJob);
-  o.newJob = nj && nj.employer ? { employer: T.str(nj.employer, 16), title: T.str(nj.title || nj.post, 10), salary: T.num(nj.salary, 0, 1e7), lv: T.num(nj.lv, 0, 10), probation: T.bool(nj.probation) } : null;
+  o.newJob = nj && nj.employer ? { employer: T.str(nj.employer, 16), title: T.str(nj.title || nj.post, 10), salary: T.num(nj.salary, 0, 1e7), lv: T.num(nj.lv, 0, 10), probation: false } : null;
   o.options = T.arr(d.options, 4).map(x => T.str(x, 30)).filter(Boolean);
   o.nextStop = sanitizeStop(d.nextStop);
   o.pledges = T.arr(d.pledges, 2).map(T.obj).filter(x => x && x.who && x.what).map(x => ({
@@ -2274,20 +2275,6 @@ function review(S, rng) {
   J.perf = 0; J.quarters = (J.quarters || 0) + 1;
   const out = { score: Math.round(score), need, kind: '', text: '' };
 
-  if (J.probation && J.quarters >= 1) {
-    J.probation = false;
-    if (score < need * 0.55 && f.cost >= 0.7) {
-      J.out = true; J.title = '待业'; S.ledger.salary = 0;
-      out.kind = '没转正'; out.text = '试用期没过，让你走人';
-      return out;
-    }
-    J.lv = Math.max(1, lv);
-    S.ledger.salary = Math.round(S.ledger.base * payMul(S, J.lv));
-    J.title = jobTitle(S, J.lv);
-    if (J.employer) S.player.job = `${J.employer}的${J.post || J.title}`;
-    out.kind = '转正'; out.text = `转正了，月薪${S.ledger.salary}`;
-    return out;
-  }
   if (lv < jobMax(S) && (high ? score >= need * 1.12 && rng() < 0.4 + num(p.信誉) / 250 : score >= need * 1.35)) {
     J.lv = lv + 1;
     S.ledger.salary = Math.round(S.ledger.base * payMul(S, J.lv) * (0.95 + rng() * 0.15));
@@ -2346,7 +2333,7 @@ function takeJob(S, o) {
   J.post = String(o.title || o.post || J.post || '').slice(0, 10);
   J.lv = lv;
   J.title = jobTitle(S, lv);
-  J.probation = !!o.probation;
+  J.probation = false;
   J.perf = 0; J.mood = 0; J.quarters = 0;
   S.ledger.base = Math.max(1000, pay ? Math.round(pay / payMul(S, lv)) : S.ledger.base);
   S.ledger.salary = pay || Math.round(S.ledger.base * payMul(S, lv));
@@ -2404,7 +2391,6 @@ const METRICS = {
   '表达': { label: '表达', get: S => S.player.attrs['表达'], unit: '' },
   '谋划': { label: '谋划', get: S => S.player.attrs['谋划'], unit: '' },
   '信誉': { label: '行业口碑', get: S => S.player.信誉, unit: '' },
-  '人脉': { label: '真认你的人', get: S => S.npcs.filter(n => n.rel >= 55).length, unit: '个' },
   '投入': { label: '在这件事上攒的功夫', get: S => Math.round(S.ideal.progress), unit: '' }
 };
 const SCENES = ['面试', '提案', '谈判', '路演', '答辩', '演出', '摊牌', '调解', '借钱', '拉人入伙'];
@@ -2416,13 +2402,14 @@ const NEED_BAND = {
   '表达':   [[28, 46], [46, 66], [64, 90]],
   '谋划':   [[28, 46], [46, 66], [64, 90]],
   '信誉':   [[20, 42], [42, 64], [62, 90]],
-  '人脉':   [[1, 3], [3, 7], [6, 14]],
   '投入':   [[40, 160], [300, 900], [1500, 4500]]
 };
 function bandNeed(metric, stage, v) {
   const b = (NEED_BAND[metric] || NEED_BAND['投入'])[clamp(stage, 0, 2)];
   return clamp(Math.round(num(v) || b[0]), b[0], b[1]);
 }
+const SOCIAL_MILE = /人脉|认识.{0,8}(个|位|名)|结识.{0,6}(个|位|名)|交.{0,3}(个|位|名).{0,4}朋友|加.{0,6}(个|位)好友|圈子里.{0,4}(个|位)人/;
+function isSocialMile(m) { return m && (m.metric === '人脉' || SOCIAL_MILE.test(String(m.title || '') + String(m.desc || ''))); }
 function normLadder(raw) {
   const stages = [];
   let id = 0;
@@ -2430,6 +2417,7 @@ function normLadder(raw) {
     const ms = [];
     for (const m of (st.milestones || []).slice(0, 4)) {
       if (!m || !m.title) continue;
+      if (isSocialMile(m)) continue;            // "认识多少个人"这种台阶不要
       const key = METRICS[m.metric] ? m.metric : '投入';
       ms.push({
         id: ++id,
@@ -2915,14 +2903,14 @@ function takePost(S, P, rng) {
   const J = S.job;
   const lv = (S.player.资历天 || 0) >= 300 ? 1 : 0;
   J.out = false; J.employer = P.employer.slice(0, 16); J.post = P.job.slice(0, 10);
-  J.lv = lv; J.title = jobTitle(S, lv); J.probation = true;
+  J.lv = lv; J.title = jobTitle(S, lv); J.probation = false;
   J.perf = 0; J.mood = 0; J.quarters = 0;
   J.strain = P.strain; J.vary = P.vary ? 1 : 0; J.lib = P.job; J.sinceDay = S.stats.days;
   S.ledger.salary = pay;
   S.ledger.base = Math.round(pay / payMul(S, lv));
   S.player.job = `${J.employer}的${J.post}`;
   if (S.board) { const b = S.board.list.find(x => x.id === P.id); if (b) b.state = '入职了'; }
-  return { kind: '新工作', text: `${J.employer}，${J.post}，月薪${pay}，${STRAIN[P.strain]}活，先试用`, pay };
+  return { kind: '新工作', text: `${J.employer}，${J.post}，月薪${pay}，${STRAIN[P.strain]}活`, pay };
 }
 
 /* ---- 兼职：每周按次数结算 ---- */
@@ -3671,6 +3659,11 @@ function migrate(S) {
   if (!isObj(S.schedule.rest)) S.schedule.rest = Object.assign({}, DEF_SCHEDULE.rest);
   if (!Array.isArray(S.ideal.stages)) S.ideal.stages = [];
   for (const st of S.ideal.stages) if (!Array.isArray(st.milestones)) st.milestones = [];
+  for (const st of S.ideal.stages) {
+    st.milestones = st.milestones.filter(m => m.done || !isSocialMile(m));
+    for (const m of st.milestones) if (!METRICS[m.metric]) m.metric = '投入';
+  }
+  S.ideal.stages = S.ideal.stages.filter(st => st.milestones.length);
   if (!Array.isArray(S.family.kids)) S.family.kids = [];
   S.npcs = S.npcs.filter(n => isObj(n) && n.name);
   for (const n of S.npcs) {
@@ -3738,7 +3731,7 @@ function originBlocked(S, jobName) {
 /* ---- 位置表 ---- */
 const RANKS = {
   '从政': ['科员', '副科', '正科', '副处', '正处', '副厅', '正厅', '副部', '正部', '副国', '正国'],
-  '职场': ['实习', '专员', '主管', '经理', '总监', '副总', '总经理', '董事长'],
+  '职场': ['新人', '专员', '主管', '经理', '总监', '副总', '总经理', '董事长'],
   '行医': ['规培', '住院医', '主治', '副主任医师', '主任医师', '科主任', '副院长', '院长', '卫健系统的头'],
   '教书': ['助教', '讲师', '副教授', '教授', '博导', '院长', '副校长', '校长'],
   '科研': ['研究助理', '助理研究员', '副研究员', '研究员', '学科带头人', '所长', '院士'],

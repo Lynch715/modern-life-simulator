@@ -447,6 +447,17 @@ console.log('—— 出身与地位 ——');
   ok(!b, '存款小降不算掉档', JSON.stringify([a, b]));
 }
 
+{ // 不要"认识多少人"的台阶，不要试用期
+  const L = E.normLadder([{ name: 'a', milestones: [{ title: '认识20个圈内人', metric: '人脉', need: 20 }, { title: '写完一个短篇', metric: '投入', need: 60 }, { title: '结识5位编辑', metric: '投入' }] }]);
+  ok(L[0].milestones.length === 1 && L[0].milestones[0].title === '写完一个短篇', '认识多少人的台阶被去掉');
+  const S = mk(); S.ideal.stages = [{ name: 'a', milestones: [{ id: 1, title: '攒下10个真朋友', metric: '人脉', need: 10, done: false }, { id: 2, title: '写完', metric: '投入', need: 60, done: false }] }];
+  E.migrate(S);
+  ok(S.ideal.stages[0].milestones.length === 1 && !E.METRICS['人脉'], '老存档里没做完的人脉台阶也删了');
+  const N = mk(); ok(!N.job.probation, '新开局没有试用期');
+  const P = mk(); P.board = { day: P.stats.days, list: [{ id: 5, job: '客服', employer: 'x', lo: 4000, hi: 5000, attr: '情绪', strain: 1, need: 10, state: '' }] };
+  const t = E.takePost(P, P.board.list[0], E.mkRng(1)); ok(!P.job.probation && !/试用/.test(t.text), '招聘入职不试用');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
