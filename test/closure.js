@@ -24,11 +24,11 @@ console.log('—— 引擎 ——');
   E.applyTurn(S, { gameOver: 1 }); ok(!S.over, 'gameOver:1 不结束');
   E.applyTurn(S, { gameOver: true, ending: '收' }); ok(S.over, 'gameOver:true 结束');
 }
-{ // 3 新工作月薪
-  const S = mk(); E.applyTurn(S, { newJob: { employer: '大厂', salary: 1e9, lv: 5 } });
+{ // 3 新工作月薪（剧情里找的新工作只在失业时才认）
+  const S = mk(); S.job.out = true; E.applyTurn(S, { newJob: { employer: '大厂', salary: 1e9, lv: 5 } });
   const R = E.salaryRange(S, S.job.lv);
   ok(S.ledger.salary <= R.hi && S.job.lv <= 2, '十亿月薪被截', `月薪${S.ledger.salary}　职级${S.job.lv}　${S.capNote}`);
-  const F = mk('心想事成'); E.applyTurn(F, { newJob: { employer: '大厂', salary: 50000, lv: 4 } });
+  const F = mk('心想事成'); F.job.out = true; E.applyTurn(F, { newJob: { employer: '大厂', salary: 50000, lv: 4 } });
   ok(F.ledger.salary === 50000 && F.job.lv === 4, '心想事成放宽', `月薪${F.ledger.salary}`);
 }
 { // 4 复合指令：辞职 + 还钱 + 开店
@@ -458,6 +458,18 @@ console.log('—— 出身与地位 ——');
   const t = E.takePost(P, P.board.list[0], E.mkRng(1)); ok(!P.job.probation && !/试用/.test(t.text), '招聘入职不试用');
 }
 
+{ // 审查修正：模型改不动工资和饭碗；病只认快好的；格式坏了引擎替人记一笔
+  const S = mk(); const s0 = S.ledger.salary;
+  E.applyTurn(S, { playerChanges: { salary: 99999, job: '董事长' }, newJob: { employer: '别家', salary: 20000 } });
+  ok(S.ledger.salary === s0 && S.job.employer === '明河设计', '在职时模型报的工资、新工作都不认');
+  S.status = [{ name: '感冒', desc: '', days: 5 }, { name: '扭伤', desc: '', days: 2 }];
+  E.applyTurn(S, { playerChanges: { statusRemove: ['感冒', '扭伤'] } });
+  ok(S.status.length === 1 && S.status[0].name === '感冒', '病只认还剩三天以内的');
+  const n = S.npcs.find(x => x.name === '赵鹏'); const m0 = n.mem.length;
+  E.applyTurn(S, { narrative: '赵鹏在楼下等着，抽完一根烟才上来。', _partial: true });
+  ok(n.mem.length === m0 + 1, '格式坏了只剩正文，点到名的人引擎替他记一笔');
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -767,6 +779,12 @@ console.log('—— 出身与地位 ——');
   await pg.evaluate(() => { closePanel(); showNpc('钱处长'); });
   await shot('22-card-pos');
   await pg.evaluate(() => mask('npcMask', false));
+
+  // 审查修正：规矩先后只排一次，零碎上限写给模型
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; S.pending = null; renderOptions(S.lastOptions); });
+  await pg.click('#acts .act-btn'); await idle();
+  const sysA = JSON.parse(lastSegRaw).messages[0].content;
+  ok(/规矩打架时的先后/.test(sysA) && !/压过/.test(lastSegRaw) && !/头等大事/.test(lastSegRaw) && /这一段能记的零碎】钱上下不超过\d+元/.test(lastSeg) && !/"salary":null/.test(sysA) && !/作废重写/.test(sysA), '规矩先后只排一次，零碎上限写给模型，模型不再改工资');
 
   // —— 存档：老存档、导出包、直接的状态都要读得进来 ——
   const oldSave = (() => {

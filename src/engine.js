@@ -144,7 +144,8 @@ const FREEDOM = {
     tone: `【本局口径·心想事成】这一局是玩家点单，他说什么就是什么。
 玩家写下的行动，一律视为已经办成，你只负责写它是怎么办成的。不许判断它合不合理，不许替他打折。
 这一局里没有"差一点""再等等""先试试看"这种东西；也不要写倒霉事、不要写他被人晾着、被拒绝、被放鸽子。
-他要见的人见得到，要的东西拿得到，开的口对方接得住。荒唐的事也照办，但要写得像真的发生过。` },
+他要见的人见得到，要的东西拿得到，开的口对方接得住。荒唐的事也照办，但要写得像真的发生过。
+只有两种例外照实写：引擎标了【没成】的硬条件（钱不够、本来就没有这样东西），和关键局已经定下的结果。` },
   '都市传奇': { check: 6, cost: 0.7, badMul: 0.75, growth: 1.15, keyEase: 5, bizEase: 1.1,
     tone: '【本局口径】都市传奇：比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。' },
   '写实人生': { check: 0, cost: 1, badMul: 1, growth: 1, keyEase: 0, bizEase: 1,
@@ -1395,6 +1396,7 @@ const T = {
 function sanitizeTurn(d) {
   d = T.obj(d) || {};
   const o = {};
+  if (d._partial === true) o._partial = true;
   if (d.narrative !== undefined) o.narrative = T.str(d.narrative, 6000);
   if (d.summary !== undefined) o.summary = T.str(d.summary, 60);
   if (d.ending !== undefined && d.ending !== null) o.ending = T.str(d.ending, 80);
@@ -1508,15 +1510,8 @@ function applyTurn(S, d) {
   if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + cap('行业口碑', pc.信誉, 8), 0, 100);
   if (num(pc.人品)) p.人品 = clamp(p.人品 + cap('做人', pc.人品, 8), 0, 100);
   if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + cap('理想的功夫', pc.idealProgress, 35));
-  if (pc.job) p.job = String(pc.job).slice(0, 30);
-  if (num(pc.salary)) {
-    const want = Math.max(0, num(pc.salary));
-    const now = Math.max(1000, num(S.ledger.salary));
-    const lo = Math.round(now * 0.5), hi = Math.round(now * 1.8);
-    if (want > hi || want < lo) cut.push(`月薪你写成${want}，引擎只认到${clamp(want, lo, hi)}`);
-    S.ledger.salary = clamp(want, lo, hi);
-  }
-  if (d.newJob && d.newJob.employer) { const tj = takeJob(S, d.newJob); if (tj.note) cut.push(tj.note); }
+  // 工资、饭碗只走引擎：考核、谈加薪、招聘；剧情里新找的工作只在失业时才认
+  if (d.newJob && d.newJob.employer && S.job.out) { const tj = takeJob(S, d.newJob); if (tj.note) cut.push(tj.note); }
 
   for (const st of (pc.statusAdd || [])) {
     if (!st || !st.name) continue;
@@ -1525,7 +1520,8 @@ function applyTurn(S, d) {
     S.status.push({ name, desc: String(st.desc || '').slice(0, 40), days: clamp(num(st.days) || 5, 1, 120) });
     noteAil(S, name);
   }
-  for (const nm of (pc.statusRemove || [])) S.status = S.status.filter(x => x.name !== nm);
+  // 病好了：只认快好了的（还剩三天以内），别的照引擎的日子养
+  for (const nm of (pc.statusRemove || [])) S.status = S.status.filter(x => x.name !== nm || num(x.days) > 3);
   for (const c of (pc.chronicAdd || [])) if (c && c.name && !S.chronic.some(x => x.name === c.name))
     S.chronic.push({ name: String(c.name).slice(0, 10), desc: String(c.desc || '').slice(0, 50) });
 
@@ -1548,9 +1544,9 @@ function applyTurn(S, d) {
     if (u.intimate === true) { markIntimate(S, n); n.lastSeen = S.stats.days; }
   }
   // 剧情里点到名、模型又没给他记一笔的，引擎替他记下这一段是怎么回事——不然过两天他就忘了
-  if (d.narrative && d.summary) for (const n of S.npcs) {
+  if (d.narrative && (d.summary || d._partial)) for (const n of S.npcs) {
     if (memo[n.name] || !n.name || String(d.narrative).indexOf(n.name) < 0) continue;
-    npcMem(S, n, `${d.summary}${S.lastAction ? `（那回主角在：${String(S.lastAction).slice(0, 20)}）` : ''}`);
+    npcMem(S, n, `${d.summary || String(d.narrative).replace(/\s+/g, '').slice(0, 24)}${S.lastAction ? `（那回主角在：${String(S.lastAction).slice(0, 20)}）` : ''}`);
   }
   // 剧情里两人说开、确定在一起了：记成伴侣（还没有伴侣时）
   if (d.together && !partnerOf(S)) {
