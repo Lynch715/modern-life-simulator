@@ -140,7 +140,7 @@ const SEG = n => ({
   await pg.goto('file://' + path.join(__dirname, '..', 'index.html'));
   await pg.waitForSelector('#startMask.on');
   await pg.fill('#sName', '沈昭');
-  await pg.click('#sOrigin .seg[data-v="一人进城"]');
+  await pg.selectOption('#sOrigin', '一人进城');
   await pg.click('#sCity .seg[data-v="一线"]');
   await pg.click('#sTrack .seg[data-v="创作"]');
   await pg.fill('#sIdeal', '写出一本有人愿意买的书');

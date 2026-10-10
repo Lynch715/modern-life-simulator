@@ -382,6 +382,71 @@ console.log('—— 银行 ——');
   S.stats.days++; ok(E.slotsLeft(S) === 2, '第二天又有两个');
 }
 
+console.log('—— 出身与地位 ——');
+{ // 出身
+  const mkO = (origin, track) => E.newState({ name: '测', gender: '男', city: '新一线', origin, track: track || '职场', freedom: '写实人生', startYear: 2026, rngSeed: 11 });
+  ok(Object.keys(E.ORIGINS).length >= 16, '出身有十六种', Object.keys(E.ORIGINS).join('、'));
+  const C = mkO('拆二代'); ok(C.home.kind === '买' && C.ledger.rent === 0 && E.homeWorth(C) > 0, '拆二代有自己的房子，不交房租');
+  const F = mkO('富二代'); ok(F.player.money === 300000 && E.hasItem(F, 'car') && F.ledger.living > 1800, '富二代有车有钱，生活费高');
+  const X = mkO('刑二代');
+  ok(X.npcs.some(n => n.tie === '父亲的老朋友' && n.facts.some(f => /牢里/.test(f))), '刑二代起手有父亲的老朋友，身份写死');
+  X.board = { day: X.stats.days, list: [{ id: 1, job: '公务员', employer: '街道办', lo: 4000, hi: 5000, attr: '谋划', strain: 0, need: 20, state: '' }, { id: 2, job: '银行柜员', employer: '农商银行', lo: 4000, hi: 5000, attr: '情绪', strain: 1, need: 20, state: '' }] };
+  E.buyItem(Object.assign(X, { player: Object.assign(X.player, { money: 9999 }) }), 'cert');
+  ok(!E.applyPost(X, 1).ok && /政审/.test(E.applyPost(X, 2).why), '刑二代政审过不了，公务员、银行投不了');
+  const G = mkO('官二代', '从政'), N = mkO('普通家庭', '从政');
+  E.startKey(G, { scene: '谈判', kind: 'mile', hard: 60, name: 'x' }); E.startKey(N, { scene: '谈判', kind: 'mile', hard: 60, name: 'x' });
+  ok(G.key.hard < N.key.hard, '官二代走从政的关键局更容易', `${G.key.hard} / ${N.key.hard}`);
+  ok(E.askMod(G, '') < E.askMod(N, ''), '官二代开口求人更容易');
+  let st = null;
+  const orng = E.mkRng(77); for (let i = 0; i < 3000 && !st; i++) { G.stats.days++; st = E.originTick(G, orng); }
+  ok(st && st.kind === '家里' && G.ledger.subsidy === 0, '官二代父亲那边出事，家里的钱停了', st && st.detail);
+  const O = mkO('孤儿院长大'); ok(E.ORIGINS['孤儿院长大'].nokin && O.npcs.length === 1, '孤儿院长大只有一起长大的人');
+}
+{ // 位置表：从政能走到正国，职场能走到董事长
+  ok(E.RANKS['从政'][E.RANKS['从政'].length - 1] === '正国' && E.RANKS['职场'][E.RANKS['职场'].length - 1] === '董事长', '从政顶到正国，职场顶到董事长');
+  const S = E.newState({ name: '官', gender: '男', city: '一线', origin: '普通家庭', track: '从政', freedom: '写实人生', startYear: 2026, rngSeed: 2 });
+  ok(E.jobTitle(S) === '科员', '从政起手是科员');
+  S.job.probation = false; S.job.lv = 8; S.player.信誉 = 90; S.player.attrs['专业'] = 80;
+  for (let i = 0; i < 80; i++) { S.job.perf = 120; E.review(S, E.mkRng(i)); if (S.job.out) { S.job.out = false; } }
+  ok(S.job.lv === 10 && E.jobTitle(S) === '正国', '考核一路升到正国，不会更高', E.jobTitle(S));
+  ok(S.ledger.salary < 6300 * 6, '体制内工资涨得慢', S.ledger.salary);
+  ok(E.standing(S) === 4, '正国在世人眼里是大人物');
+  const W = mk(); W.job.lv = 7; ok(E.jobTitle(W, 7) === '董事长' && E.jobMax(W) === 7, '职场顶到董事长');
+}
+{ // 人物级别、上下级、老领导
+  const S = E.newState({ name: '官', gender: '男', city: '一线', origin: '普通家庭', track: '从政', freedom: '写实人生', startYear: 2026, rngSeed: 2 });
+  S.job.lv = 4; E.posTick(S);
+  E.applyTurn(S, { newNpcs: [{ name: '钱处', pos: '区里的正处长', circle: 'work' }, { name: '孙厅', pos: '副厅长', circle: 'work', lv: 5 }, { name: '小吴', pos: '科员', circle: 'work', lv: 0 }], npcMax: 3 });
+  const q = S.npcs.find(n => n.name === '钱处'), s = S.npcs.find(n => n.name === '孙厅');
+  ok(q.lv === 4 && s.lv === 5 && E.npcGap(S, q) === 0 && E.npcGap(S, s) === 1, '没给级别按位置名对上，给了级别就认', `${q.lv} ${s.lv}`);
+  let C = E.chainOf(S);
+  ok(C.up[0].name === '孙厅' && C.down[0].name === '小吴', '上面是孙厅，下面是小吴');
+  s.tie = '领导';
+  S.job.lv = 6;
+  const stp = E.posTick(S);
+  ok(stp && stp.kind === '身份' && /正处.*正厅|从正处到正厅/.test(stp.detail), '升到正厅停下来写一段', stp && stp.detail);
+  ok(s.facts.some(f => /原来是主角的上级，现在在主角之下/.test(f)) && s.tie === '老领导', '孙厅成了老领导，记了一笔', s.tie);
+  C = E.chainOf(S);
+  ok(!C.up.some(n => n.name === '孙厅') && E.gapWord(E.npcGap(S, q)).includes('低2级'), '正厅不再给副厅汇报，正处见了要小心', E.gapWord(E.npcGap(S, q)));
+  E.applyTurn(S, { npcUpdates: [{ name: '小吴', lv: 9, pos: '副国级' }] });
+  ok(S.npcs.find(n => n.name === '小吴').lv === 1, '人物升降一次只认一级');
+}
+{ // 圈子里的位置：博主按阶梯走
+  const S = E.newState({ name: '博', gender: '女', city: '一线', origin: '普通家庭', track: '做博主', freedom: '写实人生', startYear: 2026, rngSeed: 4 });
+  S.ideal.stages = [{ name: 'a', milestones: [{ id: 1, title: 'x', done: false }, { id: 2, title: 'y', done: false }] }];
+  E.posTick(S);
+  ok(E.posOf(S).field.title === '素人', '博主起手是素人');
+  S.ideal.stages[0].milestones.forEach(m => m.done = true);
+  const st = E.posTick(S);
+  ok(st && E.posOf(S).field.title === '家喻户晓', '阶梯走完成了家喻户晓', st && st.detail);
+}
+{ // 档位不跟着存款来回晃
+  const S = mk(); E.posTick(S);
+  S.player.money = 400000; const a = E.posTick(S);
+  S.player.money = 300000; const b = E.posTick(S);
+  ok(!b, '存款小降不算掉档', JSON.stringify([a, b]));
+}
+
 (async () => {
   console.log('—— 页面 ——');
   let chromium;
@@ -665,6 +730,32 @@ console.log('—— 银行 ——');
   await pg.evaluate(() => { closePanel(); S.promiseAsk = null; renderOptions(S.lastOptions); });
   await pg.click('#acts .act-btn'); await idle();
   ok(/【手里的东西】有二手电脑/.test(lastSeg) && /【兼职】家教/.test(lastSeg) && /租的是单身公寓/.test(lastSeg) && /日子里的规矩/.test(JSON.parse(lastSegRaw).messages[0].content) && /凭空给主角添东西/.test(lastSeg), '写故事带着住处、兼职、手里的东西，自查有这一条');
+
+  // —— 出身与地位（页面） ——
+  await pg.evaluate(() => { renderStart(); mask('startMask', true); });
+  await pg.selectOption('#sOrigin', '刑二代');
+  ok(/政审过不了/.test(await pg.textContent('#oHint')), '出身是下拉菜单，选了下面出说明');
+  await pg.evaluate(() => document.getElementById('sOrigin').scrollIntoView());
+  await shot('20-origin');
+  const bp = await pg.evaluate(() => { const keep = S; S = E.newState({ name: '阿九', gender: '男', city: '新一线', origin: '刑二代', track: '捞偏门', freedom: '写实人生', startYear: 2026, rngSeed: 9 }); const t = bootPrompt({ name: '阿九', gender: '男', city: '新一线', origin: '刑二代', track: '捞偏门', ideal: 'x' }); const nm = S.npcs[0].name; S = keep; return { t, nm }; });
+  ok(/探监/.test(bp.t) && bp.t.includes(bp.nm + '（父亲的老朋友') && /位置表/.test(bp.t), '开局从出身写起，起手的熟人点了名', bp.nm);
+  await pg.evaluate(() => mask('startMask', false));
+  await pg.evaluate(() => {
+    const keep = S.npcs.slice();
+    S.player.track = '从政'; S.job.out = false; S.job.lv = 6; S.job.employer = '市委办'; S.posSnap = null; E.posTick(S);
+    E.applyTurn(S, { newNpcs: [{ name: '钱处长', pos: '市委办的正处长', circle: 'work', lv: 4 }, { name: '孙书记', pos: '省委副书记', circle: 'work', lv: 8 }], npcMax: 2 });
+    closePanel(); S.promiseAsk = null; S.pending = null; renderOptions(S.lastOptions);
+  });
+  await pg.click('#acts .act-btn'); await idle();
+  ok(/【位置】/.test(lastSeg) && /正厅（第6级）/.test(lastSeg) && /钱处长：.*比主角低2级/.test(lastSeg) && /主角跟孙书记汇报/.test(lastSeg) && /地位的规矩/.test(JSON.parse(lastSegRaw).messages[0].content) && /不许让主角给比他低的人汇报/.test(lastSeg), '写故事带着位置、上下级，自查有这一条');
+  await pg.evaluate(() => openConvo('钱处长')); await send('材料准备好了吗');
+  ok(/【他的位置】市委办的正处长，比主角低2级/.test(lastConvo) && /【主角的位置】正厅/.test(lastConvo), '私聊带着地位差');
+  await pg.click('#chatDone'); await idle();
+  await pg.evaluate(() => { closePanel(); S.promiseAsk = null; gotoTab('me'); });
+  await shot('21-me-pos');
+  await pg.evaluate(() => { closePanel(); showNpc('钱处长'); });
+  await shot('22-card-pos');
+  await pg.evaluate(() => mask('npcMask', false));
 
   // —— 存档：老存档、导出包、直接的状态都要读得进来 ——
   const oldSave = (() => {

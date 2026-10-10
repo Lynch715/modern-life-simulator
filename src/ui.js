@@ -392,6 +392,8 @@ ${WORLD_FIXED}
 
 ${LIFE_FIXED}
 
+${BAND_FIXED}
+
 ${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}
 
 ${NARR_COMMON()}`;
@@ -420,6 +422,19 @@ const LIFE_FIXED = `【日子里的规矩（账是引擎管的，你照写）】
 - 看电影、KTV、健身、酒吧、旅行这类乐子，引擎已经算过花销、精力和谁一起去，你只写过程。
 - 每个人有自己的日子（【用得上的人】里写了他最近在忙什么），出场时带出他自己的事，别只围着主角转。
 ${TIER_ATTITUDE}`;
+// 地位：五档说明和规矩，一字不变
+const BAND_FIXED = `【主角在世人眼里是哪一档】（看【位置】里写的档位，照下面这样写别人怎么对他）
+- 底层：求人办事要看脸色，说话没人听，被人随口打发。
+- 普通人：正常来往，办事排队。
+- 有点头脸：找他办事的人多了，饭局上有人给他倒酒，说话有人听。
+- 人物：下面的人见他先站起来，电话有人等着接，求他的人带着东西上门，也有人盯着他出错。
+- 大人物：身边的人都在揣摩他的意思，没人当面说不，真话越来越少，一举一动都有人传。
+【地位的规矩】
+- 谁比谁高看【位置】和名册里每个人后面的级别。主角只给比他高的人汇报；比他低的人见了他要有分寸，低得越多越小心，称呼、语气、谁先开口、谁等谁都要写出来。关系再好，下属跟领导说话也有分寸。
+- 原来是主角上级、现在被主角超过去的人，写出那份别扭：客气里带着不自在，或者硬撑着老资格。
+- 主角升了或者掉了，周围人的态度要跟着变：下属、老同事、家里人、找上门的人。
+- 新出场的人从主角眼下这个圈子里来：档位高了，新认识的多半也是有位置的人；档位低，就是身边的普通人。
+- 主角的位置只有引擎能升降，正文里不许自己写他提拔了、被撤了。`;
 // 聊天、群、朋友圈：人物自己说话，不套文风
 const CHAT_SYSTEM = `你在一个中文现代生活模拟游戏里扮演主角手机上的联系人。像真人发微信、真人当面说话：短、口语、有语气词，可以答非所问。不许旁白，不许升华，不许说教。不出现真实存在的公司、品牌、真人姓名。`;
 // 私聊专用：规矩和返回格式放系统提示，每轮一字不差，后面的对话记录只往后加，缓存能吃满
@@ -464,7 +479,8 @@ function finalCheck(extra) {
 6. 不许替引擎宣布里程碑达成；不许跳过时间。
 7. 人物照【人物名册】写：名字一字不差，性别、年龄、跟主角的关系、干什么的、要一直记着的事都不许写错；名册里有的人是老相识，不许写成初次见面；名册里没有的人才算新登场，要写进 newNpcs。出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
 8. 住处、兼职、手里的东西、银行里的钱照【家】【兼职】【手里的东西】【银行】写：不许凭空给主角添东西、换住处、加兼职收入，买东西、送东西只认引擎结算的。
-9. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
+9. 谁给谁汇报、谁对谁客气，照【位置】【你上面是谁、下面是谁】和名册里的级别写：不许让主角给比他低的人汇报，比主角低的人不许对他没分寸；主角的位置不许在正文里自己升降。
+10. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
 }
 function NARR_COMMON() {
   return `【每一段都要做到的】
@@ -492,8 +508,8 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "check":null或{"type":"判定名","attr":"属性","need":70,"success":true},
 "playerChanges":{"attributes":{"专业":0,"表达":0,"谋划":0,"情绪":0,"体能":0},"energy":0,"money":0,"信誉":0,"人品":0,"idealProgress":0,"job":null,"salary":null,
   "statusAdd":[{"name":"毛病名(4字内)","desc":"一句话","days":几天好}],"statusRemove":["毛病名"],"chronicAdd":[{"name":"","desc":""}]},
-"npcUpdates":[{"name":"【人物名册】里的名字，一字不差","rel":0,"tie":"关系变了才写（同事→恋人），否则 null","mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","fact":"他身上从此要一直记着的事（离了婚、成了你前任、搬去外地、生了孩子），没有就 null","job":null,"age":0,"gender":null,"note":null,"intimate":false}]（job/age/gender/note 只在名册里这一项还空着时补，已有的不许改）,
-"newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false}],
+"npcUpdates":[{"name":"【人物名册】里的名字，一字不差","rel":0,"pos":"他的位置变了才写（升了、调走了），否则 null","lv":null,"tie":"关系变了才写（同事→恋人），否则 null","mem":"这一段他跟主角之间具体发生了什么（谁做了什么、说了什么、钱物往来），30字内，他以后会记得","fact":"他身上从此要一直记着的事（离了婚、成了你前任、搬去外地、生了孩子），没有就 null","job":null,"age":0,"gender":null,"note":null,"intimate":false}]（job/age/gender/note 只在名册里这一项还空着时补，已有的不许改）,
+"newNpcs":[{"name":"","age":0,"gender":"男或女，拿不准留空","job":"","intimate":false,"tie":"主角手机里给他存的称呼，一个词，像妈妈、房东、老板、表姐、室友、大学同学；不要写母子、雇主、熟人这种关系词","care":"他在意什么","note":"一句话的人","rel":20,"close":false,"pos":"他在自己那一行的位置（区里的正处长、店里的领班、道上管一条街的、普通职员）","circle":"work（跟主角一个单位、一个系统）|field（跟主角一个圈子、一个行当）|空（圈外的人）","lv":"circle 不空时，按【位置】里对应那张表填第几级（从0数），圈外留 null"}],
 "messages":[{"from":"发消息的人：写【认识的人】里的名字，不要写妈妈、房东这种称呼","text":"手机上收到的一条消息，像真的微信","pay":null或{"kind":"转账|红包","amount":数额,"note":"附言"}（这人真给主角打钱时才填，数目对得上他的家底）}],
 "moments":[{"who":"发朋友圈的人（认识的人里的某个）","text":"他发的动态，二十字左右，是他自己的生活，不必跟主角有关","likes":["点赞的人，只能是【认识的人】里跟他也认识的"],"cs":[{"who":"底下留言的人（【认识的人】里跟他也认识的，不能是主角）","to":"回复谁，没有就空","text":"留言，十五字内"}]}],
 "appointments":[{"title":"这一段里新约下的事（【约好的事】里已经有的、刚办完的，不要再写）","inDays":3,"kind":"约"}],
@@ -526,7 +542,8 @@ function rosterBlock() {
 ${S.npcs.slice(0, 80).map(n => {
     const age = n.age ? `${n.age + (S.date.y - (n.ageY || S.date.y))}岁` : '年龄未定';
     const bits = [n.gender || '性别未定', age, callName(n) || n.tie || '关系未定', n.job || '干什么的未定'].join('｜');
-    return `- ${n.name}：${bits}${n.note ? '｜' + n.note : ''}${(n.facts || []).length ? `｜要一直记着：${n.facts.join('；')}` : ''}`;
+    const g = E.npcGap(S, n);
+    return `- ${n.name}：${bits}${n.note ? '｜' + n.note : ''}${n.pos ? `｜位置：${n.pos}${g != null ? `（${E.gapWord(g)}）` : ''}` : ''}${(n.facts || []).length ? `｜要一直记着：${n.facts.join('；')}` : ''}`;
   }).join('\n')}`;
 }
 // 前几年的年终小结：很少变，放前面
@@ -602,7 +619,7 @@ function stateBlocks() {
   })();
   const rifts = (S.rifts || []).filter(r => !r.done);
   // 顺序：几乎不变的 → 偶尔变的 → 每段都变的（日期放最后），接口的前缀缓存能多吃一截
-  return `【主角】${p.name}，${p.gender}，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}
+  return `【主角】${p.name}，${p.gender}，${S.city}。${E.bgLine(p) ? E.bgLine(p) + '。' : ''}出身${S.origin}：${(E.ORIGINS[S.origin] || {}).desc || ''}
 【理想】${p.ideal}（赛道：${p.track}，看家本事叫「${p.skillName}」）${(E.TRACKS[p.track] || {}).rule ? `\n【这条路的规矩】${E.TRACKS[p.track].rule}` : ''}
 ${rosterBlock()}
 ${yearsBlock()}【家】${home}
@@ -611,7 +628,8 @@ ${yearsBlock()}【家】${home}
 ${peers}
 【行业风向】${S.player.track}这行眼下${(S.wind && S.wind.mood) || '平'}${(S.era || []).length ? `；近来外面的事：${S.era.map(e => e.text).join('；')}` : ''}
 【志业阶梯】${E.ladderBlock(S)}
-【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（还在试用期）' : ''}，${E.STRAIN[E.num(S.job.strain === undefined ? 1 : S.job.strain)]}活，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
+【饭碗】${S.job.out ? `没有工作（${S.job.was ? '从' + S.job.was + '出来了' : '被放走了'}），已经没有工资进账` : `${S.job.employer || '眼下这家'}${S.job.post ? '，干的是' + S.job.post : ''}，职级${E.jobTitle(S)}${S.job.probation ? '（还在试用期）' : ''}，${E.STRAIN[E.num(S.job.strain === undefined ? 1 : S.job.strain)]}活，这个季度的绩效${Math.round(S.job.perf)}，下次考核还有${E.nextReview(S)}天`}
+${posBlock()}
 ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.gigs || []).length ? `【兼职】${S.gigs.map(g => `${g.name}（${E.gigWhen(g.name)}）`).join('；')}\n` : ''}【手里的东西】${bagLine()}
 【银行】${E.bankLine(S)}
 ${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【这一段多半用得上的人·最近的来往（他们记得这些，写的时候要对得上）】
@@ -623,8 +641,22 @@ ${M.recents}
 【未了的事】${S.unresolved.join('；') || '暂时没有'}
 【主角眼下】${p.age}岁，营生：${p.job}｜属性 专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}｜身上的毛病：${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `，去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
 【钱】存款${p.money}元，月薪${L2.salary}${L2.subsidy ? `，家里每月给${L2.subsidy}` : ''}，房租${L2.rent}，生活${L2.living}${L2.remit ? `，每月往家寄${L2.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}｜行业口碑${p.信誉}，做人${p.人品}
-${pingBlock()}【今天】${E.dateStr(S.date)}
+${posChangeBlock()}${pingBlock()}【今天】${E.dateStr(S.date)}
 【人在哪】${S.place || '不详'}`;
+}
+function ladderText(name) { return E.RANKS[name].map((r, i) => `${r}(${i})`).join('<'); }
+function posBlock() {
+  const P = E.posOf(S), C = E.chainOf(S);
+  const a = [`【位置】单位、系统里的位置表（circle=work 的人照这张填级别）：${ladderText(P.job.ladder)}`];
+  if (P.field) a.push(`圈子里的位置表（circle=field 的人照这张填级别）：${ladderText(P.field.ladder)}`);
+  a.push(`主角眼下：${P.job.out ? `没有工作（原来是${P.job.title}）` : `${P.job.org ? P.job.org + '的' : ''}${P.job.title}（第${P.job.idx}级）`}${P.field ? `；圈子里：${P.field.title}（第${P.field.idx}级）` : ''}；在世人眼里：${E.BANDS[E.standing(S)]}`);
+  if (!P.job.out) a.push(`【你上面是谁、下面是谁】${C.top ? `主角已经到顶了，单位里没有比他高的人${P.job.ladder === '从政' ? '，只对更上面的组织负责' : '，只对董事会、股东和市场负责'}` : C.up.length ? `上面：${C.up.slice(0, 2).map(n => `${n.name}（${n.pos || E.RANKS[P.job.ladder][n.lv]}）`).join('、')}，主角跟${C.up[0].name}汇报` : '上面的人名册里还没有：要写就新写一个，级别必须比主角高'}${C.down.length ? `；下面：${C.down.slice(0, 4).map(n => `${n.name}（${n.pos || E.RANKS[P.job.ladder][n.lv]}）`).join('、')}` : ''}`);
+  return a.join('\n');
+}
+function posChangeBlock() {
+  const c = S.posChange;
+  if (!c) return '';
+  return `【身份刚变了（引擎定的）】${c.from.length ? `从${c.from.join('、')}到${c.to.join('、')}` : ''}${c.band ? `${c.from.length ? '；' : ''}在别人眼里从「${c.band[0]}」成了「${c.band[1]}」` : ''}。这一段要写出周围人态度的变化，至少写两个人的反应（下属、老同事、家里人、找上门的人都行）。\n`;
 }
 function bagLine() {
   const B = E.bag(S);
@@ -661,6 +693,8 @@ const STOP_WRITE = {
 他是带着来意来的——合伙就说他缺什么、挖你就说他能给什么、借钱就说清数目和什么时候还、抢机会就让主角发现两个人报的是同一件事、有喜事就把请柬和日子说清楚。
 写到他把来意摆上桌、主角还没答复为止。别替主角决定。同期之间那点不好明说的比较，藏在话里，别写成旁白。`,
   '裂痕': d => `这一段结束在一个跟主角有梁子的人身上：${d}。他可以是直接堵上门、打电话、找到单位去、或者把事捅到别人那儿——挑一个最难堪的方式。写到他把话撂下为止，别替主角解决。`,
+  '身份': d => `这一段结束在主角身份的变化上：${d}。写是怎么知道的（文件、电话、会上宣布、圈里传开），以及身边头一两个人的反应。不许写他感慨。`,
+  '家里': d => `这一段结束在家里的一件事上：${d}。写是谁打来的电话、谁上的门、原话怎么说的，停在事情摆到他面前、他还没表态。`,
   '找上门': d => `这一段结束在一个人身上：${d}。写他是怎么找来的（电话、微信、直接堵在楼下都行）、开口第一句说了什么，别把来意一次交代完。`
 };
 
@@ -796,6 +830,8 @@ function bootPrompt(o) {
 现在开局。主角：${o.name}，${o.gender}，${S.player.age}岁，刚从学校出来，落在${o.city}。
 背景：${E.bgLine(S.player)}。开场和以后的剧情都要对得上这个背景（学历、学校、专业决定他找到什么样的第一份活，性子决定他怎么说话办事）。
 出身：${o.origin}——${E.ORIGINS[o.origin].desc}
+主角单位的位置表：${E.RANKS[E.jobLadder(S)].map((r, i) => r + '(' + i + ')').join('<')}，主角眼下是${E.jobTitle(S)}（第${E.num(S.job.lv)}级）。同事、领导写进 npcs 时，按这张表填级别；他的直属领导级别要比他高。
+开场要从出身写起：${E.ORIGINS[o.origin].story}${S.npcs.length ? `\n名册里已经有：${S.npcs.map(n => `${n.name}（${n.tie}，${n.job}，${(n.facts || [])[0] || n.note}）`).join('；')}。开场里让这个人出场或被提到，名字、身份照这个写，不要再写进 npcs。` : ''}${E.ORIGINS[o.origin].nokin ? '\n他没有家里人：npcs 里不许出现父母、兄弟姐妹、亲戚。' : ''}
 城市：${E.CITIES[o.city].desc}
 他想干成的事：${o.ideal}（赛道：${o.track}）${(E.TRACKS[o.track] || {}).rule ? `\n这条路的规矩：${E.TRACKS[o.track].rule}` : ''}
 手头：存款${S.player.money}元，房租${S.ledger.rent}，一个月生活费${S.ledger.living}${S.ledger.remit ? `，每月还要往家寄${S.ledger.remit}` : ''}，找到的第一份活月薪${S.ledger.salary}。
@@ -822,7 +858,7 @@ function bootPrompt(o) {
 只输出一个合法 JSON：
 {"narrative":"开场","summary":"一句话","employer":"","title":"","place":"","scene":{"location":"","unresolved":["3件麻烦，每条20字内"]},
 "ladder":[{"name":"这一段叫什么","milestones":[{"title":"","desc":"","metric":"投入","need":60,"scene":"提案","gate":""}]}],
-"npcs":[{"name":"","age":0,"gender":"男或女，按称呼和名字判断，拿不准留空","job":"","tie":"主角手机里给他存的称呼：妈妈、房东、老板、表姐、室友这种，不要写母子、雇主","care":"","note":"","rel":30,"close":true}],
+"npcs":[{"name":"","age":0,"gender":"男或女，按称呼和名字判断，拿不准留空","job":"","tie":"主角手机里给他存的称呼：妈妈、房东、老板、表姐、室友这种，不要写母子、雇主","care":"","note":"","rel":30,"close":true,"pos":"他的位置（主管、普通职员、科长、店老板）","circle":"work（跟主角一个单位）|空","lv":"circle 是 work 时按单位位置表填第几级（从0数），否则 null"}],
 "peers":[{"name":"","gender":"男或女","note":""}],
 "messages":[{"from":"","text":""}],
 "options":["","","",""]}`;
@@ -1157,6 +1193,7 @@ async function writePending() {
   const msgs0 = S.msgs.length;
   step('记账', () => E.applyTurn(S, d));
   step('主动找你', () => E.settlePings(S, msgs0));
+  if (S.posChange && /身份刚变了/.test(P.prompt || '')) S.posChange = null;
   step('截账说明', () => { if (S.capNote && curChapter) curChapter.querySelector('.ntext').insertAdjacentHTML('beforeend', `<p class="capnote">（引擎记账：${esc(S.capNote)}）</p>`); });
   step('里程碑', () => {
     const claim = E.judgeClaim(S, d.milestoneClaim);
@@ -1242,7 +1279,7 @@ function renderStart() {
   <div class="frow"><label>性格</label><div class="segs wrap" id="sPersona">${seg(Object.keys(E.PERSONAS), '稳重')}</div></div>
   <div class="frow"><label>长相</label><div class="segs" id="sLooks">${seg(Object.keys(E.LOOKS), '周正')}</div></div>
   <div class="hint" id="bgHint"></div>
-  <div class="frow"><label>出身</label><div class="segs" id="sOrigin">${seg(Object.keys(E.ORIGINS), '普通家庭')}</div></div>
+  <div class="frow"><label>出身</label><select id="sOrigin">${Object.keys(E.ORIGINS).map(k => `<option value="${k}"${k === '普通家庭' ? ' selected' : ''}>${k}</option>`).join('')}</select></div>
   <div class="hint" id="oHint">${E.ORIGINS['普通家庭'].desc}</div>
   <div class="frow"><label>城市</label><div class="segs" id="sCity">${seg(Object.keys(E.CITIES), '新一线')}</div></div>
   <div class="hint" id="cHint">${E.CITIES['新一线'].desc}</div>
@@ -1253,7 +1290,7 @@ function renderStart() {
   <div class="frow"><label>文风</label><div class="segs wrap" id="sStyle">${seg(Object.keys(STYLES), '白描')}</div></div>
   <div class="hint" id="stHint">${esc(STYLES['白描'].note)}</div>
   <div class="btns"><button class="ghost" onclick="openSettings()">接口设置</button><button class="primary" id="startGo">开始</button></div>`;
-  bindSeg('sOrigin', v => $('oHint').textContent = E.ORIGINS[v].desc);
+  $('sOrigin').onchange = () => $('oHint').textContent = E.ORIGINS[$('sOrigin').value].desc;
   bindSeg('sCity', v => $('cHint').textContent = E.CITIES[v].desc);
   bindSeg('sTrack', v => $('sIdeal').placeholder = E.TRACKS[v].ph);
   bindSeg('sGender', v => renderFacePick(v));
@@ -1298,7 +1335,7 @@ async function startNew() {
   const track = segVal('sTrack');
   const o = {
     name: $('sName').value.trim() || '林一',
-    gender: segVal('sGender'), origin: segVal('sOrigin'), city: segVal('sCity'),
+    gender: segVal('sGender'), origin: $('sOrigin').value, city: segVal('sCity'),
     edu: segVal('sEdu'), school: segVal('sSchool'), major: segVal('sMajor'), persona: segVal('sPersona'), looks: segVal('sLooks'),
     track, ideal: $('sIdeal').value.trim() || E.TRACKS[track].ph,
     freedom: segVal('sFree'), face: pickedFace,
@@ -1321,11 +1358,11 @@ async function startNew() {
     if (d.employer) {
       S.job.employer = String(d.employer).slice(0, 10);
       S.job.post = String(d.title || '实习').slice(0, 8);
-      S.job.title = E.LEVELS[0].t;
+      S.job.title = E.jobTitle(S, 0);
     }
     S.player.job = d.employer ? `${S.job.employer}的${S.job.post}` : (d.job || S.player.job);
     S.place = d.place || '';
-    S.home = { kind: '租', since: E.shortDate(S.date), place: S.place };
+    S.home = Object.assign(S.home || { kind: '租', tier: '合租次卧' }, { since: S.home && S.home.kind === '买' ? S.home.since : E.shortDate(S.date), place: S.place });
     S.ideal.stages = E.normLadder(d.ladder);
     S.peers = (d.peers || []).slice(0, 6).map(p => ({ name: String(p.name || '').slice(0, 8), note: String(p.note || '').slice(0, 30), track: [], gender: E.guessGender(p.gender, '', p.note, p.name) }));
     E.applyTurn(S, { newNpcs: d.npcs, npcMax: 4, messages: d.messages, scene: d.scene, summary: d.summary, narrative: d.narrative });
@@ -1450,6 +1487,9 @@ function renderPanel() {
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
       <div><b>做人</b><span>${p.人品}</span></div>
       <div><b>干了多久</b><span>${workedText(p.资历天 || 0)}</span></div>
+      <div><b>出身</b><span>${esc(S.origin)}</span></div>
+      <div><b>位置</b><span>${(() => { const P = E.posOf(S); return esc((P.job.out ? '待业' : P.job.title) + (P.field ? '｜' + P.field.title : '')); })()}</span></div>
+      <div><b>在别人眼里</b><span>${E.BANDS[E.standing(S)]}</span></div>
     </div></div>
     <h4>事业</h4>
     <div class="card">${S.job.out
@@ -1458,7 +1498,7 @@ function renderPanel() {
       : `<div class="lines">
           <div><b>单位</b><span>${esc(S.job.employer || S.player.job || '—')}</span></div>
           <div><b>岗位</b><span>${esc(S.job.post || '没名目')}</span></div>
-          <div><b>职级</b><span>${E.LEVELS[E.num(S.job.lv)].t}${S.job.probation ? '（试用期）' : ''}</span></div>
+          <div><b>职级</b><span>${E.jobTitle(S)}${S.job.probation ? '（试用期）' : ''}</span></div>
           <div><b>月薪</b><span>${L.salary}${S.job.vary ? '（底薪，提成另算）' : ''}</span></div>
           <div><b>累不累</b><span>${E.STRAIN[E.num(S.job.strain === undefined ? 1 : S.job.strain)]}</span></div>
           <div><b>下次考核</b><span>${E.nextReview(S)}天后</span></div>
@@ -1774,6 +1814,7 @@ function showNpc(name) {
       <div><b>上次来往</b><span>${gap <= 0 ? '就这几天' : gap + '天前'}</span></div>
       ${n.care ? `<div><b>在意</b><span>${esc(n.care)}</span></div>` : ''}
       ${n.busy ? `<div><b>最近</b><span>${esc(n.busy.t)}</span></div>` : ''}
+      ${n.pos ? `<div><b>位置</b><span>${esc(n.pos)}${E.npcGap(S, n) != null ? `｜${E.npcGap(S, n) > 0 ? '比你高' + E.npcGap(S, n) + '级' : E.npcGap(S, n) === 0 ? '跟你平级' : '比你低' + (-E.npcGap(S, n)) + '级'}` : ''}</span></div>` : ''}
     </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
     ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.slice(-8).reverse().map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="ghost" onclick="giveFromCard('${esc(n.name)}')">送东西</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>
@@ -1826,6 +1867,7 @@ function convoHead(n) {
 你现在扮演的是【${n.name}】。
 【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}，属于「${E.TIERS[E.relTier(n.rel)]}」这一档）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【他的说话习惯（一直照这个来）】${n.talk || E.talkOf(n)}
+${n.pos ? `【他的位置】${n.pos}${E.npcGap(S, n) != null ? `，${E.gapWord(E.npcGap(S, n))}：说话的分寸照这个来，跟关系好坏叠在一起` : ''}\n` : ''}【主角的位置】${E.posOf(S).job.out ? '眼下没工作' : E.posOf(S).job.title}${E.posOf(S).field ? '，圈子里' + E.posOf(S).field.title : ''}，在世人眼里：${E.BANDS[E.standing(S)]}
 【他最近在忙】${(n.busy && n.busy.t) || '老样子'}
 【你们之间的来往（按日子，${n.name}都记得）】
 ${(n.mem || []).join('\n') || '没什么特别的'}
@@ -2014,7 +2056,7 @@ async function convoTurn(say, judge) {
       // 主角开口求他：先不让他回，掷完骰拿结果再回一条
       $('chatBody').querySelectorAll('.typing').forEach(x => x.remove());
       const a = d.ask;
-      const ck = E.rollCheck(S, a.attr, a.need + E.TIER_ASK[E.relTier(n.rel)], Math.random);
+      const ck = E.rollCheck(S, a.attr, a.need + E.askMod(S, n.name), Math.random);
       ck.what = a.what; ck.kind = a.kind; ck.days = a.days;
       if (ck.success) settleAsk(n, a, ck);
       if (ck.sys) c.lines.push({ who: 'sys', text: ck.sys });

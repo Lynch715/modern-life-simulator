@@ -50,12 +50,85 @@ function bgLine(p) {
 }
 
 const ORIGINS = {
-  '家里托底': { money: 30000, remit: 0, subsidy: 1200, rentCut: 0.5, retreat: true,
-    desc: '爸妈在老家有房有退休金，房租他们帮着出一半，每月还给你打点钱。你可以不慌，但也总有人问你什么时候回去考个编。' },
   '普通家庭': { money: 8000, remit: 0, subsidy: 0, rentCut: 1, retreat: true,
-    desc: '家里供你念完了书，往后就得靠你自己。手头这点钱，够撑两个月。' },
+    desc: '家里供你念完了书，往后就得靠你自己。手头这点钱，够撑两个月。',
+    story: '从一个普通的工作日切进去，家里人的电话里带着"在外面别委屈自己"那种话。' },
+  '家里托底': { money: 30000, remit: 0, subsidy: 1200, rentCut: 0.5, retreat: true,
+    desc: '爸妈在老家有房有退休金，房租他们帮着出一半，每月还给你打点钱。你可以不慌，但也总有人问你什么时候回去考个编。',
+    story: '写家里人送他来、或者打电话来，话里话外是"实在不行就回来"。' },
   '一人进城': { money: 2000, remit: 900, subsidy: 0, rentCut: 1, retreat: false,
-    desc: '你是家里第一个出来的，每月还得往回寄一点。没有退路，也没人兜底。' }
+    desc: '你是家里第一个出来的，每月还得往回寄一点。没有退路，也没人兜底。',
+    story: '写他兜里那点钱、第一次一个人租房的手忙脚乱，家里人打来电话问工资什么时候发。' },
+  '红二代': { money: 50000, remit: 0, subsidy: 3000, rentCut: 0.5, retreat: true, attrs: { '谋划': 4, '情绪': 2 }, rep: 6,
+    ease: { '从政': 12, '职场': 6, job: 6 }, askEase: -6,
+    npc: { tie: '爷爷的老部下', job: '退下来的老干部', age: 68, rel: 45, note: '看着主角长大的，说话慢，分量重', care: '规矩和体面', fact: '是主角爷爷当年的老部下' },
+    risk: { p: 0.5, rep: -2, text: '家里对你的路另有安排，老爷子发话了，要你按他的意思走' },
+    desc: '爷爷那一辈打过天下，家里是大院出来的。门好进，话有人听；可一举一动都有人盯着，出了点事会被放大，家里对你的路也早有安排。',
+    story: '从大院写起：门口的岗哨、老爷子饭桌上的规矩、叔伯们说话留半句。他出来自己干，家里有人不以为然。' },
+  '官二代': { money: 80000, remit: 0, subsidy: 5000, rentCut: 0.3, retreat: true, attrs: { '表达': 3, '谋划': 3 }, rep: 3,
+    ease: { '从政': 10, job: 5 }, askEase: -8,
+    npc: { tie: '父亲的同事', job: '机关里的副处长', age: 46, rel: 40, note: '逢年过节来家里坐，嘴上叫你小名', care: '人情往来', fact: '是主角父亲的同事，欠过主角父亲人情' },
+    risk: { p: 0.7, cut: true, rep: -6, text: '父亲那边出了事，被叫去谈话了，家里的钱先停了，平时围着你转的人一下子少了一大半' },
+    desc: '父亲在体制里有个位置，办事托人比别人容易，开口求人也好使。可父亲那边一出事，你跟着倒霉。',
+    story: '写家里饭桌上的规矩：谁先动筷子、父亲接电话时大家都不出声。他第一份工作是不是托人找的，他自己心里清楚。' },
+  '富二代': { money: 300000, remit: 0, subsidy: 8000, rentCut: 0, retreat: true, livingX: 1.8, attrs: { '表达': 3, '情绪': -2 },
+    ease: { '创业': 6, '手艺': 4 }, items: ['car', 'suit', 'coat'],
+    npc: { tie: '家里公司的老会计', job: '家族企业的财务', age: 52, rel: 35, note: '替主角父亲管账，什么都往上报', care: '公司账目', fact: '是主角家族企业的老会计，会把主角的事报给他父亲' },
+    risk: { p: 0.8, text: '家里生意出了状况，父亲打电话来，要你回去接班，话说得很硬' },
+    desc: '家里做生意，钱是不缺的，起手就有车有存款。可家里逼着你接班，身边总有人把你当提款机，花钱也大手大脚惯了。',
+    story: '写他开着家里给的车去上一份月薪几千的班，同事看他的眼神；父亲的电话里只问什么时候回来接手。' },
+  '拆二代': { money: 150000, remit: 0, subsidy: 2000, rentCut: 0, retreat: true, house: true, attrs: { '谋划': -3, '情绪': 2 },
+    risk: { p: 1, money: 0, text: '老家的亲戚上门来借钱，说是急用，开口就是一个大数' },
+    desc: '老家那片拆了，家里分了几套房和一笔钱。你有房住、每月还有租金，可文化底子薄了点，亲戚们也都惦记着你家的钱。',
+    story: '写拆迁之后家里的变化：亲戚多了，饭局多了，父母说话的口气变了。他住进自家的房子，楼下的人都知道他家是拆迁户。' },
+  '刑二代': { money: 1500, remit: 0, subsidy: 0, rentCut: 1, retreat: false, attrs: { '情绪': 3, '体能': 2 }, rep: -4,
+    ease: { '捞偏门': 12 }, block: /公务员|银行柜员/,
+    npc: { tie: '父亲的老朋友', job: '刚出来没多久的人', age: 50, rel: 35, note: '跟主角父亲在里面认识的，说话不多，讲义气', care: '义气和面子', fact: '是主角父亲在牢里认识的老朋友' },
+    risk: { p: 0.8, text: '父亲当年的事又被人翻出来了，有人找上门，说你爸欠他的' },
+    desc: '父亲坐过牢，家里有人在道上混过。政审过不了，考公、进体制、银行这类地方的门对你是关着的；可道上的门路你熟。',
+    story: '从探监或者父亲刚出狱写起：铁门、登记表、父亲老了一截。他填简历时"家庭成员"那一栏停了很久。' },
+  '黑二代': { money: 60000, remit: 0, subsidy: 4000, rentCut: 0.5, retreat: true, attrs: { '情绪': 2, '谋划': 2 }, rep: -2,
+    ease: { '捞偏门': 15, '创业': 4 }, block: /公务员|银行柜员/, askEase: -4,
+    npc: { tie: '家里的老伙计', job: '帮主角家里看场子的', age: 44, rel: 45, note: '从小叫主角少爷，手上有疤', care: '规矩和地盘', fact: '是替主角家里看场子的老人' },
+    risk: { p: 1, rep: -3, text: '家里的生意被查了，几处场子贴了封条，有人放话要找你家算旧账' },
+    desc: '家里本身就是做灰色生意的，场子、放贷、工程，什么都沾一点。钱不缺，道上的人认你；可体制的门关着，仇家和警察都记着你家。',
+    story: '写家里的场面：烟雾缭绕的茶楼、叫他少爷的人、父亲交代事情从来不说全。他出来上班，是想跟家里撇清，还是被派出来的，开局要写出来。' },
+  '星二代': { money: 50000, remit: 0, subsidy: 3000, rentCut: 0.5, retreat: true, attrs: { '表达': 5 }, rep: 8,
+    ease: { '表演': 12, '做博主': 12 },
+    npc: { tie: '母亲的经纪人', job: '娱乐公司的经纪人', age: 40, female: true, rel: 40, note: '说话快，看人先看能不能红', care: '流量和资源', fact: '是主角母亲多年的经纪人' },
+    risk: { p: 1.2, rep: -2, text: '你的一件小事被人拍了发上网，配的标题拿你爸妈做文章，上了热搜' },
+    desc: '父母是明星，你一出生就被人认识。做博主、上台都有人看；可永远被拿来跟爸妈比，一点小事就上热搜。',
+    story: '写他走在街上被人认出来、被叫成"谁谁家的孩子"；他想靠自己，可第一份活就是冲着他爸妈的名字来的。' },
+  '学术世家': { money: 20000, remit: 0, subsidy: 1500, rentCut: 0.7, retreat: true, attrs: { '专业': 6, '谋划': 3, '表达': -2 },
+    ease: { '科研': 12, '教书': 10 },
+    npc: { tie: '父亲的学生', job: '大学里的副教授', age: 38, rel: 40, note: '叫主角父亲"老师"，对主角客客气气', care: '学术名声', fact: '是主角父亲带出来的学生' },
+    risk: { p: 0.6, text: '家里开了一次饭桌会，父亲当着亲戚的面问你：什么时候回来读博' },
+    desc: '父母都是教授，家里书比家具多。科研、教书的路你走得顺，专业底子厚；可家里只认读书这一条路，干别的都被看不起。',
+    story: '写书房、饭桌上谈的论文和基金；他没读博出来工作，父亲到现在没正眼看过他的工作单位。' },
+  '军人家庭': { money: 10000, remit: 0, subsidy: 0, rentCut: 1, retreat: true, attrs: { '体能': 6, '情绪': 4, '表达': -2 }, rep: 2,
+    ease: { '体育': 6, '从政': 4 },
+    npc: { tie: '父亲的老战友', job: '转业到地方的科长', age: 50, rel: 40, note: '说话嗓门大，一喝酒就讲当年', care: '规矩和担当', fact: '是主角父亲的老战友' },
+    risk: { p: 0.5, text: '父亲打电话来，嫌你这阵子过得没个样子，话说得很冲，要你给个交代' },
+    desc: '父亲当了半辈子兵，家里讲规矩。你体格好、扛得住事；可家里管得严，跟父亲说话常常硬碰硬。',
+    story: '写早上六点自己就醒、被子叠得方方正正；父亲的电话一共三句话，最后一句是"别给家里丢人"。' },
+  '个体户家庭': { money: 15000, remit: 0, subsidy: 0, rentCut: 1, retreat: true, attrs: { '表达': 5, '谋划': 2 },
+    ease: { '创业': 6, '手艺': 6 },
+    risk: { p: 1.2, money: 3000, text: '家里的店周转不开，你妈打电话来让你先垫三千，过阵子再还' },
+    desc: '家里开了个小店，你从小在柜台后面长大，会说话、懂做买卖。可家里的店时好时坏，隔一阵就要你回去帮忙、垫钱。',
+    story: '写家里那间店：卷帘门、计算器、你妈算账时嘴里念念有词。他出来上班，家里人觉得"给人打工能有什么出息"。' },
+  '单亲家庭': { money: 3000, remit: 600, subsidy: 0, rentCut: 1, retreat: false, attrs: { '情绪': 5, '谋划': 2 },
+    risk: { p: 1, money: 2000, text: '家里那一个人病倒了，住了院，没人照顾，医药费也要你出' },
+    desc: '从小跟着妈或者爸一个人过，早早就懂事。你遇事稳得住；可家里只有那一个人，生病了全靠你。',
+    story: '写他每天给家里那一个人打的电话，问吃了没、药按时吃了没；他攒钱比谁都狠，因为知道没人兜底。' },
+  '留守长大': { money: 2000, remit: 1000, subsidy: 0, rentCut: 1, retreat: false, attrs: { '体能': 5, '情绪': 2, '表达': -3 },
+    risk: { p: 1, money: 1500, text: '老家的奶奶摔了一跤，爸妈还在外地打工回不来，电话打到你这儿' },
+    desc: '爸妈在外地打工，你跟爷爷奶奶长大。能吃苦、能熬；可跟爸妈不亲，爷爷奶奶老了也得你来管。',
+    story: '写他跟爸妈的电话总是冷场，跟奶奶的电话一打半小时；他寄回去的钱，一半给爸妈，一半偷偷给奶奶。' },
+  '孤儿院长大': { money: 1000, remit: 0, subsidy: 0, rentCut: 1, retreat: false, attrs: { '情绪': 6, '体能': 3 }, nokin: true,
+    npc: { tie: '院里一起长大的', job: '在工地上干活', age: 24, rel: 60, close: true, note: '比主角大两岁，小时候替主角打过架', care: '兄弟情义', fact: '是跟主角在孤儿院一起长大的' },
+    risk: { p: 0.6, text: '孤儿院的老院长打电话来，说院里要拆了，问你能不能回来看看' },
+    desc: '你在福利院长大，十八岁那年自己出来。没人催没人管，心里硬；可没有家里人能借钱、能托底，逢年过节也没地方去。',
+    story: '从他离开福利院那天写起，或者写他开始工作后第一次回院里；他的手机通讯录很短。' }
 };
 
 const CITIES = {
@@ -227,7 +300,8 @@ function newState(o) {
   const pay = Math.round(city.pay * (0.82 + (o.payRoll || 0.3) * 0.26) * bg.pay / 100) * 100;
   const attrs = { '专业': 22, '表达': 20, '谋划': 20, '情绪': 24, '体能': 30 };
   for (const k in bg.add) attrs[k] = clamp(attrs[k] + bg.add[k], 5, 60);
-  return {
+  for (const k in (org.attrs || {})) attrs[k] = clamp(attrs[k] + org.attrs[k], 5, 60);
+  const S0 = {
     v: SAVE_VERSION,
     runId: 'r' + startY + '-' + Math.floor((o.rngSeed || 1) % 100000),
     seg: 0,
@@ -244,11 +318,11 @@ function newState(o) {
       attrF: Object.assign({}, attrs),
       energy: 78,
       money: org.money,
-      信誉: clamp(8 + bg.rep, 0, 100), 人品: 50,
+      信誉: clamp(8 + bg.rep + num(org.rep), 0, 100), 人品: 50,
       资历天: 0
     },
     ledger: {
-      rent: Math.round(city.rent * org.rentCut), living: city.living,
+      rent: Math.round(city.rent * org.rentCut), living: Math.round(city.living * (org.livingX || 1) / 100) * 100,
       remit: org.remit, subsidy: org.subsidy, salary: pay,
       rentDay: 1, salaryDay: 10, loan: 0, base: pay
     },
@@ -274,6 +348,23 @@ function newState(o) {
     broke: false, brokeMonths: 0, over: false, ending: null,
     booted: false
   };
+  applyOrigin(S0, mkRng((o.rngSeed || 1) * 7 + 3));
+  return S0;
+}
+// 出身带来的东西：房子、车、起手的熟人
+function applyOrigin(S, rng) {
+  const O = ORIGINS[S.origin];
+  if (!O) return;
+  if (O.house) {
+    S.home = { kind: '买', since: '家里分的', place: '', tier: '合租次卧', price: housePrice(S), loan: { left: 0, monthly: 0, months: 0, paid: 0, done: true } };
+    S.ledger.rent = 0;
+  }
+  for (const id of (O.items || [])) {
+    const it = itemOf(id); if (!it) continue;
+    S.bagId = num(S.bagId) + 1;
+    S.bag.push({ uid: S.bagId, id, name: it.name, cat: it.cat, keep: !!it.keep, gift: !!it.gift, tags: it.tags.slice(), price: it.price, day: 0, date: '家里给的', uses: 1 });
+  }
+  originNpc(S, rng);
 }
 
 // 老存档补齐：开局那会儿没记单位名
@@ -585,6 +676,8 @@ function pickTag(S, rng) {
   if (S.broke) w['钱'] += 3;
   if (S.player.energy < 35) w['身体'] += 2;
   if (S.focus) w['工作'] += 1;
+  const band = standing(S);
+  if (band >= 2) { w['人情'] += band; w['找你办事的人'] = band * 1.5; w['有人盯着你'] = (band - 1) * 0.8; w['钱'] *= 0.6; }
   let tot = 0; for (const k in w) tot += w[k];
   let r = rng() * tot;
   for (const k in w) { r -= w[k]; if (r <= 0) return k; }
@@ -660,6 +753,7 @@ function advance(S, opt) {
       if (rv) {
         events.push({ t: '工作', s: rv.text });
         S.lastReview = rv;
+        notePos(S);
         stop = { kind: '考核', detail: `${rv.kind}：${rv.text}`, review: rv };
         break;
       }
@@ -688,6 +782,10 @@ function advance(S, opt) {
     events.push(...pt.ev);
 
     events.push(...lifeTick(S, rng));
+    const og = originTick(S, rng);
+    if (og && !quiet) { stop = og; break; }
+    const ps = posTick(S);
+    if (ps) { stop = ps; break; }
 
     const nt = npcTick(S, rng);
     if (nt.stop && !quiet && S.flags.cool <= 0) { stop = nt.stop; break; }
@@ -1318,10 +1416,12 @@ function sanitizeTurn(d) {
   o.npcUpdates = T.arr(d.npcUpdates, 12).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), rel: T.num(x.rel, -20, 20), tie: x.tie ? T.str(x.tie, 12) : null, note: x.note ? T.str(x.note, 50) : null,
     mem: x.mem ? T.str(x.mem, 60) : null, intimate: T.bool(x.intimate),
-    fact: x.fact ? T.str(x.fact, 40) : null, job: x.job ? T.str(x.job, 20) : null, age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2) }));
+    fact: x.fact ? T.str(x.fact, 40) : null, job: x.job ? T.str(x.job, 20) : null, age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2),
+    pos: x.pos ? T.str(x.pos, 16) : null, lv: x.lv === undefined || x.lv === null || x.lv === '' ? null : T.num(x.lv, 0, 12), circle: x.circle === 'work' || x.circle === 'field' ? x.circle : null }));
   o.newNpcs = T.arr(d.newNpcs, 6).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
-    tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close) }));
+    tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close),
+    pos: x.pos ? T.str(x.pos, 16) : '', lv: x.lv === undefined || x.lv === null || x.lv === '' ? null : T.num(x.lv, 0, 12), circle: x.circle === 'work' || x.circle === 'field' ? x.circle : '' }));
   o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120), pay: sanitizePay(x.pay) }));
   o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80),
     cs: T.arr(x.cs, 2).map(T.obj).filter(c => c && c.who && c.text).map(c => ({ who: T.str(c.who, 12), to: T.str(c.to, 12), text: T.str(c.text, 60) })),
@@ -1332,7 +1432,7 @@ function sanitizeTurn(d) {
   o.newRifts = T.arr(d.newRifts, 1).map(T.obj).filter(x => x && x.who).map(x => ({ who: T.str(x.who, 12), reason: T.str(x.reason, 40), kind: RIFT_KINDS[x.kind] ? x.kind : '私怨', heat: T.num(x.heat, 5, 60) }));
   o.riftEased = T.arr(d.riftEased, 3).map(x => T.str(typeof x === 'object' && x ? x.who : x, 12)).filter(Boolean);
   const nj = T.obj(d.newJob);
-  o.newJob = nj && nj.employer ? { employer: T.str(nj.employer, 16), title: T.str(nj.title || nj.post, 10), salary: T.num(nj.salary, 0, 1e7), lv: T.num(nj.lv, 0, LEVELS.length - 1), probation: T.bool(nj.probation) } : null;
+  o.newJob = nj && nj.employer ? { employer: T.str(nj.employer, 16), title: T.str(nj.title || nj.post, 10), salary: T.num(nj.salary, 0, 1e7), lv: T.num(nj.lv, 0, 10), probation: T.bool(nj.probation) } : null;
   o.options = T.arr(d.options, 4).map(x => T.str(x, 30)).filter(Boolean);
   o.nextStop = sanitizeStop(d.nextStop);
   o.pledges = T.arr(d.pledges, 2).map(T.obj).filter(x => x && x.who && x.what).map(x => ({
@@ -1442,6 +1542,7 @@ function applyTurn(S, d) {
     if (num(u.age) && !num(n.age)) { n.age = Math.round(num(u.age)); n.ageY = S.date.y; }
     if ((u.gender === '男' || u.gender === '女') && !n.gender) n.gender = u.gender;
     if (u.fact) addFact(n, u.fact);
+    if (u.pos || u.circle || u.lv != null) setNpcPos(S, n, u, false);
     if (u.mem) { npcMem(S, n, u.mem); memo[n.name] = 1; n.lastSeen = S.stats.days; }
     if (u.intimate === true) { markIntimate(S, n); n.lastSeen = S.stats.days; }
   }
@@ -2139,7 +2240,8 @@ function energyCap(S) { return Math.round(100 - chronicLoad(S) * 7 + Math.min(8,
 /* ================= 单位与饭碗 ================= */
 const LEVELS = [
   { t: '实习', pay: 1.00 }, { t: '转正', pay: 1.28 }, { t: '熟手', pay: 1.65 },
-  { t: '骨干', pay: 2.15 }, { t: '主管', pay: 2.95 }, { t: '负责人', pay: 4.10 }
+  { t: '骨干', pay: 2.15 }, { t: '主管', pay: 2.95 }, { t: '负责人', pay: 4.10 },
+  { t: '高层', pay: 5.6 }, { t: '顶层', pay: 7.5 }, { t: '顶层', pay: 10 }, { t: '顶层', pay: 13 }, { t: '顶层', pay: 17 }
 ];
 function jobLv(S) { return LEVELS[clamp(num(S.job.lv), 0, LEVELS.length - 1)]; }
 function nextReview(S) {
@@ -2164,9 +2266,10 @@ function jobTick(S, plan) {
 function review(S, rng) {
   const J = S.job, p = S.player;
   if (!J || J.out) return null;
-  const lv = clamp(num(J.lv), 0, LEVELS.length - 1);
+  const lv = clamp(num(J.lv), 0, jobMax(S));
   const score = num(J.perf) + p.attrs['专业'] * 0.8 + p.信誉 * 0.4 + rnd(rng, 0, 20) + (J.mood || 0);
-  const need = 52 + lv * 16;
+  const need = 52 + Math.min(lv, 5) * 16 + Math.max(0, lv - 5) * 6;
+  const high = lv >= 5;          // 再往上靠机会：够格了也只有一部分人能上去
   const f = fdm(S);
   J.perf = 0; J.quarters = (J.quarters || 0) + 1;
   const out = { score: Math.round(score), need, kind: '', text: '' };
@@ -2179,20 +2282,22 @@ function review(S, rng) {
       return out;
     }
     J.lv = Math.max(1, lv);
-    S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay);
-    J.title = LEVELS[J.lv].t;
+    S.ledger.salary = Math.round(S.ledger.base * payMul(S, J.lv));
+    J.title = jobTitle(S, J.lv);
     if (J.employer) S.player.job = `${J.employer}的${J.post || J.title}`;
     out.kind = '转正'; out.text = `转正了，月薪${S.ledger.salary}`;
     return out;
   }
-  if (score >= need * 1.35 && lv < LEVELS.length - 1) {
+  if (lv < jobMax(S) && (high ? score >= need * 1.12 && rng() < 0.4 + num(p.信誉) / 250 : score >= need * 1.35)) {
     J.lv = lv + 1;
-    S.ledger.salary = Math.round(S.ledger.base * LEVELS[J.lv].pay * (0.95 + rng() * 0.15));
-    J.title = LEVELS[J.lv].t;
+    S.ledger.salary = Math.round(S.ledger.base * payMul(S, J.lv) * (0.95 + rng() * 0.15));
+    J.title = jobTitle(S, J.lv);
     if (J.employer) S.player.job = `${J.employer}的${J.post || J.title}`;
-    out.kind = '升职'; out.text = `提了${LEVELS[J.lv].t}，月薪${S.ledger.salary}`;
+    out.kind = '升职'; out.text = `提了${jobTitle(S, J.lv)}，月薪${S.ledger.salary}`;
   } else if (score >= need) {
-    const up = Math.round(S.ledger.salary * (0.04 + rng() * 0.06));
+    // 同一个级别上涨薪有顶：最多到这一级基准的一倍半；体制内涨得更慢
+    const capS = Math.round(S.ledger.base * payMul(S, lv) * 1.5);
+    const up = Math.max(0, Math.min(Math.round(S.ledger.salary * (jobLadder(S) === '从政' ? 0.01 + rng() * 0.015 : 0.04 + rng() * 0.06)), capS - S.ledger.salary));
     S.ledger.salary += up;
     out.kind = '涨薪'; out.text = `涨了${up}，月薪${S.ledger.salary}`;
   } else if (score >= need * 0.6) {
@@ -2222,7 +2327,7 @@ function salaryRange(S, lv) {
   const city = CITIES[S.city] || CITIES['新一线'];
   const now = num(S.ledger.salary);
   const lo = Math.round(city.pay * 0.6);
-  let hi = Math.max(Math.round(city.pay * LEVELS[lv].pay * 1.6), Math.round(now * 1.8));
+  let hi = Math.max(Math.round(city.pay * payMul(S, lv) * 1.6), Math.round(now * 1.8));
   if (fdm(S).fiat) hi *= 3;
   return { lo, hi };
 }
@@ -2230,9 +2335,9 @@ function takeJob(S, o) {
   const J = S.job;
   const fiat = !!fdm(S).fiat;
   const lv0 = J.out ? Math.max(0, num(J.lv) - 1) : num(J.lv);
-  let lv = clamp(Math.round(num(o.lv)) || Math.max(1, num(J.lv)), 0, LEVELS.length - 1);
+  let lv = clamp(Math.round(num(o.lv)) || Math.max(1, num(J.lv)), 0, jobMax(S));
   let note = null;
-  if (!fiat && lv > lv0 + 2) { note = `职级你写成${LEVELS[lv].t}，引擎只认到${LEVELS[lv0 + 2].t}`; lv = lv0 + 2; }
+  if (!fiat && lv > lv0 + 2) { note = `职级你写成${jobTitle(S, lv)}，引擎只认到${jobTitle(S, lv0 + 2)}`; lv = lv0 + 2; }
   const R = salaryRange(S, lv);
   let pay = num(o.salary) ? Math.round(num(o.salary)) : 0;
   if (pay && (pay > R.hi || pay < R.lo)) { const c = clamp(pay, R.lo, R.hi); note = (note ? note + '；' : '') + `新工作月薪你写成${pay}，引擎只认${c}`; pay = c; }
@@ -2240,11 +2345,11 @@ function takeJob(S, o) {
   J.employer = String(o.employer || J.employer || '新东家').slice(0, 16);
   J.post = String(o.title || o.post || J.post || '').slice(0, 10);
   J.lv = lv;
-  J.title = LEVELS[lv].t;
+  J.title = jobTitle(S, lv);
   J.probation = !!o.probation;
   J.perf = 0; J.mood = 0; J.quarters = 0;
-  S.ledger.base = Math.max(1000, pay ? Math.round(pay / LEVELS[lv].pay) : S.ledger.base);
-  S.ledger.salary = pay || Math.round(S.ledger.base * LEVELS[lv].pay);
+  S.ledger.base = Math.max(1000, pay ? Math.round(pay / payMul(S, lv)) : S.ledger.base);
+  S.ledger.salary = pay || Math.round(S.ledger.base * payMul(S, lv));
   S.player.job = `${J.employer}的${J.post || J.title}`;
   return { kind: '新工作', text: `${J.employer}，${J.post || J.title}，月薪${S.ledger.salary}`, note };
 }
@@ -2403,7 +2508,7 @@ function startKey(S, o) {
   const t = OPP_TYPES[o.type] ? o.type : pick(o.rng || Math.random, Object.keys(OPP_TYPES));
   const T = OPP_TYPES[t];
   const BF = bagFx(S);
-  const hard = clamp((num(o.hard) || 50) - num(fdm(S).keyEase) - (/面试|谈判/.test(o.scene || '') || o.kind === 'raise' || o.kind === 'job' ? num(BF.formal) : 0) - (o.kind === 'love' || o.kind === 'marry' ? num(BF.charm) : 0), 18, 95);
+  const hard = clamp((num(o.hard) || 50) - num(fdm(S).keyEase) - (o.kind === 'mile' || o.kind === 'job' || o.kind === 'raise' ? originEase(S, o.kind) : 0) - (/面试|谈判/.test(o.scene || '') || o.kind === 'raise' || o.kind === 'job' ? num(BF.formal) : 0) - (o.kind === 'love' || o.kind === 'marry' ? num(BF.charm) : 0), 18, 95);
   S.key = {
     scene: o.scene || '谈判',
     stake: String(o.stake || '').slice(0, 40),
@@ -2528,7 +2633,7 @@ function settleKey(S) {
     if (K.result === '谈成') {
       const up = Math.round(S.ledger.salary * (0.09 + Math.random() * 0.09));
       S.ledger.salary += up;
-      S.ledger.base = Math.round(S.ledger.salary / LEVELS[clamp(num(S.job.lv), 0, 5)].pay);
+      S.ledger.base = Math.round(S.ledger.salary / payMul(S, S.job.lv));
       out.raise = up;
     } else if (K.result === '谈崩') { S.job.mood = (S.job.mood || 0) - 10; out.price.push('老板那边记了一笔'); }
     S.job.askedRaise = shortDate(S.date);
@@ -2617,6 +2722,7 @@ function addNpcs(S, list, max) {
       gender: guessGender(n.gender, n.tie, n.job, n.name), ageY: S.date.y
     });
     S.npcs[S.npcs.length - 1].talk = talkOf(S.npcs[S.npcs.length - 1]);
+    if (n.pos || n.circle || n.lv != null) setNpcPos(S, S.npcs[S.npcs.length - 1], n, true);
     if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
 }
@@ -2680,7 +2786,7 @@ const KIN_TIE = /家里人|妈|爸|父|母|爷|奶|外公|外婆|叔|伯|姨|舅
 function isKinNpc(n) { return KIN_TIE.test(String((n && n.tie) || '') + '|' + String((n && n.name) || '')) && !/同事|同学|朋友|室友|邻居/.test(String((n && n.tie) || '')); }
 function askMod(S, name) {
   const n = name ? npcByName(S, name) : null;
-  return n ? TIER_ASK[relTier(n.rel)] : 0;
+  return (n ? TIER_ASK[relTier(n.rel)] : 0) + num((ORIGINS[S.origin] || {}).askEase);
 }
 
 /* ---- 住处 ---- */
@@ -2789,6 +2895,7 @@ function applyPost(S, id, rng) {
   if (!P) return { ok: false, why: '这条招聘已经下了' };
   if (P.state) return { ok: false, why: '这家已经投过了' };
   if (P.cert && !hasItem(S, 'cert')) return { ok: false, why: '这个岗位要先考试，得先报个考证班' };
+  if (originBlocked(S, P.job)) return { ok: false, why: '政审过不了，这个岗位投不进去' };
   const ck = rollCheck(S, P.attr, P.need + (S.job.out ? 0 : 4) + (bankOf(S).credit < 40 ? 5 : 0), rng);
   S.stats.checks++; if (ck.success) S.stats.wins++;
   if (!ck.success) { P.state = '没回音'; return { ok: true, pass: false, ck, post: P }; }
@@ -2808,11 +2915,11 @@ function takePost(S, P, rng) {
   const J = S.job;
   const lv = (S.player.资历天 || 0) >= 300 ? 1 : 0;
   J.out = false; J.employer = P.employer.slice(0, 16); J.post = P.job.slice(0, 10);
-  J.lv = lv; J.title = LEVELS[lv].t; J.probation = true;
+  J.lv = lv; J.title = jobTitle(S, lv); J.probation = true;
   J.perf = 0; J.mood = 0; J.quarters = 0;
   J.strain = P.strain; J.vary = P.vary ? 1 : 0; J.lib = P.job; J.sinceDay = S.stats.days;
   S.ledger.salary = pay;
-  S.ledger.base = Math.round(pay / LEVELS[lv].pay);
+  S.ledger.base = Math.round(pay / payMul(S, lv));
   S.player.job = `${J.employer}的${J.post}`;
   if (S.board) { const b = S.board.list.find(x => x.id === P.id); if (b) b.state = '入职了'; }
   return { kind: '新工作', text: `${J.employer}，${J.post}，月薪${pay}，${STRAIN[P.strain]}活，先试用`, pay };
@@ -2897,6 +3004,7 @@ const ITEMS = [
   { id: 'massage', cat: '健康', name: '按摩卡（三次）', price: 450, use: { en: 8, heal: 2 }, uses: 3, tags: ['健康'] },
   { id: 'waist', cat: '健康', name: '护腰', price: 260, keep: 1, fx: { back: 1 }, tags: ['健康', '实用'] },
   { id: 'vitamin', cat: '健康', name: '一瓶维生素', price: 160, use: { en: 3, heal: 1 }, tags: ['健康'] },
+  { id: 'car', cat: '大件', name: '一辆车', price: 150000, keep: 1, fx: { charm: 3 }, tags: ['体面'] },
   { id: 'flower', cat: '礼物', name: '一束花', price: 199, gift: 1, tags: ['心意', '浪漫'] },
   { id: 'jewel', cat: '礼物', name: '一条项链', price: 1600, gift: 1, tags: ['浪漫', '体面'] },
   { id: 'perfume', cat: '礼物', name: '一瓶香水', price: 780, gift: 1, tags: ['浪漫', '体面'] },
@@ -3586,6 +3694,204 @@ function migrate(S) {
   return S;
 }
 
+
+/* ================= 出身的后手、位置、地位 ================= */
+const SURN = ['王', '李', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙', '马', '胡', '朱', '郭', '何', '罗', '高', '林', '郑', '梁', '谢', '宋', '唐', '许', '邓', '冯', '韩', '曹'];
+const GIVEN_M = ['建国', '国强', '志刚', '卫东', '德胜', '海涛', '永福', '振华', '立军', '宏伟', '长青', '文斌', '树林', '庆丰'];
+const GIVEN_F = ['秀兰', '玉梅', '桂英', '丽华', '春燕', '淑芬', '红霞', '晓梅', '海燕', '静'];
+function genName(rng, female) { return pick(rng, SURN) + pick(rng, female ? GIVEN_F : GIVEN_M); }
+// 起手的熟人：建档写死
+function originNpc(S, rng) {
+  const O = ORIGINS[S.origin];
+  if (!O || !O.npc) return null;
+  const x = O.npc;
+  let name = genName(rng, !!x.female);
+  for (let i = 0; i < 5 && S.npcs.some(n => n.name === name); i++) name = genName(rng, !!x.female);
+  addNpcs(S, [{ name, age: x.age, job: x.job, tie: x.tie, note: x.note, care: x.care || '', rel: x.rel, close: !!x.close, gender: x.female ? '女' : '男' }], 1);
+  const n = S.npcs.find(v => v.name === name);
+  if (n) { addFact(n, x.fact); n.origin = 1; }
+  return n;
+}
+// 隔一阵掷一次的家里事
+function originTick(S, rng) {
+  const O = ORIGINS[S.origin];
+  if (!O || !O.risk || S.stats.days - num(S.flags.originDay) < 150) return null;
+  if (rng() > O.risk.p / 365) return null;
+  S.flags.originDay = S.stats.days;
+  const r = O.risk;
+  if (r.cut) { S.ledger.subsidy = 0; }
+  if (r.rep) S.player.信誉 = clamp(S.player.信誉 + r.rep, 0, 100);
+  if (r.money) { S.player.money -= r.money; acct(S, '家里的事', -r.money, r.text.slice(0, 20)); }
+  return { kind: '家里', detail: r.text };
+}
+function originEase(S, kind) {
+  const O = ORIGINS[S.origin];
+  if (!O || !O.ease) return 0;
+  const track = S.player.track;
+  return num(O.ease[track]) + (kind === 'job' ? num(O.ease.job) : 0);
+}
+function originBlocked(S, jobName) {
+  const O = ORIGINS[S.origin];
+  return !!(O && O.block && O.block.test(jobName));
+}
+
+/* ---- 位置表 ---- */
+const RANKS = {
+  '从政': ['科员', '副科', '正科', '副处', '正处', '副厅', '正厅', '副部', '正部', '副国', '正国'],
+  '职场': ['实习', '专员', '主管', '经理', '总监', '副总', '总经理', '董事长'],
+  '行医': ['规培', '住院医', '主治', '副主任医师', '主任医师', '科主任', '副院长', '院长', '卫健系统的头'],
+  '教书': ['助教', '讲师', '副教授', '教授', '博导', '院长', '副校长', '校长'],
+  '科研': ['研究助理', '助理研究员', '副研究员', '研究员', '学科带头人', '所长', '院士'],
+  '法律': ['律师助理', '律师', '资深律师', '合伙人', '高级合伙人', '律所主任', '行业泰斗'],
+  '捞偏门': ['跑腿的', '马仔', '小头目', '管一摊', '大哥', '老大', '一方枭雄'],
+  '生意': ['打工的', '小老板', '老板', '有几家店', '有名的老板', '企业家', '商界大佬'],
+  '名气': ['素人', '小有名气', '圈里有名', '腰部', '头部', '大腕', '家喻户晓'],
+  '公益': ['志愿者', '干事', '项目负责人', '机构负责人', '圈里有名', '行业标杆'],
+  '回乡': ['回乡青年', '种植户', '合作社带头人', '村干部', '乡里能人', '县里的名人'],
+  '通用': ['普通人', '有点本事', '有点头脸', '人物', '大人物']
+};
+const JOB_LADDER = { '从政': '从政', '行医': '行医', '教书': '教书', '科研': '科研', '法律': '法律' };
+const FIELD_LADDER = { '捞偏门': '捞偏门', '创业': '生意', '手艺': '生意', '做博主': '名气', '表演': '名气', '创作': '名气', '体育': '名气', '公益': '公益', '回乡': '回乡' };
+function jobLadder(S) { return JOB_LADDER[S.player.track] || '职场'; }
+function jobMax(S) { return RANKS[jobLadder(S)].length - 1; }
+function jobTitle(S, lv) { const R = RANKS[jobLadder(S)]; return R[clamp(Math.round(num(lv === undefined ? S.job.lv : lv)), 0, R.length - 1)]; }
+// 体制内工资涨得慢；其他照职级倍数
+function payMul(S, lv) {
+  lv = clamp(Math.round(num(lv)), 0, LEVELS.length - 1);
+  return jobLadder(S) === '从政' ? 1 + lv * 0.3 : LEVELS[lv].pay;
+}
+// 圈子里的位置：不挂在工作上的赛道
+function fieldLadder(S) { return FIELD_LADDER[S.player.track] || ''; }
+function fieldIdx(S) {
+  const L = fieldLadder(S);
+  if (!L) return 0;
+  const max = RANKS[L].length - 1;
+  if (L === '生意') {
+    const B = S.biz && !S.biz.dead ? S.biz : null;
+    if (!B) return 0;
+    const t = num(B.total);
+    return t > 1e7 ? 6 : t > 2e6 ? 5 : t > 5e5 ? 4 : (B.staff.length >= 3 && num(B.rep) >= 55) ? 3 : B.staff.length >= 1 ? 2 : 1;
+  }
+  const all = S.ideal.stages.reduce((a, st) => a + st.milestones.length, 0);
+  const done = S.ideal.stages.reduce((a, st) => a + st.milestones.filter(m => m.done).length, 0);
+  return all ? clamp(Math.round(done / all * max), 0, max) : 0;
+}
+// 主角眼下的位置：单位里一个，圈子里一个（挂在工作上的赛道两个是一回事）
+function posOf(S) {
+  const jl = jobLadder(S), jIdx = clamp(num(S.job.lv), 0, jobMax(S));
+  const job = { ladder: jl, idx: jIdx, max: jobMax(S), title: RANKS[jl][jIdx], out: !!S.job.out, org: S.job.employer || '' };
+  const fl = fieldLadder(S);
+  const field = fl ? { ladder: fl, idx: fieldIdx(S), max: RANKS[fl].length - 1, title: RANKS[fl][fieldIdx(S)] } : null;
+  return { job, field };
+}
+// 在世人眼里：底层、普通人、有点头脸、人物、大人物
+const BANDS = ['底层', '普通人', '有点头脸', '人物', '大人物'];
+const BAND_FLOOR = { '从政': [[8, 4], [6, 3], [4, 2], [2, 1]], '职场': [[6, 3], [4, 2], [2, 1]], '行医': [[6, 3], [4, 2]], '教书': [[6, 3], [4, 2]], '科研': [[5, 3], [3, 2]], '法律': [[5, 3], [3, 2]] };
+function standing(S) {
+  const P = posOf(S);
+  const jr = P.job.out ? P.job.idx / P.job.max * 0.6 : P.job.idx / P.job.max;
+  const fr = P.field ? P.field.idx / P.field.max : 0;
+  const ratio = Math.max(jr, fr);
+  let score = ratio * 55 + selfLevel(S) * 0.45;
+  if (S.broke) score -= 10;
+  let b = score >= 75 ? 4 : score >= 55 ? 3 : score >= 33 ? 2 : score >= 14 ? 1 : 0;
+  if (ratio >= 0.999) b = 4; else if (ratio >= 0.8) b = Math.max(b, 3); else if (ratio >= 0.5) b = Math.max(b, 2);
+  // 有些位置本身就压得住人：正厅在一个市里就是人物
+  if (!P.job.out) for (const [i, v] of (BAND_FLOOR[P.job.ladder] || [])) if (P.job.idx >= i) { b = Math.max(b, v); break; }
+  return b;
+}
+// 位置有变：记下来，原来的上级落到主角之下的，记一条
+function posKey(S) { const P = posOf(S); return `${P.job.out ? '待业' : P.job.title}|${P.field ? P.field.title : ''}`; }
+// 档位跟着存款晃：往上只认创了新高，往下要掉两档才算
+function bandMove(S) {
+  const b = standing(S);
+  if (S.bandHi === undefined) { S.bandHi = b; S.bandNow = b; return null; }
+  const was = S.bandNow;
+  if (b > S.bandHi || b <= S.bandHi - 2) { S.bandHi = b; S.bandNow = b; return b !== was ? [BANDS[was], BANDS[b]] : null; }
+  return null;
+}
+function notePos(S) {
+  const k = posKey(S);
+  const old = S.posSnap;
+  S.posSnap = k;
+  const band = bandMove(S);
+  if ((!old || old === k) && !band) return null;
+  const [oj, of] = (old || k).split('|'), [nj, nf] = k.split('|');
+  const ch = { day: S.stats.days, from: [], to: [], band };
+  if (oj !== nj) { ch.from.push(oj); ch.to.push(nj); }
+  if (of !== nf) { ch.from.push(of); ch.to.push(nf); }
+  if (!ch.from.length && !ch.band) return null;
+  S.posChange = ch;
+  // 原来比主角高、现在不高了的人
+  const P = posOf(S);
+  for (const n of S.npcs) {
+    if (n.lv == null || !n.circle) continue;
+    const mine = n.circle === 'work' ? P.job.idx : P.field ? P.field.idx : null;
+    if (mine == null) continue;
+    const was = n.circle === 'work' ? num(S.posIdx && S.posIdx.job) : num(S.posIdx && S.posIdx.field);
+    if (n.lv > was && n.lv <= mine) {
+      addFact(n, n.lv === mine ? '原来是主角的上级，现在跟主角平级了' : '原来是主角的上级，现在在主角之下');
+      if (/领导|上司|老板|处长|科长|主任|经理|总监|大哥|师傅/.test(n.tie || '') && n.lv < mine) n.tie = ('老' + String(n.tie).replace(/^老/, '')).slice(0, 12);
+    }
+  }
+  S.posIdx = { job: P.job.idx, field: P.field ? P.field.idx : 0 };
+  return ch;
+}
+function posTick(S) {
+  if (!S.posSnap) { S.posSnap = posKey(S); bandMove(S); const P = posOf(S); S.posIdx = { job: P.job.idx, field: P.field ? P.field.idx : 0 }; return null; }
+  const ch = notePos(S);
+  if (!ch) return null;
+  const what = ch.from.length ? `从${ch.from.join('、')}到${ch.to.join('、')}` : '';
+  return { kind: '身份', detail: [what, ch.band ? `在别人眼里从「${ch.band[0]}」成了「${ch.band[1]}」` : ''].filter(Boolean).join('；') };
+}
+// 人物跟主角的高低
+function npcGap(S, n) {
+  if (!n || n.lv == null || !n.circle) return null;
+  const P = posOf(S);
+  if (n.circle === 'work') { if (P.job.out) return null; return num(n.lv) - P.job.idx; }
+  if (n.circle === 'field') { const f = P.field || P.job; return num(n.lv) - f.idx; }
+  return null;
+}
+function gapWord(g) {
+  if (g == null) return '';
+  if (g >= 2) return `比主角高${g}级，是主角上面的人`;
+  if (g === 1) return '比主角高一级，是主角的直接上级';
+  if (g === 0) return '跟主角平级';
+  if (g === -1) return '比主角低一级，见了主角要敬着';
+  return `比主角低${-g}级，在主角面前小心翼翼`;
+}
+// 你上面是谁、下面是谁
+function chainOf(S) {
+  const P = posOf(S);
+  const work = S.npcs.filter(n => n.circle === 'work' && n.lv != null);
+  const up = work.filter(n => n.lv > P.job.idx).sort((a, b) => a.lv - b.lv);
+  const down = work.filter(n => n.lv < P.job.idx).sort((a, b) => b.lv - a.lv);
+  return { up, down, top: P.job.idx >= P.job.max, out: P.job.out };
+}
+// 模型报的位置：给了级别就认；没给按名字对位置表
+function lvFromPos(S, pos, circle) {
+  const L = circle === 'work' ? RANKS[jobLadder(S)] : RANKS[fieldLadder(S) || jobLadder(S)];
+  const t = String(pos || '');
+  let best = -1, bl = 0;
+  L.forEach((r, i) => { if (t.indexOf(r) >= 0 && r.length > bl) { best = i; bl = r.length; } });
+  if (best < 0 && circle === 'work' && jobLadder(S) === '从政') {
+    const m = [[/副国级/, 9], [/正国级|国家领导/, 10], [/副部级|副部长|副省长/, 7], [/部长|省长|省委书记/, 8], [/副厅|副市长|副局长/, 5], [/厅长|市长|市委书记/, 6], [/副处|副县长/, 3], [/处长|县长|县委书记|区长/, 4], [/副科|副镇长|副乡长/, 1], [/科长|镇长|乡长|镇党委书记/, 2]];
+    for (const [re, v] of m) if (re.test(t)) return v;
+  }
+  return best >= 0 ? best : null;
+}
+function setNpcPos(S, n, x, fresh) {
+  const circle = x.circle === 'work' || x.circle === 'field' ? x.circle : (fresh ? '' : n.circle || '');
+  if (x.pos) n.pos = String(x.pos).slice(0, 16);
+  if (circle) n.circle = circle;
+  if (!n.circle) return;
+  const max = n.circle === 'work' ? jobMax(S) : RANKS[fieldLadder(S) || jobLadder(S)].length - 1;
+  let lv = x.lv != null && x.lv !== '' && Number.isFinite(Number(x.lv)) ? clamp(Math.round(Number(x.lv)), 0, max) : lvFromPos(S, x.pos || n.pos, n.circle);
+  if (lv == null) return;
+  if (n.lv == null || fresh) n.lv = lv;
+  else if (lv !== n.lv) n.lv = clamp(n.lv + Math.sign(lv - n.lv), 0, max);   // 人物升降一次只认一级
+}
+
 /* ---------- 导出 ---------- */
 const API = {
   SAVE_VERSION, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
@@ -3610,6 +3916,7 @@ const API = {
   stopList, addStopWhen, checkStopWhen, addPledge, donePledge, pledgeTick,
   addFact, apptWho, sameThing, noteDone, recentlyDone, keepPromise, breakPromise, delayPromise,
   sanitizePay, sanitizeGroup, payList, findPay, giftCap, payOut, payBack, payIn, claimPay, newYearPackets, groupList, makeGroup, splitPacket, groupPacket,
+  RANKS, BANDS, jobLadder, jobMax, jobTitle, payMul, fieldLadder, fieldIdx, posOf, standing, notePos, posTick, npcGap, gapWord, chainOf, lvFromPos, setNpcPos, originNpc, originTick, originEase, originBlocked, genName, applyOrigin,
   TIERS, relTier, TIER_LEND, TIER_ASK, TIER_OFF, askMod, isKinNpc, HOUSING, homeTier, rentFor, moveCost, moveHome,
   STRAIN, JOBS, jobBoard, boardNext, applyPost, findPost, takePost, postPay, GIGS, gigPay, gigWhen, takeGig, dropGig, gigToday,
   ITEMS, SHOP_CATS, itemOf, itemPrice, shopFriend, bag, hasItem, buyItem, bagFx, itemOld, useItem, careTags, giftValue, giveItem,
