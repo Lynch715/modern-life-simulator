@@ -645,14 +645,14 @@ ${peers}
 ${posBlock()}
 ${S.biz && !S.biz.dead ? `【自己的摊子】${S.biz.name}（${S.biz.kind}，开了${S.biz.months}个月），上月进${S.biz.rev}出${S.biz.cost}${S.biz.net >= 0 ? '剩' + S.biz.net : '亏' + (-S.biz.net)}，口碑${Math.round(S.biz.rep)}，人手${S.biz.staff.length}个${S.biz.staff.length ? `（${S.biz.staff.map(x => x.name + '·' + x.role).join('、')}）` : ''}${S.biz.lossMonths ? `，已连亏${S.biz.lossMonths}个月` : ''}\n` : ''}${rifts.length ? `【结下的梁子】${rifts.map(r => `${r.who}（${r.kind}）：${r.reason}${r.heat >= 62 ? '，眼看压不住了' : r.heat >= 35 ? '，还没翻篇' : '，快淡了'}${r.came ? `，已经找过${r.came}回` : ''}`).join('；')}\n` : ''}${(S.gigs || []).length ? `【兼职】${S.gigs.map(g => `${g.name}（${E.gigWhen(g.name)}）`).join('；')}\n` : ''}【手里的东西】${bagLine()}
 【银行】${E.bankLine(S)}
-${(S.debts || []).length ? `【欠的钱】${S.debts.map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【这一段多半用得上的人·最近的来往（他们记得这些，写的时候要对得上）】
+${E.activeDebts(S).length ? `【欠的钱】${E.activeDebts(S).map(d => `欠${d.who}${d.left}元（${d.due.m}月${d.due.d}日到期${d.late ? '，已经过期了' : ''}）`).join('；')}\n` : ''}【这一段多半用得上的人·最近的来往（他们记得这些，写的时候要对得上）】
 ${npc}
 ${pledgeBlock()}${waitBlock()}${momentsBlock()}【往事提要】
 ${M.sums}
 【最近发生的】
 ${M.recents}
 【未了的事】${S.unresolved.join('；') || '暂时没有'}
-【主角眼下】${p.age}岁，营生：${p.job}｜属性 专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}｜身上的毛病：${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `，去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
+【主角眼下】${p.age}岁，营生：${E.jobLabel(S)}｜属性 专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}｜身上的毛病：${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `，去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
 【钱】存款${p.money}元，月薪${L2.salary}${L2.subsidy ? `，家里每月给${L2.subsidy}` : ''}，房租${L2.rent}，生活${L2.living}${L2.remit ? `，每月往家寄${L2.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}｜行业口碑${p.信誉}，做人${p.人品}
 ${S.partialNote ? `【补记】${S.partialNote}\n` : ''}${posChangeBlock()}${pingBlock()}【这一段能记的零碎】钱上下不超过${Math.round(E.capMoney(S) * 0.3)}元，每项属性不超过±2.5，精力不超过±35，口碑、做人不超过±8，理想的功夫不超过35；超了引擎只认到这个数，正文也照这个写。工资不在这里改，只走考核、谈加薪和找工作。
 【今天】${E.dateStr(S.date)}
@@ -1011,6 +1011,10 @@ function renderOptions(opts) {
       <div class="prbtns"><button class="primary" onclick="promiseGo()">${pr.kind === '面试' ? '去面试' : '去办'}</button><button class="ghost" onclick="promiseDelay()">改期</button><button class="ghost" onclick="promiseBreak()">不去了</button></div></div>`;
     return;
   }
+  if ((S.stopQueue || []).length) {
+    box.innerHTML = '<button class="act-btn full" onclick="skipAhead()">看看今天还有什么事</button><div class="tip">仍是同一天，先看完已经发生的事，不会重复扣费或多过一天。</div>';
+    return;
+  }
   if (S.interview) {
     const b = document.createElement('button');
     b.className = 'act-btn full'; b.textContent = `去面试：${S.interview.title}`;
@@ -1090,17 +1094,23 @@ async function doAction(action, typed) {
   if (busy || !S || S.over) return;
   if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
+  if (!canAct()) return;
+  const state = S;
   let plan;
-  if (typed) {
+  {
     setBusy(true, '正在琢磨你要做的事……');
     try {
       const raw = await llmJSON(parsePrompt(action), null, { maxTokens: 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000, noRetry: true });
-      plan = E.sanitizePlan(raw, action, true);
+      if (!raw || !Array.isArray(raw.steps) || !raw.steps.length || raw.steps.some(x => !x || !E.STEP_TYPES.includes(x.type))) throw new Error('行动格式不完整');
+      plan = E.sanitizePlan(raw, action, !!typed);
     } catch (e) {
-      plan = E.simplePlan(action, true);        // 解析不出来也不卡人：整句当一件普通的事
+      setBusy(false);
+      toast('这次行动没识别清楚，尚未执行，也没有推进时间，请再试一次');
+      return;
     }
     setBusy(false);
-  } else plan = E.simplePlan(action, false);
+  }
+  if (S !== state || !canAct()) return;
   S.lastAction = action;
   S.actTyped = !!typed;
   S.plan = plan;
@@ -1207,13 +1217,14 @@ async function writePending() {
     S.history.push({ seg: S.seg, date: `${snap.y}年`, summary: `【年终】${d.summary || ''}` });
   });
   const msgs0 = S.msgs.length;
+  if (P.keyMeta && (P.keyMeta.post || P.keyMeta.kind !== 'job' || P.keyResult.result !== '谈成')) d.newJob = null;
   step('记账', () => E.applyTurn(S, d));
   step('主动找你', () => E.settlePings(S, msgs0));
   S.partialNote = d._partial ? '上一段的返回格式坏了，只留下了正文：那一段里新出场的人没建档、人物记忆也没记全。这一段里那些人再出现，新人写进 newNpcs，老人在 npcUpdates 里补一条 mem。' : '';
   if (S.posChange && /身份刚变了/.test(P.prompt || '')) S.posChange = null;
   step('截账说明', () => { if (S.capNote && curChapter) curChapter.querySelector('.ntext').insertAdjacentHTML('beforeend', `<p class="capnote">（引擎记账：${esc(S.capNote)}）</p>`); });
   step('里程碑', () => {
-    const claim = E.judgeClaim(S, d.milestoneClaim);
+    const claim = P.keyMeta ? null : E.judgeClaim(S, d.milestoneClaim);
     S.claimNote = claim && !claim.ok ? `你申报过「${claim.title}」，但${claim.short}，还不够格` : null;
   });
   S.plan = null;
@@ -1224,6 +1235,14 @@ async function writePending() {
   saveGame();
   try { await finishChapter(); } catch (e) { console.error(e); }
   step('界面', () => { rebuildTop(); renderOptions(S.over ? [] : S.lastOptions); renderPanel(); });
+  if (P.keyResult) {
+    const r = P.keyResult;
+    if (r.mile) toast(`迈过去了：${r.mile}`);
+    if (r.raise) toast(`月薪涨了${r.raise}`);
+    if (r.job) toast(`入职了：${r.job}`);
+    if (r.love) toast(`跟${r.love}在一起了`);
+    if (r.married) toast(`跟${r.married}成家了，花了${r.cost}`);
+  }
   saveGame();
   setBusy(false);
 }
@@ -1244,7 +1263,7 @@ async function promiseGo() {
   if (!pr || busy) return;
   S.promiseAsk = null;
   E.keepPromise(S, pr);
-  if (pr.kind === '面试') { S.interview = { title: pr.title, post: pr.post || null }; saveGame(); askJob(); return; }
+  if (pr.kind === '面试') { S.interview = { title: pr.title, post: pr.post || null }; saveGame(); askJob(true); return; }
   if (pr.kind === '随礼' && pr.wed) {
     const city = E.CITIES[S.city] || E.CITIES['新一线'];
     const sug = Math.round(city.pay * (E.relTier((S.npcs.find(x => x.name === pr.wed.who) || {}).rel) >= 3 ? 0.12 : 0.06) / 100) * 100;
@@ -1462,7 +1481,7 @@ function renderPanel() {
   } else if (curTab === 'home') {
     box.innerHTML = renderHome();
   } else if (curTab === 'book') {
-    const loan = E.num(L.loan), kid = E.kidCost(S);
+    const loan = E.homePayment(S), kid = E.kidCost(S);
     const bizNet = S.biz && !S.biz.dead ? E.num(S.biz.net) : 0;
     const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 ? x.monthly : 0), 0);
     const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit + bankPay;
@@ -1491,14 +1510,14 @@ function renderPanel() {
     <div class="card">${renderAcct()}</div>
     ${renderBiz()}
     <h4>欠的钱</h4>
-    <div class="card">${(S.debts || []).length
-      ? S.debts.map((d, i) => `<div class="li"><b>${esc(d.who)}</b> <span class="rel${d.late ? ' bad' : ''}">${d.left}元${d.late ? '·过期了' : ''}</span>
-          <div class="tip lirow"><span>${d.due.m}月${d.due.d}日之前要还</span><span class="liact"><button class="ghost sm" onclick="doPay(${i})">还一笔</button></span></div></div>`).join('')
+    <div class="card">${E.activeDebts(S).length
+      ? E.activeDebts(S).map(d => { const i = S.debts.indexOf(d); return `<div class="li"><b>${esc(d.who)}</b> <span class="rel${d.late ? ' bad' : ''}">${d.left}元${d.late ? '·过期了' : ''}</span>
+          <div class="tip lirow"><span>${d.due.m}月${d.due.d}日之前要还</span><span class="liact"><button class="ghost sm" onclick="doPay(${i})">还一笔</button></span></div></div>`; }).join('')
       : '<div class="tip">没欠谁的</div>'}
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
-    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(p.job)}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
+    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
@@ -1589,6 +1608,7 @@ function paceCard() {
     ${S.focus && S.focus.heal ? '<div class="tip">养病这几天不算，歇完照这个过。</div>' : ''}`;
 }
 function pickPace(k) {
+  if (!canAct()) return;
   if (!S || k === S.pace) return;
   E.setPace(S, k);
   S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `这阵子改成${k}` });
@@ -1690,23 +1710,27 @@ ${finalCheck()}`;
 }
 
 async function askKey(mileId) {
+  if (!canAct()) return;
   let m = null;
   for (const st of S.ideal.stages) for (const x of st.milestones) if (x.id === mileId) m = x;
   if (!m) return;
   runKey({ scene: m.scene, gate: m.gate, title: m.title, desc: m.desc, kind: 'mile', mileId, hard: keyHard(mileId) });
 }
-function askJob() {
+function askJob(fromPromise = false) {
+  if (!canAct(fromPromise)) return;
   const iv = S.interview; S.interview = null;
   const P = iv && iv.post ? E.findPost(S, iv.post) : null;
-  if (P) { runKey({ scene: '面试', gate: `${P.employer}的${P.job}`, title: '找个新饭碗', kind: 'job', mileId: null, post: P, hard: Math.round(22 + P.need * 0.5) }); return; }
-  runKey({ scene: '面试', gate: iv ? iv.title : '一场面试', title: '找个新饭碗', kind: 'job', mileId: null, hard: 28 + E.num(S.job.lv) * 8 });
+  if (P) { runKey({ fromPromise, scene: '面试', gate: `${P.employer}的${P.job}`, title: '找个新饭碗', kind: 'job', mileId: null, post: P, hard: Math.round(22 + P.need * 0.5) }); return; }
+  runKey({ fromPromise, scene: '面试', gate: iv ? iv.title : '一场面试', title: '找个新饭碗', kind: 'job', mileId: null, hard: 28 + E.num(S.job.lv) * 8 });
 }
 function askRaise() {
+  if (!canAct()) return;
   if (S.job.out) { toast('眼下没有工作'); return; }
   const lv = E.num(S.job.lv);
   runKey({ scene: '谈判', gate: '跟老板谈加薪', title: '加薪', kind: 'raise', mileId: null, hard: 40 + lv * 8 });
 }
 async function runKey(m) {
+  if (!canAct(m.fromPromise)) return;
   if (busy) return;
   if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
   if (S.convo) endConvo(false);      // 从聊天里点进来的，先把聊天收掉
@@ -1776,46 +1800,40 @@ function renderKey() {
   if (K.over) $('keyEnd').textContent = `${K.result}　—　看看这一场怎么写`;
 }
 function keyGo(move) {
+  if (busy || !S || S.pending || S.over || !S.key) return;
   const r = E.keyRound(S, move, Math.random);
   if (r && r.bad) { toast(r.bad); return; }
   renderKey();
   saveGame();
 }
 async function keyFinish() {
+  if (busy || !S || S.pending || S.over) return;
   const K = S.key;
   if (!K || !K.over) return;
   const meta = { scene: K.scene, opp: K.opp, stake: K.stake, kind: K.kind, log: K.log.slice(), why: K.why || '', post: K.post || null };
   const res = E.settleKey(S);
   $('key').classList.remove('on');
-  setBusy(true, '正在记下这一场……');
+  const adv = E.advance(S, { maxDays: 1, quiet: true, rng: Math.random });
+  if (S.focus && adv.stop.kind === '投入') E.settleFocus(S, Math.random);
+  // 年终和结局仍由普通流程专门处理，保留在当天的停点队列中。
+  if (adv.stop.kind === '年终' || adv.stop.kind === '结局') S.stopQueue.unshift(adv.stop);
+  rebuildTop();
   S.seg++;
-  beginChapter(E.shortDate(S.date), `${meta.scene}·${res.result}`, `跟${meta.opp.name}谈${meta.stake ? '「' + meta.stake + '」' : ''}`,
-    { check: { attr: '这一场', val: meta.log.length + '回合', roll: '', mod: 0, total: res.result, need: '', success: res.result === '谈成' } });
-  try {
-    const d = await llmJSON(keyEndPrompt(res, meta), raw => {
-      const t = extractPartialField(raw, 'narrative');
-      if (t) updateChapterNarrative(t);
-    });
-    updateChapterNarrative(d.narrative);
-    if (meta.post) d.newJob = null;          // 招聘来的岗位，月薪引擎已经定了
-    E.applyTurn(S, d);
-    S.date = E.addDays(S.date, 1);
-    S.lastAction = null; S.actTyped = false;
-    S.lastOptions = d.options && d.options.length ? d.options : ['缓一缓', '接着往下做'];
-    await finishChapter();
-    rebuildTop();
-    renderOptions(S.lastOptions);
-    saveGame();
-    if (res.mile) toast(`迈过去了：${res.mile}`);
-    if (res.raise) toast(`月薪涨了${res.raise}`);
-    if (res.job) toast(`入职了：${res.job}`);
-    if (res.love) toast(`跟${res.love}在一起了`);
-    if (res.married) toast(`跟${res.married}成家了，花了${res.cost}`);
-  } catch (e) {
-    updateChapterNarrative('（这场没写成：' + (e.message || e) + '）');
-    renderOptions(S.lastOptions.length ? S.lastOptions : ['缓一缓']);
-  }
-  setBusy(false);
+  S.stats.segs++;
+  S.plan = null; S.lastAction = null; S.actTyped = false;
+  S.pending = {
+    keyMeta: meta, keyResult: res,
+    prompt: keyEndPrompt(res, meta) + `\n【这场之后的日历结算，不得重算】${E.dateStr(S.date)}；${adv.events.map(e => e.s).join('；') || '没有额外进出'}。${adv.stop.promise ? '今天还有约定等待玩家选择，不能替他决定去不去。' : ''}`,
+    head: E.shortDate(S.date), sub: `${meta.scene}·${res.result}`,
+    action: `跟${meta.opp.name}谈${meta.stake ? '「' + meta.stake + '」' : ''}`,
+    judge: { check: { attr: '这一场', val: meta.log.length + '回合', roll: '', mod: 0, total: res.result, need: '', success: res.result === '谈成' } },
+    busyText: '正在记下这一场……', promise: adv.stop.promise || null,
+    apptKind: adv.stop.apptKind || null, apptTitle: adv.stop.detail || ''
+  };
+  saveGame();
+  beginChapter(S.pending.head, S.pending.sub, S.pending.action, S.pending.judge);
+  renderOptions([]);
+  await writePending();
 }
 
 /* ================= 人与聊天 ================= */
@@ -1888,7 +1906,7 @@ ${n.pos ? `【他的位置】${n.pos}${E.npcGap(S, n) != null ? `，${E.gapWord(
 【他最近在忙】${(n.busy && n.busy.t) || '老样子'}
 【你们之间的来往（按日子，${n.name}都记得）】
 ${(n.mem || []).join('\n') || '没什么特别的'}
-【主角】${S.player.name}，${S.player.age}岁，${S.player.job}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。
+【主角】${S.player.name}，${S.player.age}岁，${E.jobLabel(S)}，眼下在${S.place || '外面'}。${E.bgLine(S.player)}。
 【主角这阵子干的事】（${n.name}知道多少看关系：走得近的、家里人大体都知道；不熟的只知道跟自己有关的和传到耳朵里的。知道的就要对得上，别装不知道，也别说错）
 ${S.history.slice(-10).map(h => `${h.date}｜${h.act ? '他去' + h.act + '：' : ''}${h.summary}`).join('\n') || '（刚开始）'}
 ${(S.pledges || []).filter(p => !p.done && p.who === n.name).length ? `【你们之间说定的事】${S.pledges.filter(p => !p.done && p.who === n.name).map(pledgeLine).join('；')}\n` : ''}${aboutNpc(n)}【就在刚才】${String((S.recent[S.recent.length - 1] || {}).narrative || '').replace(/\s+/g, '').slice(-220)}`;
@@ -1991,6 +2009,7 @@ function renderConvo() {
 }
 // 领钱 / 退还：聊天里、翻旧消息时都能点
 function takePay(id, take) {
+  if (!canAct()) return;
   const p = E.claimPay(S, id, take);
   if (!p) return;
   toast(take ? `收了${p.from}的${p.amount}` : `退还给${p.from}了`);
@@ -2012,10 +2031,11 @@ function chatPlus() {
   m.classList.toggle('on');
 }
 async function chatPay(kind) {
+  if (!canAct()) return;
   $('plusMenu').classList.remove('on');
   const c = S.convo;
   if (!c) return;
-  const v = await ask({ title: kind === '红包' ? (c.group ? '在群里发红包' : `给${c.name}发红包`) : `转账给${c.name}`,
+  const v = await actionAsk({ title: kind === '红包' ? (c.group ? '在群里发红包' : `给${c.name}发红包`) : `转账给${c.name}`,
     text: `账上有 ${S.player.money} 元。先写金额，后面可以跟一句话。`, input: { placeholder: kind === '红包' ? '200 恭喜发财' : '500 房租先给你', max: 40 }, ok: kind === '红包' ? '塞进去' : '转' });
   if (!v) return;
   const mm = v.match(/^\s*(\d+)\s*(.*)$/);
@@ -2045,6 +2065,7 @@ function quickSay(i) {
   convoSend();
 }
 async function convoSend() {
+  if (!canAct()) return;
   const c = S.convo;
   if (!c || busy) return;
   const say = $('chatIn').value.trim();
@@ -2058,6 +2079,7 @@ async function convoSend() {
   else await convoTurn(say, null);
 }
 async function convoTurn(say, judge) {
+  if (!canAct()) return;
   const c = S.convo;
   const n = S.npcs.find(x => x.name === c.name);
   if (!n) return;
@@ -2140,7 +2162,7 @@ function groupPrompt(g, say) {
 
 这是主角${S.player.name}拉的微信群「${g.name}」，群里除了主角还有：
 ${mem}
-【主角】${S.player.name}，${S.player.age}岁，${S.player.job}。
+【主角】${S.player.name}，${S.player.age}岁，${E.jobLabel(S)}。
 
 ${past ? `【群里以前的消息（已经过去了）】\n${past}\n` : ''}${c.gist ? `【这个群聊到现在的要点】${c.gist}\n` : ''}
 【这次群里的消息（按先后）】
@@ -2163,6 +2185,7 @@ ${log}
 "summary":"一句话（20字内）"}`;
 }
 async function groupTurn(say) {
+  if (!canAct()) return;
   const c = S.convo;
   const g = c && E.groupList(S).find(x => x.id === c.group);
   if (!g) return;
@@ -2220,6 +2243,7 @@ function openMakeGroup() {
   mask('npcMask', true);
 }
 function doMakeGroup() {
+  if (!canAct()) return;
   const picked = [...document.querySelectorAll('.gpick input:checked')].map(x => x.value);
   if (picked.length < 2) { toast('至少勾两个人'); return; }
   if (picked.length > 8) { toast('最多八个人'); return; }
@@ -2255,6 +2279,7 @@ function settleAsk(n, a, ck) {
   }
 }
 function endConvo(goOn, toPanel) {
+  if (!canAct()) return;
   const c = S.convo;
   if (!c) { $('chat').classList.remove('on'); return; }
   $('plusMenu').classList.remove('on');
@@ -2328,6 +2353,7 @@ function renderMoments() {
   </div>`;
 }
 function doLike(id) {
+  if (!canAct()) return;
   E.likeMoment(S, id);
   saveGame(); renderPanel();
 }
@@ -2353,10 +2379,11 @@ function momDeals(list, ok) {
   }
 }
 async function doComment(id, to) {
+  if (!canAct()) return;
   const m = (S.moments || []).find(x => x.id === id);
   if (!m || busy) return;
   if (to === S.player.name) to = '';
-  const txt = await ask({ title: to ? `回复${to}` : `在${m.who === S.player.name ? '自己的' : m.who + '的'}朋友圈底下留言`, quote: m.text, input: { placeholder: '说点什么', max: 60 }, ok: '发' });
+  const txt = await actionAsk({ title: to ? `回复${to}` : `在${m.who === S.player.name ? '自己的' : m.who + '的'}朋友圈底下留言`, quote: m.text, input: { placeholder: '说点什么', max: 60 }, ok: '发' });
   if (!txt) return;
   E.commentMoment(S, id, S.player.name, txt, to || (m.who !== S.player.name ? '' : ''));
   saveGame(); renderPanel();
@@ -2416,6 +2443,7 @@ function momAudience(text) {
   }).sort((a, b) => b.sc - a.sc).slice(0, 8).map(x => x.n);
 }
 async function postMoment() {
+  if (!canAct()) return;
   const v = ($('momIn').value || '').trim();
   if (!v || busy) return;
   $('momIn').value = '';
@@ -2474,7 +2502,7 @@ function renderHome() {
     out.push(`<div class="big">自己的房子</div>
       <div class="lines" style="margin-top:8px">
         <div><b>买下来</b><span>${esc(H.since)}｜${H.price}元</span></div>
-        ${left ? `<div><b>还欠银行</b><span class="bad">${left}</span></div><div><b>月供</b><span>${H.loan.monthly}｜已还${H.loan.paid}期</span></div>` : '<div><b>贷款</b><span class="good">还清了</span></div>'}
+        ${left ? `<div><b>还欠银行</b><span class="bad">${left}</span></div><div><b>月供</b><span>${H.loan.monthly}｜已还${H.loan.paid}期｜剩${Math.max(0, H.loan.months - H.loan.paid)}期${H.loan.plan === 'legacy42' ? '（旧贷按原余额续还）' : ''}</span></div>` : '<div><b>贷款</b><span class="good">还清了</span></div>'}
         <div><b>净值</b><span class="good">${E.homeWorth(S)}</span></div>
       </div>`);
   } else {
@@ -2484,7 +2512,7 @@ function renderHome() {
       <div class="tip">${esc(houseLine(tier))}</div>
       <div class="btns"><button class="ghost" onclick="openMove()">换个地方住</button></div>
       <div class="tip">买一套要 ${b.price}，首付 ${b.down}，之后每月供 ${b.monthly}。买了就没有房租，但三十年绑在这儿。</div>
-      <div class="btns"><button class="${b.ok ? 'primary' : 'ghost'}" ${b.ok ? '' : 'disabled'} onclick="doBuyHouse()">${b.ok ? '付首付，买' : `首付还差 ${b.down - S.player.money}`}</button></div>`);
+      <div class="btns"><button class="${b.ok ? 'primary' : 'ghost'}" ${b.ok ? '' : 'disabled'} onclick="doBuyHouse()">${b.ok ? '付首付，买' : esc(b.why)}</button></div>`);
   }
   out.push(`</div>`);
   out.push(`<h4>逛逛</h4><div class="card"><div class="tip">吃的喝的、衣服、数码、书和课、家用、健康、礼物。买了自己用，或者送人。</div>
@@ -2552,12 +2580,13 @@ function renderHome() {
     <div><b>存款</b><span class="${S.player.money < 0 ? 'bad' : ''}">${S.player.money}</span></div>
     ${E.homeWorth(S) ? `<div><b>房子净值</b><span>${E.homeWorth(S)}</span></div>` : ''}
     ${S.biz && !S.biz.dead ? `<div><b>摊子累计</b><span class="${S.biz.total < 0 ? 'bad' : ''}">${S.biz.total}</span></div>` : ''}
-    ${(S.debts || []).length ? `<div><b>欠人的</b><span class="bad">${S.debts.reduce((a, d) => a + d.left, 0)}</span></div>` : ''}
+    ${E.activeDebts(S).length ? `<div><b>欠人的</b><span class="bad">${E.activeDebts(S).reduce((a, d) => a + d.left, 0)}</span></div>` : ''}
   </div></div>`);
   return out.join('');
 }
 
 function doBuyHouse() {
+  if (!canAct()) return;
   const r = E.buyHouse(S, Math.random);
   if (!r.ok) { toast(r.why); return; }
   closePanel();
@@ -2567,11 +2596,13 @@ function doBuyHouse() {
   runSegment({ quick: true });
 }
 function askLove(name) {
+  if (!canAct()) return;
   const n = S.npcs.find(x => x.name === name);
   if (!n) return;
   runKey({ scene: '摊牌', gate: `跟${name}把话挑明`, title: '挑明', kind: 'love', who: name, mileId: null, hard: Math.round(72 - n.rel * 0.42) });
 }
 function askMarry() {
+  if (!canAct()) return;
   const P = E.partnerOf(S);
   if (!P) return;
   const cost = Math.round((E.CITIES[S.city] || E.CITIES['新一线']).rent * 30);
@@ -2579,10 +2610,11 @@ function askMarry() {
   runKey({ scene: '摊牌', gate: `跟${P.name}谈结婚的事`, title: '结婚', kind: 'marry', who: P.name, mileId: null, hard: Math.round(64 - P.warm * 0.3) });
 }
 async function doBreak() {
+  if (!canAct()) return;
   const P = E.partnerOf(S);
   if (!P) return;
   const married = P.stage === '结婚';
-  if (!await ask({ title: married ? `真要跟${P.name}离？` : `真要跟${P.name}分？`, text: married ? '家当要分走一半，这事没法回头。' : '话说出口，就收不回来了。', no: '再想想', ok: married ? '离' : '分', danger: true })) return;
+  if (!await actionAsk({ title: married ? `真要跟${P.name}离？` : `真要跟${P.name}分？`, text: married ? '家当要分走一半，这事没法回头。' : '话说出口，就收不回来了。', no: '再想想', ok: married ? '离' : '分', danger: true })) return;
   const r = E.breakUp(S, '说不下去了');
   closePanel();
   S.actTyped = false; S.lastAction = r.wasMarried ? `跟${P.name}把证退了，家当分了一半` : `跟${P.name}分了`;
@@ -2590,6 +2622,7 @@ async function doBreak() {
   runSegment({ quick: true });
 }
 function doWantKid() {
+  if (!canAct()) return;
   const r = E.wantKid(S, Math.random);
   if (!r.ok) { toast(r.why + (r.ck ? `（${r.ck.attr}${r.ck.val}，掷${r.ck.roll}）` : '')); saveGame(); return; }
   toast('有了');
@@ -2614,7 +2647,7 @@ ${stateBlocks()}
 
 引擎算完的四条线（满分100，不许改）：
 - 志业 ${L.志业}：想干的是「${S.player.ideal}」，迈过的台阶${done.length ? '：' + done.join('、') : '一级都没迈过'}
-- 财务 ${L.财务}：存款${S.player.money}${E.homeWorth(S) ? `，房子净值${E.homeWorth(S)}` : '，没有房'}${S.biz && !S.biz.dead ? `，自己的${S.biz.kind}「${S.biz.name}」` : ''}${(S.debts || []).length ? `，还欠人${S.debts.reduce((a, d) => a + d.left, 0)}` : ''}
+- 财务 ${L.财务}：存款${S.player.money}${E.homeWorth(S) ? `，房子净值${E.homeWorth(S)}` : '，没有房'}${S.biz && !S.biz.dead ? `，自己的${S.biz.kind}「${S.biz.name}」` : ''}${E.activeDebts(S).length ? `，还欠人${E.activeDebts(S).reduce((a, d) => a + d.left, 0)}` : ''}
 - 关系 ${L.关系}：${P ? `${P.stage === '结婚' ? '跟' + P.name + '成了家' : '和' + P.name + '在一起'}（${P.warm >= 60 ? '还热乎' : P.warm >= 30 ? '平平淡淡' : '早就淡了'}）` : '一个人'}${kids.length ? `，孩子${kids.map(k => k.name + k.age + '岁').join('、')}` : ''}，真交心的朋友${S.npcs.filter(n => n.rel >= 55).length}个${(S.rifts || []).filter(r => !r.done).length ? `，还有${S.rifts.filter(r => !r.done).length}笔没了的梁子` : ''}
 - 身心 ${L.身心}：精力${S.player.energy}${(S.chronic || []).length ? `，${S.chronic.map(c => c.name).join('、')}` : '，还算利索'}
 
@@ -2712,8 +2745,9 @@ function renderBiz() {
   </div>`;
 }
 async function askOpenBiz(kind) {
+  if (!canAct()) return;
   const need = E.bizSetup(S, kind);
-  const name = await ask({ title: `给这个${kind}起个名字`, text: `启动要 ${need.toLocaleString('zh-CN')} 元，从存款里出。`, input: { placeholder: kind === '小店' ? '比如：巷口那家' : kind === '小公司' ? '比如：青禾文化' : '比如：半山工作室', max: 14 }, no: '再想想', ok: '开张' });
+  const name = await actionAsk({ title: `给这个${kind}起个名字`, text: `启动要 ${need.toLocaleString('zh-CN')} 元，从存款里出。`, input: { placeholder: kind === '小店' ? '比如：巷口那家' : kind === '小公司' ? '比如：青禾文化' : '比如：半山工作室', max: 14 }, no: '再想想', ok: '开张' });
   if (!name) return;
   const r = E.openBiz(S, { kind, name }, Math.random);
   if (!r.ok) { toast(r.why); return; }
@@ -2724,6 +2758,7 @@ async function askOpenBiz(kind) {
   runSegment({ quick: true });
 }
 function openHire() {
+  if (!canAct()) return;
   const B = S.biz;
   if (!B) return;
   if (B.staff.length >= E.BIZ_KINDS[B.kind].cap) { toast('塞不下人了'); return; }
@@ -2737,6 +2772,7 @@ function openHire() {
   mask('npcMask', true);
 }
 function doHire(c) {
+  if (!canAct()) return;
   const r = E.hireBiz(S, c);
   mask('npcMask', false);
   if (!r || !r.ok) { toast((r && r.why) || '招不进来'); return; }
@@ -2744,25 +2780,31 @@ function doHire(c) {
   saveGame(); renderPanel();
 }
 async function doFire(i) {
+  if (!canAct()) return;
   const s = S.biz.staff[i];
   if (!s) return;
-  if (!await ask({ title: `让${s.name}走？`, text: `按规矩多给一个月工资，${s.pay} 元。`, no: '留着', ok: '让他走', danger: true })) return;
+  if (!await actionAsk({ title: `让${s.name}走？`, text: `按规矩多给一个月工资，${s.pay} 元。`, no: '留着', ok: '让他走', danger: true })) return;
+  if (!S.biz || S.biz.staff[i] !== s) return;
   const r = E.fireBiz(S, i);
   toast(`${r.who}走了，给了${r.pay}`);
   saveGame(); rebuildTop(); renderPanel();
 }
 async function doRaise(i) {
+  if (!canAct()) return;
   const s = S.biz.staff[i];
   if (!s) return;
-  const v = await ask({ title: `给${s.name}调工资`, text: `现在每月 ${s.pay} 元。填加多少，填负数就是降。`, input: { value: '500', number: true }, ok: '就这么定' });
+  const v = await actionAsk({ title: `给${s.name}调工资`, text: `现在每月 ${s.pay} 元。填加多少，填负数就是降。`, input: { value: '500', number: true }, ok: '就这么定' });
   if (v === null) return;
+  if (!S.biz || S.biz.staff[i] !== s) return;
   E.raiseBiz(S, i, Number(v));
   saveGame(); renderPanel();
 }
 async function doCloseBiz() {
+  if (!canAct()) return;
   const B = S.biz;
   if (!B) return;
-  if (!await ask({ title: `关掉「${B.name}」？`, text: '东西折价能回一点本，跟着你的人得给遣散。', no: '再撑撑', ok: '关', danger: true })) return;
+  if (!await actionAsk({ title: `关掉「${B.name}」？`, text: '东西折价能回一点本，跟着你的人得给遣散。', no: '再撑撑', ok: '关', danger: true })) return;
+  if (S.biz !== B) return;
   const r = E.closeBiz(S);
   closePanel();
   S.actTyped = false; S.lastAction = `把「${r.name}」关了`;
@@ -2802,7 +2844,8 @@ ${(S.era || []).length ? `- 这一年外面发生的：${S.era.map(e => e.text).
 
 /* ---- 饭碗与借钱 ---- */
 async function doQuit() {
-  if (!await ask({ title: '真辞？', text: '下个月起就没工资了，房租和吃穿照样要花。', no: '再干干', ok: '辞', danger: true })) return;
+  if (!canAct()) return;
+  if (!await actionAsk({ title: '真辞？', text: '下个月起就没工资了，房租和吃穿照样要花。', no: '再干干', ok: '辞', danger: true })) return;
   const r = E.quitJob(S);
   if (!r) return;
   S.actTyped = false; S.lastAction = '把辞职的事办了';
@@ -2812,11 +2855,12 @@ async function doQuit() {
   runSegment({ quick: true });
 }
 async function doPay(i) {
+  if (!canAct()) return;
   const d = (S.debts || [])[i];
   if (!d) return;
-  const v = await ask({ title: `还给${d.who}`, text: `还欠 ${d.left} 元，手头有 ${S.player.money} 元。`, input: { value: String(Math.min(d.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+  const v = await actionAsk({ title: `还给${d.who}`, text: `还欠 ${d.left} 元，手头有 ${S.player.money} 元。`, input: { value: String(Math.min(d.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
   if (v === null) return;
-  const r = E.payDebt(S, i, Number(v));
+  const r = E.payDebt(S, S.debts.indexOf(d), Number(v));
   if (!r) { toast('还不上'); return; }
   toast(`还了${r.who}${r.pay}元${r.left ? `，还欠${r.left}` : '，清了'}`);
   saveGame(); rebuildTop(); renderPanel();
@@ -2836,6 +2880,7 @@ function openBorrow() {
 
 /* ================= 投入 ================= */
 function openFocus() {
+  if (!canAct()) return;
   if (S.pending) { toast('上一段还没写完，先把它写出来'); return; }
   if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.focus) { toast('手头这摊还没做完'); return; }
@@ -2846,6 +2891,7 @@ function openFocus() {
   $('fcDaysN').textContent = '10';
 }
 function doFocus() {
+  if (!canAct()) return;
   const what = $('fcWhat').value.trim();
   if (!what) { toast('写清楚要闷头做什么'); return; }
   const days = Number($('fcDays').value) || 10;
@@ -2863,11 +2909,21 @@ function doFocus() {
 /* ================= 生活：住处、找活、兼职、乐子、商店、送礼 ================= */
 function sheet(html) { $('npcBox').innerHTML = html; mask('npcMask', true); }
 function sheetOff() { mask('npcMask', false); }
-function canAct() {
+function canAct(allowQueued = false) {
   if (busy || !S || S.over) return false;
   if (S.pending) { toast('上一段还没写完，先把它写出来'); return false; }
   if (S.promiseAsk) { toast('先把约好的事定下来'); return false; }
+  if (S.key) { toast('先把眼前这一场谈完'); return false; }
+  if (!allowQueued && (S.stopQueue || []).length) { toast('先看完今天已经发生的事'); return false; }
   return true;
+}
+// 确认框返回时重新检查状态，防止旧对话框对新存档或新段落执行动作。
+async function actionAsk(o) {
+  if (!canAct()) return null;
+  const state = S, seg = S.seg;
+  const v = await ask(o);
+  if (S !== state || S.seg !== seg || !canAct()) return null;
+  return v;
 }
 const sgn = v => (v >= 0 ? '+' : '') + v;
 // 引擎先把账办完，再写一段故事：结果写死，模型只写过程
@@ -2899,8 +2955,9 @@ function openMove() {
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
 async function doMove(k) {
+  if (!canAct()) return;
   sheetOff();
-  if (!await ask({ title: `搬去${k}？`, text: `中介费加搬家 ${E.moveCost(S, k)} 元，往后房租每月 ${E.rentFor(S, k)}。`, ok: '搬' })) return;
+  if (!await actionAsk({ title: `搬去${k}？`, text: `中介费加搬家 ${E.moveCost(S, k)} 元，往后房租每月 ${E.rentFor(S, k)}。`, ok: '搬' })) return;
   const r = E.moveHome(S, k);
   if (!r.ok) { toast(r.why); return; }
   toast(`搬进了${k}`);
@@ -2949,6 +3006,7 @@ function openShop(cat, forWho) {
     <div class="btns"><button class="ghost" onclick="shopFor='';sheetOff()">走了</button></div>`);
 }
 async function doBuy(id, via, giveTo) {
+  if (!canAct()) return;
   const r = E.buyItem(S, id, via);
   if (!r.ok) { toast(r.why); return; }
   toast(`买了${r.item.name}，${r.price}元`);
@@ -2969,6 +3027,7 @@ function bagHtml() {
   }).join('');
 }
 function doUse(uid) {
+  if (!canAct()) return;
   const r = E.useItem(S, uid);
   if (!r.ok) { toast(r.why); return; }
   toast(r.note);
@@ -2985,6 +3044,7 @@ function pickGiveTarget(uid) {
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
 async function doGive(name, uid) {
+  if (!canAct()) return;
   sheetOff();
   const c = S.convo;
   const inChat = c && !c.group && c.name === name;
@@ -3048,6 +3108,7 @@ function setFunPay(t) {
   $('funPay').querySelectorAll('.seg').forEach((b, i) => b.classList.toggle('on', (i === 1) === t));
 }
 async function doFunGo() {
+  if (!canAct()) return;
   const who = [...document.querySelectorAll('.funwho:checked')].map(x => x.value).slice(0, 3);
   sheetOff();
   const span = await pickSpan(funPick.id === 'trip' ? 2 : funPick.id === 'show' ? 1 : 0);
@@ -3061,6 +3122,7 @@ async function doFunGo() {
 
 /* ---- 招聘 ---- */
 function openBoard() {
+  if (!canAct()) return;
   if (busy) return;
   const B = E.jobBoard(S, Math.random);
   saveGame();
@@ -3071,6 +3133,7 @@ function openBoard() {
     <div class="btns"><button class="ghost" onclick="sheetOff()">关掉</button></div>`);
 }
 function doApply(id) {
+  if (!canAct()) return;
   const r = E.applyPost(S, id, Math.random);
   if (!r.ok) { toast(r.why); return; }
   toast(r.pass ? `过筛了：${r.date.m}月${r.date.d}日去面试` : `${r.post.employer}没回音（${r.ck.attr}${r.ck.val}，掷骰${r.ck.roll}，${r.ck.total}/${r.ck.need}）`);
@@ -3096,6 +3159,7 @@ function openGigs() {
     <div class="btns"><button class="ghost" onclick="sheetOff()">关掉</button></div>`);
 }
 function doTakeGig(k, offer) {
+  if (!canAct()) return;
   const r = E.takeGig(S, k);
   if (!r.ok) { toast(r.why); return; }
   if (offer && S.gigOffer) { const nn = S.npcs.find(x => x.name === S.gigOffer.who); if (nn) nn.rel = E.clamp(nn.rel + 1, 0, 100); S.gigOffer = null; }
@@ -3103,7 +3167,8 @@ function doTakeGig(k, offer) {
   sheetOff(); saveGame(); renderPanel();
 }
 async function doDropGig(k) {
-  if (!await ask({ title: `不做${k}了？`, text: '这周做了的钱现在结给你。', ok: '不做了' })) return;
+  if (!canAct()) return;
+  if (!await actionAsk({ title: `不做${k}了？`, text: '这周做了的钱现在结给你。', ok: '不做了' })) return;
   const g = E.dropGig(S, k);
   if (g) toast(`${k}不做了${g.owed ? `，结了${g.owed}` : ''}`);
   saveGame(); rebuildTop(); renderPanel();
@@ -3137,52 +3202,60 @@ function bankAfter(r) {
   return true;
 }
 async function bankDo(what, id) {
+  if (!canAct()) return;
   if (busy) return;
   if (what === 'fixedOut') {
-    if (!await ask({ title: '提前取出这笔定期？', text: '提前取，利息只按活期算。', ok: '取' })) return;
+    if (!await actionAsk({ title: '提前取出这笔定期？', text: '提前取，利息只按活期算。', ok: '取' })) return;
     return bankAfter(E.withdrawFixed(S, id));
   }
   if (what === 'mmfOut') {
-    const v = await ask({ title: '从货币基金取多少', text: `里面有 ${Math.floor(E.bankOf(S).mmf)}。`, input: { value: String(Math.floor(E.bankOf(S).mmf)), number: true }, ok: '取' });
+    const v = await actionAsk({ title: '从货币基金取多少', text: `里面有 ${Math.floor(E.bankOf(S).mmf)}。`, input: { value: String(Math.floor(E.bankOf(S).mmf)), number: true }, ok: '取' });
     if (v === null) return;
+    if (!String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0) { toast('金额要填有效的非负数'); return; }
     return bankAfter(E.redeem(S, '货币基金', Number(v)));
   }
   if (what === 'fundOut') {
-    const v = await ask({ title: '卖多少股票基金', text: `眼下值 ${E.fundValue(S)}，卖出收0.5%手续费。`, input: { value: String(E.fundValue(S)), number: true }, ok: '卖' });
+    const v = await actionAsk({ title: '卖多少股票基金', text: `眼下值 ${E.fundValue(S)}，卖出收0.5%手续费。`, input: { value: String(E.fundValue(S)), number: true }, ok: '卖' });
     if (v === null) return;
+    if (!String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0) { toast('金额要填有效的非负数'); return; }
     return bankAfter(E.redeem(S, '股票基金', Number(v)));
   }
   if (what === 'prepay') {
     const l = E.bankOf(S).loans.find(x => x.id === id);
-    const v = await ask({ title: `提前还${l.kind}`, text: `还欠 ${l.left}，账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+    const v = await actionAsk({ title: `提前还${l.kind}`, text: `还欠 ${l.left}，账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
     if (v === null) return;
     return bankAfter(E.prepay(S, id, Number(v)));
   }
 }
 function openDeposit() {
+  if (!canAct()) return;
   sheet(`<h2>存定期</h2><div class="tip" style="margin-top:-10px">定期里的钱扣不了房租和月供，提前取只算活期利息。</div>
     <div class="card" style="margin-top:14px">${[3, 12, 36].map(t => `<div class="li tap" onclick="doDeposit(${t})"><b>${t === 36 ? '三年' : t === 12 ? '一年' : '三个月'}</b><span class="rel">年利率${(E.DEPO[t] * 100).toFixed(1)}%</span></div>`).join('')}</div>
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
 async function doDeposit(t) {
+  if (!canAct()) return;
   sheetOff();
-  const v = await ask({ title: `存${t === 36 ? '三年' : t === 12 ? '一年' : '三个月'}定期`, text: `账上有 ${S.player.money}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 2 / 100) * 100)), number: true }, ok: '存' });
+  const v = await actionAsk({ title: `存${t === 36 ? '三年' : t === 12 ? '一年' : '三个月'}定期`, text: `账上有 ${S.player.money}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 2 / 100) * 100)), number: true }, ok: '存' });
   if (v === null) return;
   bankAfter(E.deposit(S, Number(v), t));
 }
 const INV_DESC = { '货币基金': '年化1.5%上下，几乎不亏，随存随取', '银行理财': '年化2.5%–3.2%，极少亏，锁90天', '股票基金': '一年下来可能亏四分之一，也可能赚三成多；跟行业风向走，卖出收0.5%' };
 function openInvest() {
+  if (!canAct()) return;
   sheet(`<h2>买理财</h2>
     <div class="card">${Object.keys(INV_DESC).map(k => `<div class="li tap" onclick="doInvest('${k}')"><b>${k}</b><div class="tip">${INV_DESC[k]}${k === '股票基金' ? `｜眼下净值${E.bankOf(S).nav.toFixed(3)}` : ''}</div></div>`).join('')}</div>
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
 async function doInvest(k) {
+  if (!canAct()) return;
   sheetOff();
-  const v = await ask({ title: `买${k}`, text: `账上有 ${S.player.money}。${INV_DESC[k]}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 3 / 100) * 100)), number: true }, ok: '买' });
+  const v = await actionAsk({ title: `买${k}`, text: `账上有 ${S.player.money}。${INV_DESC[k]}。`, input: { value: String(Math.max(0, Math.floor(S.player.money / 3 / 100) * 100)), number: true }, ok: '买' });
   if (v === null) return;
   bankAfter(E.invest(S, k, Number(v), Math.random));
 }
 function openLoan() {
+  if (!canAct()) return;
   sheet(`<h2>贷款</h2><div class="tip" style="margin-top:-10px">额度和利率看月薪、在职多久、口碑和征信。每月1号跟房租一起扣月供。</div>
     <div class="card" style="margin-top:14px">${Object.keys(E.LOANS).map(k => {
       const q = E.loanQuote(S, k);
@@ -3193,9 +3266,11 @@ function openLoan() {
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
 async function doLoan(k, t) {
+  if (!canAct()) return;
   sheetOff();
   const q = E.loanQuote(S, k);
-  const v = await ask({ title: `${k}，${t}个月`, text: `最多 ${q.cap}，年利率${(q.rate * 100).toFixed(1)}%。贷多少？`, input: { value: String(q.cap), number: true }, ok: '贷' });
+  if (!q.ok) { toast(q.why); return; }
+  const v = await actionAsk({ title: `${k}，${t}个月`, text: `最多 ${q.cap}，年利率${(q.rate * 100).toFixed(1)}%。贷多少？`, input: { value: String(q.cap), number: true }, ok: '贷' });
   if (v === null) return;
   bankAfter(E.takeLoan(S, k, Number(v), t));
 }
@@ -3204,7 +3279,7 @@ async function doLoan(k, t) {
 async function pickSpan(base) {
   if (base > 0) return base;
   if (E.slotsLeft(S) > 0) return 0;
-  return await ask({ title: '今天没空了', text: '白天、晚上都已经安排了事。', ok: '那就明天', no: '算了' }) ? 1 : null;
+  return await actionAsk({ title: '今天没空了', text: '白天、晚上都已经安排了事。', ok: '那就明天', no: '算了' }) ? 1 : null;
 }
 
 /* ================= 设置 / 存档 ================= */
@@ -3249,7 +3324,7 @@ function openSettings() {
   const fb = $('setFree');
   fb.innerHTML = seg(Object.keys(E.FREEDOM), S ? S.freedom : '都市传奇');
   bindSeg('setFree', v => {
-    if (!S) return;
+    if (!canAct()) { openSettings(); return; }
     S.freedom = v; saveGame();
     toast(v === '心想事成' ? '言出法随：你写什么就发生什么' : '口径改成' + v);
     $('setFreeNote').textContent = FREE_NOTE[v] || '';
@@ -3258,7 +3333,7 @@ function openSettings() {
   $('setStyle').innerHTML = seg(Object.keys(STYLES), styleOf());
   $('setStyleNote').textContent = STYLES[styleOf()].note;
   bindSeg('setStyle', v => {
-    if (!S) return;
+    if (!canAct()) { openSettings(); return; }
     S.style = v; saveGame();
     toast('文风改成' + v + '，下一段起');
     $('setStyleNote').textContent = STYLES[v].note;
@@ -3325,7 +3400,10 @@ function loadGame() {
 }
 let loadErr = '';
 async function restart() {
+  if (busy) { toast('先等这一段写完'); return; }
+  const state = S, seg = S && S.seg;
   if (!await ask({ title: '重开一局？', text: '这一局的存档就没了。', no: '不了', ok: '重开', danger: true })) return;
+  if (busy || S !== state || (S && S.seg) !== seg) return;
   localStorage.removeItem(LS_SAVE);
   localStorage.removeItem(LS_SAVE + '_bak');
   if (S && S.runId) bookClear(S.runId).catch(() => { });
@@ -3354,9 +3432,12 @@ async function exportSave() {
   toast('存档拿走了，另一台设备上导入就行');
 }
 function importSave(file) {
+  if (busy) { toast('先等这一段写完'); return; }
   if (!file) return;
+  const state = S;
   const fr = new FileReader();
   fr.onload = async () => {
+    if (busy || S !== state) { toast('当前状态变了，请重新导入'); return; }
     let pack;
     const txt = String(fr.result || '').replace(/^\uFEFF/, '').trim();
     try { pack = JSON.parse(txt); } catch (_) { toast('这个文件读不出来，可能下载时没下完整'); return; }
@@ -3366,6 +3447,7 @@ function importSave(file) {
     try { fixed = E.migrate(JSON.parse(JSON.stringify(pack.save))); } catch (e) { console.error(e); }
     if (!fixed) { toast('这个存档缺的东西太多，接不上'); return; }
     if (S && !await ask({ title: `导入「${pack.who || '别处的存档'}」？`, text: '这台设备上现在这局会被盖掉。', ok: '导入', danger: true })) return;
+    if (busy || S !== state) { toast('当前状态变了，请重新导入'); return; }
     try {
       // 先腾地方：旧的主存档和备份都占着空间，新存档大一点就写不进去
       const j = JSON.stringify(fixed);
@@ -3395,7 +3477,7 @@ async function exportBook() {
   const done = [];
   for (const st of S.ideal.stages) for (const m of st.milestones) if (m.done) done.push(`${m.doneDate || ''} ${m.title}`);
   const out = [`# ${S.player.name}　${S.startDate.y}年—${S.date.y}年`, '', `> ${S.player.ideal}`, '',
-    `${S.player.age}岁｜${S.city}｜${S.player.job}｜存款 ${S.player.money}`,
+    `${S.player.age}岁｜${S.city}｜${E.jobLabel(S)}｜存款 ${S.player.money}`,
     done.length ? `\n**迈过的台阶**：${done.join('；')}` : '', ''];
   for (const y of (S.years || [])) {
     out.push(`## ${y.y}年 · 年终`, '', y.text, '');

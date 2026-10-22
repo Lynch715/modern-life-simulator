@@ -471,6 +471,7 @@ console.log('—— 出身与地位 ——');
 }
 
 (async () => {
+  if (process.argv.includes('--engine-only')) return done();
   console.log('—— 页面 ——');
   let chromium;
   try { ({ chromium } = require('playwright')); } catch (_) { console.log('没装 playwright，页面部分跳过'); return done(); }

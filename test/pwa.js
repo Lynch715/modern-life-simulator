@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
+const CACHE_VERSION = require('fs').readFileSync(path.join(ROOT, 'sw.js'), 'utf8').match(/const VER = '([^']+)'/)[1];
 const PORT = 8731;
 const BASE = `http://127.0.0.1:${PORT}/`;
 
@@ -59,12 +60,12 @@ const BOOT = {
   for (const need of ['192x192', '512x512']) if (!manifest.icons.some(i => i.startsWith(need))) { ok = false; console.log('少了', need); }
 
   await pg.waitForTimeout(1500);
-  const sw = await pg.evaluate(async () => ({
+  const sw = await pg.evaluate(async cacheName => ({
     reg: !!(await navigator.serviceWorker.getRegistration()),
     ctrl: !!navigator.serviceWorker.controller,
     keys: await caches.keys(),
-    cached: (await caches.open('mls-v6')).keys ? (await (await caches.open('mls-v6')).keys()).map(r => new URL(r.url).pathname) : []
-  }));
+    cached: (await caches.open(cacheName)).keys ? (await (await caches.open(cacheName)).keys()).map(r => new URL(r.url).pathname) : []
+  }), CACHE_VERSION);
   console.log('service worker：', sw.reg ? '装上了' : '没装上', '｜接管：', sw.ctrl, '｜缓存：', sw.keys.join());
   console.log('缓存了：', sw.cached.join(' '));
   if (!sw.reg || !sw.cached.length) ok = false;

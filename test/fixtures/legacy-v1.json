@@ -1,0 +1,376 @@
+{
+  "standard": {
+    "v": 1,
+    "runId": "r2026-7",
+    "seg": 0,
+    "date": {
+      "y": 2026,
+      "m": 7,
+      "d": 1
+    },
+    "startDate": {
+      "y": 2026,
+      "m": 7,
+      "d": 1
+    },
+    "freedom": "写实人生",
+    "origin": "普通家庭",
+    "city": "新一线",
+    "player": {
+      "name": "旧档回归角色",
+      "gender": "男",
+      "age": 22,
+      "age0": 22,
+      "face": "",
+      "bg": {
+        "edu": "本科",
+        "school": "普通",
+        "major": "",
+        "persona": "",
+        "looks": ""
+      },
+      "track": "职场",
+      "skillName": "业务",
+      "ideal": "做到能自己拍板的位置",
+      "job": "一份刚找到的活",
+      "attrs": {
+        "专业": 22,
+        "表达": 20,
+        "谋划": 20,
+        "情绪": 24,
+        "体能": 30
+      },
+      "attrF": {
+        "专业": 22,
+        "表达": 20,
+        "谋划": 20,
+        "情绪": 24,
+        "体能": 30
+      },
+      "energy": 78,
+      "money": 8000,
+      "信誉": 8,
+      "人品": 50,
+      "资历天": 0
+    },
+    "ledger": {
+      "rent": 1100,
+      "living": 1800,
+      "remit": 0,
+      "subsidy": 0,
+      "salary": 4300,
+      "rentDay": 1,
+      "salaryDay": 10,
+      "loan": 0,
+      "base": 4300
+    },
+    "job": {
+      "employer": "",
+      "post": "",
+      "title": "",
+      "lv": 0,
+      "perf": 0,
+      "probation": false,
+      "quarters": 0,
+      "days": 0,
+      "mood": 0,
+      "out": false,
+      "strain": 1
+    },
+    "debts": [],
+    "rifts": [],
+    "ailLog": {},
+    "moments": [],
+    "momentId": 0,
+    "biz": null,
+    "bizPast": [],
+    "wind": null,
+    "era": [],
+    "eraLeft": 0,
+    "years": [],
+    "home": {
+      "kind": "租",
+      "since": "",
+      "place": "",
+      "tier": "合租次卧"
+    },
+    "gigs": [],
+    "bag": [],
+    "family": {
+      "partner": null,
+      "kids": [],
+      "past": []
+    },
+    "retireAge": 60,
+    "endedOnce": [],
+    "pace": "两头兼顾",
+    "schedule": {
+      "work": {
+        "早": "睡觉",
+        "白天": "主业",
+        "晚上": "理想",
+        "深夜": "睡觉"
+      },
+      "rest": {
+        "早": "睡觉",
+        "白天": "身心",
+        "晚上": "人情",
+        "深夜": "睡觉"
+      }
+    },
+    "ideal": {
+      "progress": 0,
+      "stages": []
+    },
+    "key": null,
+    "npcs": [],
+    "peers": [],
+    "msgs": [],
+    "appts": [],
+    "unresolved": [],
+    "status": [],
+    "chronic": [],
+    "focus": null,
+    "stopWhen": [],
+    "pledges": [],
+    "plan": null,
+    "place": "",
+    "scene": null,
+    "recent": [],
+    "history": [],
+    "volumes": [],
+    "chapters": [],
+    "pending": null,
+    "lastOptions": [],
+    "lastAction": null,
+    "lastJudge": null,
+    "stats": {
+      "segs": 0,
+      "days": 0,
+      "stops": {},
+      "checks": 0,
+      "wins": 0,
+      "keys": 0,
+      "keyWins": 0
+    },
+    "flags": {
+      "nightCnt": 0,
+      "cool": 0,
+      "firstPay": false,
+      "firstRent": false,
+      "lastPeer": 0,
+      "lastEvt": -99,
+      "monthNet": 0,
+      "rent2": 1
+    },
+    "broke": false,
+    "brokeMonths": 0,
+    "over": false,
+    "ending": null,
+    "booted": false
+  },
+  "mortgage": {
+    "v": 1,
+    "runId": "r2026-7",
+    "seg": 0,
+    "date": {
+      "y": 2026,
+      "m": 7,
+      "d": 1
+    },
+    "startDate": {
+      "y": 2026,
+      "m": 7,
+      "d": 1
+    },
+    "freedom": "写实人生",
+    "origin": "普通家庭",
+    "city": "新一线",
+    "player": {
+      "name": "旧档回归角色",
+      "gender": "男",
+      "age": 22,
+      "age0": 22,
+      "face": "",
+      "bg": {
+        "edu": "本科",
+        "school": "普通",
+        "major": "",
+        "persona": "",
+        "looks": ""
+      },
+      "track": "职场",
+      "skillName": "业务",
+      "ideal": "做到能自己拍板的位置",
+      "job": "一份刚找到的活",
+      "attrs": {
+        "专业": 22,
+        "表达": 20,
+        "谋划": 20,
+        "情绪": 24,
+        "体能": 30
+      },
+      "attrF": {
+        "专业": 22,
+        "表达": 20,
+        "谋划": 20,
+        "情绪": 24,
+        "体能": 30
+      },
+      "energy": 78,
+      "money": 843200,
+      "信誉": 8,
+      "人品": 50,
+      "资历天": 0
+    },
+    "ledger": {
+      "rent": 0,
+      "living": 1800,
+      "remit": 0,
+      "subsidy": 0,
+      "salary": 4300,
+      "rentDay": 1,
+      "salaryDay": 10,
+      "loan": 1733,
+      "base": 4300
+    },
+    "job": {
+      "employer": "",
+      "post": "",
+      "title": "",
+      "lv": 0,
+      "perf": 0,
+      "probation": false,
+      "quarters": 0,
+      "days": 0,
+      "mood": 0,
+      "out": false,
+      "strain": 1
+    },
+    "debts": [],
+    "rifts": [],
+    "ailLog": {},
+    "moments": [],
+    "momentId": 0,
+    "biz": null,
+    "bizPast": [],
+    "wind": null,
+    "era": [],
+    "eraLeft": 0,
+    "years": [],
+    "home": {
+      "kind": "买",
+      "since": "7月1日",
+      "price": 490000,
+      "loan": {
+        "left": 333200,
+        "monthly": 1733,
+        "months": 360,
+        "paid": 0
+      }
+    },
+    "gigs": [],
+    "bag": [],
+    "family": {
+      "partner": null,
+      "kids": [],
+      "past": []
+    },
+    "retireAge": 60,
+    "endedOnce": [],
+    "pace": "两头兼顾",
+    "schedule": {
+      "work": {
+        "早": "睡觉",
+        "白天": "主业",
+        "晚上": "理想",
+        "深夜": "睡觉"
+      },
+      "rest": {
+        "早": "睡觉",
+        "白天": "身心",
+        "晚上": "人情",
+        "深夜": "睡觉"
+      }
+    },
+    "ideal": {
+      "progress": 0,
+      "stages": []
+    },
+    "key": null,
+    "npcs": [],
+    "peers": [],
+    "msgs": [],
+    "appts": [],
+    "unresolved": [],
+    "status": [],
+    "chronic": [],
+    "focus": null,
+    "stopWhen": [],
+    "pledges": [],
+    "plan": null,
+    "place": "",
+    "scene": null,
+    "recent": [],
+    "history": [],
+    "volumes": [],
+    "chapters": [],
+    "pending": null,
+    "lastOptions": [],
+    "lastAction": null,
+    "lastJudge": null,
+    "stats": {
+      "segs": 0,
+      "days": 0,
+      "stops": {},
+      "checks": 0,
+      "wins": 0,
+      "keys": 0,
+      "keyWins": 0
+    },
+    "flags": {
+      "nightCnt": 0,
+      "cool": 0,
+      "firstPay": false,
+      "firstRent": false,
+      "lastPeer": 0,
+      "lastEvt": -99,
+      "monthNet": 0,
+      "rent2": 1
+    },
+    "broke": false,
+    "brokeMonths": 0,
+    "over": false,
+    "ending": null,
+    "booted": false,
+    "bank": {
+      "fixed": [],
+      "mmf": 0,
+      "mmfGain": 0,
+      "wm": [],
+      "fund": {
+        "units": 0,
+        "cost": 0,
+        "mark": 0
+      },
+      "nav": 1,
+      "loans": [],
+      "credit": 60,
+      "curAcc": 0,
+      "id": 0
+    },
+    "acct": {
+      "2026-07": {
+        "open": 1000000,
+        "rows": [
+          {
+            "d": 1,
+            "item": "买房首付",
+            "amt": -156800,
+            "note": ""
+          }
+        ]
+      }
+    }
+  }
+}

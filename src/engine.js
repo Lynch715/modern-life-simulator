@@ -340,7 +340,7 @@ function newState(o) {
     key: null,
     npcs: [], peers: [], msgs: [], appts: [], unresolved: [],
     status: [], chronic: [],
-    focus: null, stopWhen: [], pledges: [], plan: null,
+    focus: null, stopWhen: [], pledges: [], plan: null, stopQueue: [],
     place: '', scene: null,
     recent: [], history: [], volumes: [], chapters: [],
     pending: null, lastOptions: [], lastAction: null, lastJudge: null,
@@ -516,7 +516,7 @@ function moneyTick(S, rng) {
   }
   if (d.d === L.rentDay) {
     const kid = kidCost(S);
-    const loan = num(L.loan);
+    const loan = homePayment(S);
     if (loan) homeTick(S);
     const out = L.rent + loan + L.living + L.remit + kid;
     const m0 = p.money;
@@ -696,6 +696,14 @@ function advance(S, opt) {
   const events = [];
   let stop = null, days = 0;
 
+  // 同一天的多个停点依次交给界面，期间不再跨日或重复结算。
+  if (!Array.isArray(S.stopQueue)) S.stopQueue = [];
+  if (S.stopQueue.length) {
+    stop = S.stopQueue.shift();
+    S.stats.stops[stop.kind] = (S.stats.stops[stop.kind] || 0) + 1;
+    return { from, to: S.date, days: 0, events, stop };
+  }
+
   while (days < maxDays) {
     S.date = addDays(S.date, 1);
     days++;
@@ -713,41 +721,42 @@ function advance(S, opt) {
     const en = endReason(S);
     if (en && !S.over) { stop = { kind: '结局', detail: en.text, why: en.why }; break; }
 
-    // 一年到头，别的什么都往后排
+    const stops = [];
+    const stopAt = s => { if (s) stops.push(s); };
+    // 展示停点不打断当天结算；年终仍排在其他停点之前。
     if (S.date.m === 12 && S.date.d === 31) {
       const yp = newYearPackets(S);
       if (yp.length) events.push({ t: '家里', s: `${yp.map(p => p.from).join('、')}发了过年红包` });
-      stop = { kind: '年终', detail: `${S.date.y}年过完了` };
-      break;
+      stopAt({ kind: '年终', detail: `${S.date.y}年过完了` });
     }
 
     const day = dayTick(S, rng);
     events.push(...day.ev);
-    if (day.stop) { stop = day.stop; break; }
+    stopAt(day.stop);
 
     const mon = moneyTick(S, rng);
     events.push(...mon.ev);
-    if (mon.stop) { stop = mon.stop; break; }
+    stopAt(mon.stop);
 
     const dt = debtTick(S);
     events.push(...dt.ev);
-    if (dt.stop) { stop = dt.stop; break; }
+    stopAt(dt.stop);
 
     const bk = bankTick(S, rng);
     events.push(...bk.ev);
-    if (bk.stop && !quiet) { stop = bk.stop; break; }
+    if (!quiet) stopAt(bk.stop);
 
     const wd = windTick(S, rng);
     events.push(...wd.ev);
-    if (wd.stop && !quiet && S.flags.cool <= 0) { stop = wd.stop; break; }
+    if (!quiet && S.flags.cool <= 0) stopAt(wd.stop);
 
     const fm = familyTick(S, rng);
     events.push(...fm.ev);
-    if (fm.stop) { stop = fm.stop; break; }
+    stopAt(fm.stop);
 
     const rt = riftTick(S, rng);
     events.push(...rt.ev);
-    if (rt.stop && !quiet && S.flags.cool <= 0) { stop = rt.stop; break; }
+    if (!quiet && S.flags.cool <= 0) stopAt(rt.stop);
 
     // 季度考核
     if (S.date.d === 26 && [3, 6, 9, 12].includes(S.date.m) && !S.job.out) {
@@ -756,8 +765,7 @@ function advance(S, opt) {
         events.push({ t: '工作', s: rv.text });
         S.lastReview = rv;
         notePos(S);
-        stop = { kind: '考核', detail: `${rv.kind}：${rv.text}`, review: rv };
-        break;
+        stopAt({ kind: '考核', detail: `${rv.kind}：${rv.text}`, review: rv });
       }
     }
 
@@ -766,35 +774,44 @@ function advance(S, opt) {
 
     // 投入做完了
     if (S.focus && S.focus.left <= 0) {
-      stop = { kind: '投入', detail: `${S.focus.what}这一摊子，到点了` };
-      break;
+      stopAt({ kind: '投入', detail: `${S.focus.what}这一摊子，到点了` });
     }
 
     // 约好的事
-    const ap = S.appts.find(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done);
-    if (ap) { ap.done = true; stop = { kind: '约', detail: ap.title, apptKind: ap.kind || '', promise: { type: 'appt', title: ap.title, kind: ap.kind || '', who: ap.wed ? ap.wed.who : apptWho(S, ap), post: ap.post || null, wed: ap.wed || null } }; break; }
+    for (const ap of S.appts.filter(a => a.y === S.date.y && a.m === S.date.m && a.d === S.date.d && !a.done)) {
+      ap.done = true;
+      stopAt({ kind: '约', detail: ap.title, apptKind: ap.kind || '', promise: { type: 'appt', title: ap.title, kind: ap.kind || '', who: ap.wed ? ap.wed.who : apptWho(S, ap), post: ap.post || null, wed: ap.wed || null } });
+    }
     // 主角答应别人的事，到了日子：停下来问他去不去
-    const pl = (S.pledges || []).find(x => !x.done && !x.asked && x.kind === '主角答应' && x.due && daysBetween(S.date, x.due) === 0);
-    if (pl) { pl.asked = true; stop = { kind: '承诺', detail: `答应${pl.who}的「${pl.what}」`, promise: { type: 'pledge', who: pl.who, what: pl.what, title: `答应${pl.who}：${pl.what}` } }; break; }
+    for (const pl of (S.pledges || []).filter(x => !x.done && !x.asked && x.kind === '主角答应' && x.due && daysBetween(S.date, x.due) === 0)) {
+      pl.asked = true;
+      stopAt({ kind: '承诺', detail: `答应${pl.who}的「${pl.what}」`, promise: { type: 'pledge', who: pl.who, what: pl.what, title: `答应${pl.who}：${pl.what}` } });
+    }
 
     // 自设的停下条件
     const sw = checkStopWhen(S);
-    if (sw) { stop = sw; break; }
+    stopAt(sw);
     const pt = pledgeTick(S);
     events.push(...pt.ev);
 
     events.push(...lifeTick(S, rng));
     const og = originTick(S, rng);
-    if (og && !quiet) { stop = og; break; }
+    if (!quiet) stopAt(og);
     const ps = posTick(S);
-    if (ps) { stop = ps; break; }
+    stopAt(ps);
 
     const nt = npcTick(S, rng);
-    if (nt.stop && !quiet && S.flags.cool <= 0) { stop = nt.stop; break; }
+    if (!quiet && S.flags.cool <= 0) stopAt(nt.stop);
 
     const pe = peerTick(S, rng);
     events.push(...pe.ev);
-    if (pe.stop && !quiet && S.flags.cool <= 0) { stop = pe.stop; break; }
+    if (!quiet && S.flags.cool <= 0) stopAt(pe.stop);
+
+    if (stops.length) {
+      stop = stops.shift();
+      S.stopQueue.push(...stops);
+      break;
+    }
 
     // 天命：偶尔掷一把，大吉大凶才停
     if (!quiet && S.flags.cool <= 0 && rng() < 0.022) {
@@ -1693,31 +1710,57 @@ function canBuy(S) {
   const down = Math.round(price * 0.32);
   const loan = price - down;
   const monthly = Math.round(loan * 0.0052);                  // 三十年，粗算
-  return { price, down, loan, monthly, ok: S.player.money >= down };
+  const why = S.home && S.home.kind === '买' ? '已经有自己的房子了'
+    : S.player.money < down ? `首付还差 ${down - S.player.money}`
+    : bankOf(S).credit < 45 ? `征信${creditWord(bankOf(S).credit)}，房贷批不下来` : '';
+  return { price, down, loan, monthly, ok: !why, why };
 }
 function buyHouse(S, rng) {
   const b = canBuy(S);
-  if (!b.ok) return { ok: false, why: `首付要 ${b.down}，你手头 ${S.player.money}` };
-  if (bankOf(S).credit < 45) return { ok: false, why: `征信${creditWord(bankOf(S).credit)}，房贷批不下来` };
+  if (!b.ok) return { ok: false, why: b.why };
   const ck = rollCheck(S, '谋划', 48, rng || Math.random);
   const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
   S.player.money -= (b.down - cut);
   acct(S, '买房首付', -(b.down - cut));
   S.home = {
     kind: '买', since: shortDate(S.date), price: b.price - cut,
-    loan: { left: b.loan, monthly: b.monthly, months: 360, paid: 0 }
+    loan: { left: b.loan, monthly: b.monthly, months: 360, paid: 0, plan: 'term360' }
   };
   S.ledger.rent = 0;
   S.ledger.loan = b.monthly;
   return { ok: true, price: b.price - cut, down: b.down - cut, monthly: b.monthly, cut, ck };
 }
+function fixMortgage(S) {
+  const H = S.home, l = H && H.kind === '买' && H.loan;
+  if (!l) return null;
+  // 旧贷不追溯改账：保留本金、月供、已还期数，按原本金减少规则续还。
+  if (!l.plan && !l.done && num(l.left) > 0) {
+    l.plan = 'legacy42';
+    l.months = num(l.paid) + Math.ceil(num(l.left) / Math.max(1, Math.round(num(l.monthly) * 0.42)));
+  }
+  if (l.done || num(l.left) <= 0) S.ledger.loan = 0;
+  else S.ledger.loan = num(l.monthly);
+  return l;
+}
+function homePayment(S) {
+  const l = fixMortgage(S);
+  // 更早的存档可能只记月供、没有本金表；不擅自免除原有月供。
+  if (!l) return Math.max(0, num(S.ledger.loan));
+  if (l.done || num(l.left) <= 0) return 0;
+  if (l.plan === 'legacy42' && l.left <= Math.max(1, Math.round(l.monthly * 0.42)))
+    return Math.min(l.monthly, Math.ceil(l.left / 0.42));
+  return num(l.monthly);
+}
 function homeTick(S) {
-  // 月供跟着房租一起在 1 号扣，在 moneyTick 里算
-  const H = S.home;
-  if (!H || H.kind !== '买' || !H.loan) return;
-  H.loan.left = Math.max(0, H.loan.left - Math.round(H.loan.monthly * 0.42));   // 本金部分
-  H.loan.paid++;
-  if (H.loan.left <= 0) { S.ledger.loan = 0; H.loan.done = true; }
+  const l = fixMortgage(S);
+  if (!l || l.done || num(l.left) <= 0) return;
+  // 新贷在约定期数内摊完本金，月供仍沿用购房时的粗算报价。
+  const principal = l.plan === 'term360'
+    ? Math.ceil(l.left / Math.max(1, num(l.months) - num(l.paid)))
+    : Math.max(1, Math.round(l.monthly * 0.42));
+  l.left = Math.max(0, l.left - principal);
+  l.paid = num(l.paid) + 1;
+  if (l.left <= 0) { S.ledger.loan = 0; l.done = true; }
 }
 function homeWorth(S) {
   const H = S.home;
@@ -2292,6 +2335,7 @@ function review(S, rng) {
     J.out = true; J.was = J.employer; J.title = '待业'; S.ledger.salary = 0;
     out.kind = '裁员'; out.text = '这个季度轮到你，让你走人';
   }
+  S.player.job = jobLabel(S);
   return out;
 }
 function quitJob(S) {
@@ -2300,9 +2344,16 @@ function quitJob(S) {
   const perf0 = num(J.perf), mood0 = num(J.mood);     // 先记下走之前的样子，再清零
   J.out = true; J.was = J.employer; J.title = '待业'; J.perf = 0; J.mood = 0;
   S.ledger.salary = 0;
+  S.player.job = jobLabel(S);
   S.player.信誉 = clamp(S.player.信誉 - 1, 0, 100);
   if (mood0 < 0 || perf0 < 12) addRift(S, J.was || '原来那家', '走的时候没处理干净', '前东家', 22);
   return { kind: '辞职', text: `从${J.was || '原来那家'}出来了，下个月起没有工资` };
+}
+function jobLabel(S) {
+  const J = S.job;
+  if (J && !J.out) return J.employer ? `${J.employer}的${J.post || jobTitle(S)}` : (S.player.job || '在职');
+  if (S.biz && !S.biz.dead) return `自己的${S.biz.kind}「${S.biz.name}」`;
+  return '待业';
 }
 // 新饭碗（LLM 报的）
 // 新饭碗的月薪范围：城市行情 × 职级，心想事成放宽到三倍
@@ -2379,6 +2430,7 @@ function payDebt(S, i, amount) {
   }
   return { who: d.who, pay, left: d.left };
 }
+function activeDebts(S) { return (S.debts || []).filter(d => num(d.left) > 0); }
 
 /* ================= 理想阶梯 ================= */
 const METRICS = {
@@ -3508,6 +3560,10 @@ function invest(S, kind, amount, rng) {
 }
 function fundValue(S) { const B = bankOf(S); return Math.round(B.fund.units * B.nav); }
 function redeem(S, kind, amount) {
+  const input = Number(amount);
+  if (!Number.isFinite(input) || input < 0 || (input > 0 && Math.round(input) <= 0))
+    return { ok: false, why: '金额要填有效的非负数，至少1元；填0表示全部取出' };
+  amount = input;
   const B = bankOf(S);
   if (kind === '货币基金') {
     amount = Math.min(Math.round(num(amount)) || Math.floor(B.mmf), Math.floor(B.mmf));
@@ -3678,6 +3734,8 @@ function migrate(S) {
   if (S.plan && !Array.isArray(S.plan.steps)) S.plan = null;
   S.v = SAVE_VERSION;
   fixJob(S);
+  fixMortgage(S);
+  S.player.job = jobLabel(S);
   fixPace(S);
   fixWho(S);
   return S;
@@ -3890,14 +3948,14 @@ const API = {
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
   addMoment, likeMoment, commentMoment, unreadMoments, momentRel, addLiker,
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
-  housePrice, canBuy, buyHouse, homeWorth, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
+  housePrice, canBuy, buyHouse, homeWorth, fixMortgage, homePayment, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,
   migrate,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
   PEER_MOVES, PEER_HOOK, selfLevel, peerWord,
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
-  LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, addDebt, debtTick, payDebt,
+  LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, jobLabel, addDebt, debtTick, payDebt, activeDebts,
   METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
   startKey, keyRound, settleKey,
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,

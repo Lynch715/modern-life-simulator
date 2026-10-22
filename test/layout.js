@@ -1,21 +1,13 @@
-/* 可视视口回归：node test/layout.js。真实界面另用应用内浏览器验收。 */
-const fs = require('fs'), vm = require('vm'), assert = require('assert');
-const source = fs.readFileSync(require('path').join(__dirname, '../src/ui.js'), 'utf8');
-const fn = source.slice(source.indexOf('function fitViewport()'), source.indexOf('// 面板停在底栏上面'));
-const props = {}, root = { style: { setProperty: (k, v) => props[k] = v }, dataset: {} };
-const vv = { height: 852, offsetTop: 0, scale: 1 };
-const context = { window: { innerHeight: 852, visualViewport: vv }, document: { documentElement: root, activeElement: { tagName: 'BODY' } } };
-vm.createContext(context); vm.runInContext(fn, context);
-const fit = () => vm.runInContext('fitViewport()', context);
-fit(); assert.equal(props['--view-h'], '852px'); assert.equal(root.dataset.keyboard, 'false');
-context.document.activeElement.tagName = 'INPUT'; vv.height = 480; vv.offsetTop = 59;
-fit(); assert.equal(props['--view-h'], '480px'); assert.equal(props['--view-top'], '59px'); assert.equal(root.dataset.keyboard, 'true');
-vv.height = 852; vv.offsetTop = 0; context.document.activeElement.tagName = 'BODY';
-fit(); assert.equal(props['--view-h'], '852px'); assert.equal(props['--view-top'], '0px'); assert.equal(root.dataset.keyboard, 'false');
-vv.scale = 2; vv.height = 200; fit(); assert.equal(props['--view-h'], '852px');
-context.window.visualViewport = null; context.window.innerHeight = 568;
-fit(); assert.equal(props['--view-h'], '568px'); assert.equal(props['--view-top'], '0px');
-assert(!source.includes('function fixViewport('));
-const html = fs.readFileSync(require('path').join(__dirname, '../index.html'), 'utf8');
-assert(html.includes(fn.trim()), '构建文件必须同步包含视口修复');
-console.log('PASS：正常视口、键盘打开/关闭、偏移、缩放保护、旧浏览器回退、构建同步');
+/* 当前页面使用 CSS 动态视口；真实的窄屏、短屏、横屏另由应用内浏览器验收。 */
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
+const tpl=read('src/template.html'),ui=read('src/ui.js'),html=read('index.html');
+assert(tpl.includes('@supports (height:100dvh)'));
+assert(/#app\{[^}]*max-width:520px[^}]*height:100%/.test(tpl));
+assert(/#panelBody\{[^}]*overflow-y:auto/.test(tpl));
+assert(/#chatBody\{[^}]*overflow-y:auto/.test(tpl));
+assert(/\.bub\{[^}]*max-width:76%[^}]*white-space:pre-wrap/.test(tpl));
+assert(tpl.includes('min-width:0'));
+assert(html.includes(ui) && html.includes(read('src/engine.js')),'构建文件必须包含当前源代码');
+assert(tpl.includes('#panel{bottom:var(--tabsH,56px)}'));
+console.log('PASS：动态视口、独立滚动、气泡宽度、底栏边界、构建同步；旧 fitViewport 测试与当前实现已不对应，已更新。');
