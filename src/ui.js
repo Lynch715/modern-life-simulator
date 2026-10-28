@@ -2226,11 +2226,7 @@ function endGroup(c, toPanel) {
     }
     S.history.push({ seg: S.seg, date: dt, summary: `在群「${g.name}」里聊：${c.summary || '说了会儿话'}` });
   }
-  S.convo = null;
-  $('chat').classList.remove('on');
-  saveGame(); rebuildTop();
-  const back = convoFrom; convoFrom = '';
-  if (toPanel && back) gotoTab(back);
+  closeConvoView(toPanel);
 }
 // 建群：勾人、起名
 function openMakeGroup() {
@@ -2278,10 +2274,27 @@ function settleAsk(n, a, ck) {
     ck.sys = `记下了：${n.name}答应「${a.what}」`;
   }
 }
+// 退出聊天是导航，不受行动冻结限制；有待处理事项时回正文露出处理按钮。
+function closeConvoView(toPanel) {
+  S.convo = null;
+  $('chat').classList.remove('on');
+  $('plusMenu').classList.remove('on');
+  const back = convoFrom; convoFrom = '';
+  const needsMain = !!(S.over || S.pending || S.promiseAsk || S.key || (S.stopQueue || []).length);
+  saveGame(); rebuildTop(); renderOptions(S.lastOptions);
+  if (needsMain) {
+    closePanel();
+    if (S.key && !S.pending && !S.promiseAsk && !S.over) openKey();
+    scrollDown();
+  } else if (toPanel && back) gotoTab(back);
+  return !needsMain;
+}
 function endConvo(goOn, toPanel) {
-  if (!canAct()) return;
+  if (!S) { $('chat').classList.remove('on'); return; }
+  // 请求期间仍需等待回包，避免结算后异步回复再修改已经关闭的会话。
+  if (busy) { toast('等对面说完再退出'); return; }
   const c = S.convo;
-  if (!c) { $('chat').classList.remove('on'); return; }
+  if (!c) { closeConvoView(toPanel); return; }
   $('plusMenu').classList.remove('on');
   if (c.group) return endGroup(c, toPanel);
   const n = S.npcs.find(x => x.name === c.name);
@@ -2299,13 +2312,8 @@ function endConvo(goOn, toPanel) {
     S.msgs = S.msgs.slice(-240);
   }
   const name = c.name, sum = c.summary;
-  S.convo = null;
-  $('chat').classList.remove('on');
-  saveGame();
-  rebuildTop();
-  const back = convoFrom; convoFrom = '';
-  if (toPanel && back) gotoTab(back);         // 只有点返回键才回刚才那个面板；被别的界面收起时不回
-  if (goOn && said.length) { S.actTyped = false; S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment({ quick: true }); }
+  const canContinue = closeConvoView(toPanel);
+  if (goOn && said.length && canContinue) { S.actTyped = false; S.lastAction = `刚跟${name}聊完（${sum || '说了会儿话'}），接着过日子`; runSegment({ quick: true }); }
 }
 
 

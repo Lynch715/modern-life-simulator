@@ -1,5 +1,5 @@
 /* 现代生活模拟器 · 离线 */
-const VER = 'mls-v38-panel-20261022';
+const VER = 'mls-v39-chat-exit-20261028';
 const SHELL = ['./', './index.html', './site.webmanifest', './favicon.ico',
   './icon/icon-192.png', './icon/icon-512.png', './icon/icon-180.png',
   './assets/art/scenes/cover_arrival.webp'];   // 其余美术访问过即缓存
