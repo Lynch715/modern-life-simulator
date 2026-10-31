@@ -9,7 +9,7 @@ vm.runInNewContext(source,{self:{addEventListener:(k,fn)=>listeners[k]=fn,client
 async function fire(type){let p;listeners[type]({waitUntil:x=>p=x});await p;}
 async function request(url,method='GET'){let p;listeners.fetch({request:{url,method},respondWith:x=>p=x});return p?await p:null;}
 (async()=>{
- await fire('install');await fire('activate');assert(!cacheNames.has('mls-old'));assert(cacheNames.has('mls-v39-chat-exit-20261028'));
+ await fire('install');await fire('activate');assert(!cacheNames.has('mls-old'));assert(cacheNames.has('mls-v40-qwen-cache-20261031'));
  assert(await request('https://api.example.test/v1')===null);assert(await request(origin+'/index.html','POST')===null);
  const online=await request(origin+'/index.html');assert(await online.text()==='network');await Promise.resolve();
  offline=true;const saved=await request(origin+'/index.html');assert(await saved.text()==='network');

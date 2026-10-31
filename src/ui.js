@@ -4,6 +4,28 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
+const API_PRESETS = {
+  deepseek: { base: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
+  qwen: { base: '', model: 'qwen3.8-flash' }
+};
+const QWEN_REGIONS = {
+  'cn-beijing': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'ap-southeast-1': 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  'us-east-1': 'https://dashscope-us.aliyuncs.com/compatible-mode/v1',
+  'cn-hongkong': 'https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1',
+  'eu-central-1': '', 'ap-northeast-1': ''
+};
+const QWEN_MODELS = ['qwen3.8-flash', 'qwen3.7-plus', 'qwen3.8-max'];
+function apiProviderFromBase(base) {
+  const b = String(base || '').trim().replace(/\/+$/, '');
+  if (/^https:\/\/api\.deepseek\.com(?:\/v1)?$/i.test(b)) return 'deepseek';
+  if (/^https:\/\/(?:dashscope(?:-intl|-us)?\.aliyuncs\.com|cn-hongkong\.dashscope\.aliyuncs\.com|[a-z0-9-]+\.[a-z0-9-]+\.maas\.aliyuncs\.com)\/compatible-mode\/v1$/i.test(b)) return 'qwen';
+  return 'custom';
+}
+function qwenRegionFromBase(base) {
+  const b = String(base || '').trim().replace(/\/+$/, '');
+  return Object.keys(QWEN_REGIONS).find(r => (QWEN_REGIONS[r] && b === QWEN_REGIONS[r]) || b.endsWith('.' + r + '.maas.aliyuncs.com/compatible-mode/v1')) || 'custom';
+}
 
 let S = null;
 let cfg = { base: 'https://api.deepseek.com', key: '', model: 'deepseek-v4-flash', think: false, theme: 'dark', font: 'm', person: 'you' };
@@ -120,6 +142,33 @@ async function bookClear(run) {
 }
 
 /* ================= 接口 ================= */
+// 只记平台返回的用量，不保存提示词、剧情或密钥；刷新页面即清空。
+const apiUsageRows = [];
+function apiUsageNumbers(usage) {
+  const u = usage || {}, pd = u.prompt_tokens_details || {}, id = u.input_tokens_details || {};
+  const num = (...xs) => { const x = xs.find(v => typeof v === 'number' && Number.isFinite(v) && v >= 0); return x === undefined ? null : x; };
+  const input = num(u.prompt_tokens, u.input_tokens), output = num(u.completion_tokens, u.output_tokens);
+  let hit = num(u.prompt_cache_hit_tokens, pd.cached_tokens, id.cached_tokens, u.cached_tokens);
+  if (input !== null && hit !== null && hit > input) hit = null;
+  return { input, output, hit };
+}
+function renderApiUsage() {
+  const box = $('cfgUsageStats');
+  if (!box) return;
+  if (!apiUsageRows.length) { box.textContent = '完成接口调用后显示平台返回的输入、输出与缓存命中 Token。仅统计本次打开游戏期间最近 12 次请求，刷新后清空；不额外调用接口。'; return; }
+  const known = apiUsageRows.filter(r => r.input !== null && r.hit !== null);
+  const input = known.reduce((s, r) => s + r.input, 0), hit = known.reduce((s, r) => s + r.hit, 0);
+  const ratio = input > 0 ? (hit / input * 100).toFixed(1) + '%' : '暂无可计算数据';
+  const n = x => x === null ? '未报告' : String(x);
+  box.innerHTML = `<div>最近 ${apiUsageRows.length} 次请求；已报告缓存数据的 ${known.length} 次，输入缓存命中率：${ratio}。不同模型的价格不同，此比例不等于总费用降幅。</div>`
+    + apiUsageRows.slice().reverse().map(r => `<div style="margin-top:8px;overflow-wrap:anywhere">${esc(r.model)} · ${r.status}<br>输入 ${n(r.input)} / 输出 ${n(r.output)} / 缓存命中 ${n(r.hit)} Token</div>`).join('')
+    + '<div style="margin-top:8px">“未报告”表示平台未提供对应数据，不代表命中为零。仅保留本次打开游戏的最近 12 次请求（包括重试），刷新后清空。</div>';
+}
+function recordApiUsage(model, usage, status) {
+  apiUsageRows.push(Object.assign({ model: String(model).slice(0, 80), status }, apiUsageNumbers(usage)));
+  if (apiUsageRows.length > 12) apiUsageRows.shift();
+  renderApiUsage();
+}
 // 网络断、接口忙（429/5xx）、传到一半断了：自己再试两次，别让玩家看见失败
 async function callLLM(prompt, onPartial, opt) {
   const waits = [1500, 4000];
@@ -147,59 +196,70 @@ async function callLLMOnce(prompt, onPartial, opt) {
     stream: true,
     response_format: { type: 'json_object' }
   };
+  // 仅向已知支持此参数的官方接口索取用量，自定义接口保持原协议。
+  if (apiProviderFromBase(cfg.base) !== 'custom') body.stream_options = { include_usage: true };
   if (/deepseek/i.test(body.model)) body.thinking = { type: cfg.think && !opt.noThink ? 'enabled' : 'disabled' };
+  // 和《求仙途》一致：百炼千问使用非思考模式，适配 JSON 输出。
+  if ((cfg.provider === 'qwen' || apiProviderFromBase(cfg.base) === 'qwen') && /^qwen/i.test(body.model)) body.enable_thinking = false;
   const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const ms = opt.timeout || 180000;
   let timer = ac ? setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms) : null;
   const bump = () => { if (!ac) return; clearTimeout(timer); timer = setTimeout(() => { try { ac.abort(); } catch (_) { } }, ms); };
-  let resp;
+  let usage = null, status = '中断';
   try {
-    resp = await fetch(url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.key },
-      body: JSON.stringify(body), signal: ac ? ac.signal : undefined
-    });
-  } catch (e) {
-    if (timer) clearTimeout(timer);
-    throw new Error('接口调用失败（' + (e && e.name === 'AbortError' ? `等了${Math.round(ms / 1000)}秒没响应` : (e && e.message) || '网络不通') + '）');
-  }
-  if (!resp.ok) {
-    let msg = 'HTTP ' + resp.status;
-    try { const e = await resp.json(); msg += '：' + ((e.error && e.error.message) || JSON.stringify(e)); } catch (_) { }
-    throw new Error('接口调用失败（' + msg + '）');
-  }
-  const reader = resp.body.getReader(), dec = new TextDecoder();
-  let raw = '', buf = '';
-  while (true) {
-    let done, value;
-    try { ({ done, value } = await reader.read()); }
-    catch (e) {
-      if (timer) clearTimeout(timer);
-      if (e && e.name === 'AbortError') throw new Error('接口调用失败（传到一半断了）');
-      throw e;
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.key },
+        body: JSON.stringify(body), signal: ac ? ac.signal : undefined
+      });
+    } catch (e) {
+      throw new Error('接口调用失败（' + (e && e.name === 'AbortError' ? `等了${Math.round(ms / 1000)}秒没响应` : (e && e.message) || '网络不通') + '）');
     }
-    if (done) break;
-    bump();
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const ln of lines) {
+    if (!resp.ok) {
+      let msg = 'HTTP ' + resp.status;
+      try { const e = await resp.json(); msg += '：' + ((e.error && e.error.message) || JSON.stringify(e)); } catch (_) { }
+      throw new Error('接口调用失败（' + msg + '）');
+    }
+    const reader = resp.body.getReader(), dec = new TextDecoder();
+    let raw = '', buf = '';
+    const consumeLine = ln => {
       const t = ln.trim();
-      if (!t.startsWith('data:')) continue;
+      if (!t.startsWith('data:')) return;
       const data = t.slice(5).trim();
-      if (data === '[DONE]') continue;
+      if (data === '[DONE]') return;
       try {
         const j = JSON.parse(data);
+        if (j.usage) usage = j.usage; // 千问的最后一帧可以只有 usage，choices 为空。
         const ch = j.choices && j.choices[0];
-        if (!ch) continue;
+        if (!ch) return;
         if (ch.finish_reason) lastFinish = ch.finish_reason;
         const piece = (ch.delta && (ch.delta.content || '')) || '';
         if (piece) { raw += piece; if (onPartial) onPartial(raw); }
       } catch (_) { }
+    };
+    while (true) {
+      let done, value;
+      try { ({ done, value } = await reader.read()); }
+      catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('接口调用失败（传到一半断了）');
+        throw e;
+      }
+      if (done) break;
+      bump();
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const ln of lines) consumeLine(ln);
     }
+    for (const ln of (buf + dec.decode()).split('\n')) consumeLine(ln);
+    if (!raw.trim()) throw new Error('接口调用失败（没返回内容）');
+    status = '完成';
+    return raw;
+  } finally {
+    if (timer) clearTimeout(timer);
+    try { recordApiUsage(body.model, usage, status); } catch (_) { } // 用量展示不能妨碍剧情返回。
   }
-  if (timer) clearTimeout(timer);
-  if (!raw.trim()) throw new Error('接口调用失败（没返回内容）');
-  return raw;
 }
 
 function parseJSONLoose(raw) {
@@ -380,13 +440,10 @@ const STYLES = {
 - 动作写得干脆、有招式感；心理用"心中暗想""暗叫不好"这类说法。` }
 };
 function styleOf() { const k = S && S.style; return STYLES[k] ? k : '白描'; }
-// 写故事的每一种请求都用这一份系统提示；按「越不变越靠前」排，接口的前缀缓存才吃得上
-const styleSystem = () => `${PERSON()}
-${SAY_RULE}
+// 所有文风、人称和口径共用同一段完整规则前缀；切换偏好也能复用前面的缓存。
+const styleSystem = () => `${SAY_RULE}
 
 ${STYLE_COMMON}
-
-${STYLES[styleOf()].rule}
 
 ${WORLD_FIXED}
 
@@ -394,11 +451,15 @@ ${LIFE_FIXED}
 
 ${BAND_FIXED}
 
-${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}
-
 ${RULE_ORDER}
 
-${NARR_COMMON()}`;
+${NARR_COMMON()}
+
+${PERSON()}
+
+${STYLES[styleOf()].rule}
+
+${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}`;
 // 规矩打架时听谁的：只在这里排一次，别处不再写"压过一切"
 const RULE_ORDER = `【规矩打架时的先后（从先到后）】
 1. 引擎已经定下的事实：【引擎已经结算】【本段引擎判定】【最终结果】里的成败、钱数、日期、位置、身体状况。
@@ -1084,8 +1145,8 @@ const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只�
 function parsePrompt(act) {
   const p = S.player;
   const npcs = S.npcs.slice(-40).map(n => `${n.name}${callName(n) ? '（' + callName(n) + '）' : ''}`).join('、') || '（还没有）';
-  return `【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
-【认识的人】${npcs}
+  return `【认识的人】${npcs}
+【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
 【玩家写的】${act}
 
 按系统说明拆成步骤，只输出 JSON。`;
@@ -2150,29 +2211,9 @@ function openGroup(id) {
   $('chatIn').value = '';
   setTimeout(() => $('chatIn').focus(), 200);
 }
-function groupPrompt(g, say) {
-  const c = S.convo;
-  const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
-  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
-  const L = c.lines.filter(l => l.who !== 'sys');
-  const keep = L.slice(-30);
-  const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
-  const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : m.from}：${lineText(m)}`).join('\n');
-  return `${worldRules(true)}
-
-这是主角${S.player.name}拉的微信群「${g.name}」，群里除了主角还有：
-${mem}
-【主角】${S.player.name}，${S.player.age}岁，${E.jobLabel(S)}。
-
-${past ? `【群里以前的消息（已经过去了）】\n${past}\n` : ''}${c.gist ? `【这个群聊到现在的要点】${c.gist}\n` : ''}
-【这次群里的消息（按先后）】
-${log}
-
-【主角刚在群里发的——这一轮大家回的就是它】${say}
-
-怎么写：
+// 规矩和格式放在不变的前缀；逐轮摘要放到增长的对话记录之后。
+const GROUP_RULES = `怎么写：
 - 你同时扮演群里这几个人，只写他们发在群里的话，不写旁白，不替主角说话。
-- 消息里叫"${S.player.name}"的都是主角说的；群成员以前发过的话就是他自己说的，接着往下说，别把自己当成旁观的外人。
 - 挑一到三个最可能接这句的人回，其余的人不出声。谁回、回什么，要对得上他的身份、性子、跟主角的关系，也对得上他跟群里别人熟不熟。
 - 群里的人可以互相接话、抬杠、打岔，像真的微信群：短、口语、有人只回表情或者"哈哈"。
 - 只接主角刚发的这句和跟它直接相关的上文，不许去接很早以前的话茬；这次已经说过的话不许再说。
@@ -2183,6 +2224,32 @@ ${log}
 "gist":"这个群这次从头到现在的要点，60字内",
 "deal":[{"who":"跟主角说定事的那个人","kind":"主角答应|对方答应|主角拒绝","what":"具体的事（20字内）","inDays":几天内办，没期限填0}],
 "summary":"一句话（20字内）"}`;
+function groupPrompt(g, say) {
+  const c = S.convo;
+  const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
+  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
+  const L = c.lines.filter(l => l.who !== 'sys');
+  const keep = L.slice(-30);
+  const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
+  const past = (c.hist || []).map(m => `${m.date || ''} ${m.me ? S.player.name : m.from}：${lineText(m)}`).join('\n');
+  return `${GROUP_RULES}
+
+${worldRules(true)}
+
+这是主角${S.player.name}拉的微信群「${g.name}」，群里除了主角还有：
+${mem}
+【主角】${S.player.name}，${S.player.age}岁，${E.jobLabel(S)}。
+
+${past ? `【群里以前的消息（已经过去了）】\n${past}\n` : ''}
+【这次群里的消息（按先后）】
+${log}
+
+${c.gist ? `【这个群聊到现在的要点】${c.gist}\n` : ''}
+- 消息里叫"${S.player.name}"的都是主角说的；群成员以前发过的话就是他自己说的，接着往下说，别把自己当成旁观的外人。
+
+【主角刚在群里发的——这一轮大家回的就是它】${say}
+只输出上面约定的一个合法 JSON。
+`;
 }
 async function groupTurn(say) {
   if (!canAct()) return;
@@ -3308,11 +3375,46 @@ function diagText() {
   }
   return `屏幕读数 ${screen.width}×${screen.height}｜排版${innerWidth}｜页宽${document.documentElement.scrollWidth}｜缩放${window.visualViewport ? visualViewport.scale.toFixed(2) : '-'}｜最宽${wide || '无'}｜窗口${innerHeight}｜可视${vv}｜html${document.documentElement.clientHeight}｜body${Math.round(document.body.getBoundingClientRect().height)}｜app${Math.round($('app').getBoundingClientRect().bottom)}｜安全区${sa}｜${sm || '浏览器'}｜${document.documentElement.className || '-'}｜${document.documentElement.dataset.vpfix ? '重设过' + document.documentElement.dataset.vpfix : '没重设'}`;
 }
+function syncApiSettings() {
+  const provider = $('cfgProvider').value, isQwen = provider === 'qwen';
+  $('cfgQwenRegionWrap').style.display = isQwen ? '' : 'none';
+  $('cfgQwenModelWrap').style.display = isQwen ? '' : 'none';
+  $('modelPick').parentElement.style.display = provider === 'deepseek' ? '' : 'none';
+  $('cfgQwenModel').value = QWEN_MODELS.includes($('cfgModel').value.trim()) ? $('cfgModel').value.trim() : 'custom';
+  document.querySelectorAll('#modelPick .seg').forEach(b => b.classList.toggle('on', b.dataset.v === $('cfgModel').value.trim()));
+  $('cfgBase').placeholder = isQwen ? '选择地域后自动填写，也可手动填写' : 'https://api.deepseek.com';
+  $('cfgModel').placeholder = isQwen ? API_PRESETS.qwen.model : provider === 'deepseek' ? API_PRESETS.deepseek.model : '服务商提供的模型名';
+  $('cfgApiNote').textContent = isQwen ? '千问默认 qwen3.8-flash，可选择 Plus、Max。游戏使用非思考模式输出 JSON。' : provider === 'deepseek' ? '推荐 deepseek-v4-flash；要剧情更缜密可以选择 deepseek-v4-pro，慢一些贵一些。' : '按服务商文档填写接口与模型名，需要支持流式回复与 JSON 输出。';
+  const region = $('cfgQwenRegion').value;
+  $('cfgQwenRegionNote').textContent = '请选择 API Key 所属地域，与玩家所在地和时区无关。' + (['eu-central-1', 'ap-northeast-1', 'custom'].includes(region) ? '此地域请从百炼控制台复制完整 Base URL（业务空间专属地址需包含业务空间 ID）。' : '密钥必须与接口地域一致，也可手填业务空间专属地址。');
+  $('cfgThink').disabled = isQwen;
+  if (isQwen) $('cfgThink').value = 'off';
+}
 function openSettings() {
   mask('setMask', true);
+  renderApiUsage();
   const dg = $('setDiag'); if (dg) dg.textContent = diagText();
   $('cfgBase').value = cfg.base; $('cfgKey').value = cfg.key; $('cfgModel').value = cfg.model;
   $('cfgThink').value = cfg.think ? 'on' : 'off';
+  $('cfgProvider').value = cfg.provider || apiProviderFromBase(cfg.base);
+  $('cfgQwenRegion').value = cfg.qwenRegion || qwenRegionFromBase(cfg.base);
+  syncApiSettings();
+  $('cfgProvider').onchange = () => {
+    const p = API_PRESETS[$('cfgProvider').value];
+    $('cfgKey').value = '';
+    if (p) { $('cfgBase').value = p.base; $('cfgModel').value = p.model; $('cfgThink').value = 'off'; }
+    if ($('cfgProvider').value === 'qwen') $('cfgQwenRegion').value = '';
+    syncApiSettings();
+  };
+  $('cfgQwenRegion').onchange = () => { $('cfgBase').value = QWEN_REGIONS[$('cfgQwenRegion').value] || ''; syncApiSettings(); };
+  $('cfgQwenModel').onchange = () => { if (QWEN_MODELS.includes($('cfgQwenModel').value)) $('cfgModel').value = $('cfgQwenModel').value; syncApiSettings(); };
+  $('cfgBase').oninput = () => {
+    const provider = apiProviderFromBase($('cfgBase').value);
+    if (provider !== 'custom') { $('cfgProvider').value = provider; if (provider === 'qwen') $('cfgQwenRegion').value = qwenRegionFromBase($('cfgBase').value); }
+    else if ($('cfgProvider').value !== 'qwen') $('cfgProvider').value = 'custom';
+    syncApiSettings();
+  };
+  $('cfgModel').oninput = syncApiSettings;
   document.querySelectorAll('#setTheme .seg').forEach(b => {
     b.classList.toggle('on', b.dataset.v === (cfg.theme || 'dark'));
     b.onclick = () => { setSkin('theme', b.dataset.v); document.querySelectorAll('#setTheme .seg').forEach(x => x.classList.toggle('on', x === b)); };
@@ -3327,7 +3429,7 @@ function openSettings() {
   });
   document.querySelectorAll('#modelPick .seg').forEach(b => {
     b.classList.toggle('on', b.dataset.v === cfg.model);
-    b.onclick = () => { $('cfgModel').value = b.dataset.v; document.querySelectorAll('#modelPick .seg').forEach(x => x.classList.toggle('on', x === b)); };
+    b.onclick = () => { $('cfgModel').value = b.dataset.v; syncApiSettings(); };
   });
   const fb = $('setFree');
   fb.innerHTML = seg(Object.keys(E.FREEDOM), S ? S.freedom : '都市传奇');
@@ -3349,13 +3451,17 @@ function openSettings() {
   $('setFreeWrap').style.display = S ? '' : 'none';
 }
 function saveCfg() {
+  const provider = $('cfgProvider').value, p = API_PRESETS[provider];
+  if (provider === 'qwen' && (!$('cfgQwenRegion').value || !$('cfgBase').value.trim())) { toast('请先选择 API Key 所属地域并填写完整接口地址'); return; }
   cfg = {
     base: $('cfgBase').value.trim() || 'https://api.deepseek.com',
     key: $('cfgKey').value.trim(),
-    model: $('cfgModel').value.trim() || 'deepseek-v4-flash',
-    think: $('cfgThink').value === 'on',
+    model: $('cfgModel').value.trim() || (p ? p.model : 'deepseek-v4-flash'),
+    think: provider !== 'qwen' && $('cfgThink').value === 'on',
+    provider,
     theme: cfg.theme, font: cfg.font, person: cfg.person
   };
+  if (provider === 'qwen') cfg.qwenRegion = $('cfgQwenRegion').value;
   localStorage.setItem(LS_CFG, JSON.stringify(cfg));
   mask('setMask', false);
   toast('记下了');
