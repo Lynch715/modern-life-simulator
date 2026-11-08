@@ -352,7 +352,7 @@ async function llmJSON(prompt, onPartial, opt) {
 }
 
 const FREE_NOTE = {
-  '心想事成': '言出法随。你自己写的行动一律当作办成了，引擎不掷凶骰，模型也不许给你打折、不许写成"差一点"。关键局门槛降 18，生意好做四分之一，糟心事只剩四成半。',
+  '心想事成': '言出法随。写下的行动直接兑现：要钱按数到账，花钱缺口自动补足并记账；职位、月薪和成长可大幅跃升，不受出身、学历、证书、资历和关系门槛阻挡。里程碑可直接达成，关键局主动推进就谈成；你明确写的限制仍然有效。',
   '都市传奇': '比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。',
   '写实人生': '概率贴着现实来。跳槽大多只涨一点，创业大概率黄，贵人不常有，好事不扎堆。'
 };
@@ -467,13 +467,14 @@ const RULE_ORDER = `【规矩打架时的先后（从先到后）】
 3. 这一段的专用要求（怎么收尾、写哪几天、给几条选项）。
 4. 本局口径（心想事成、都市传奇、写实人生）。
 5. 玩家括号里的写法要求。
-6. 文风、对白多少、篇幅。`;
+6. 文风、对白多少、篇幅。
+言出法随专用：普通模式的金钱上限、资历、出身、职业和关系门槛不适用。玩家明确指定的成果可以直接兑现，并通过返回字段落账；其他条目中的“只能走引擎”“不许自行升降”“只能申报”不能拿来否决这些成果。已结算的收支不能重复记账，日期仍按引擎，玩家没有授权的决定仍然不能代作。`;
 const WORLD_FIXED = `【世界观】当代中国都市，一切公司、平台、店铺、小区都是虚构的名字。主角从刚出校门那年开始，一年年往下过，眼下多大看【主角眼下】。
 这是一个普通人怎么把自己想干的事一点点干起来，以及为此付出什么。日子好走还是难走，照【本局口径】；怎么写，照【文风】。
 
 【铁律】
 - 引擎的判定结果不可更改：成就是成，败就是败，钱的加减、身体的毛病、日期的推移，都必须照引擎给的写。
-- 你不能自己宣布主角达成了理想的里程碑，那由引擎裁定。你只能把过程写出来，并在 milestoneClaim 里申报；引擎在【最终结果】里已经确认迈过去的，照实写。
+- 普通模式不能自己宣布主角达成了理想的里程碑，只能在 milestoneClaim 里申报；言出法随可以直接兑现玩家指定的当前里程碑并申报完整标题。引擎在【最终结果】里已经确认迈过去的，照实写。
 - 新出现的人要有来由，但生活里本来就会有人主动找上门：老同学的电话、中介的骚扰、前同事拉你入伙、家里催你，都不必事先铺垫。
 - 钱要具体到数。时间要具体到日子。`;
 // 每一段都要做到的、跟这一段写什么无关的要求，和返回格式
@@ -507,7 +508,7 @@ const BAND_FIXED = `【主角在世人眼里是哪一档】（看【位置】里
 - 原来是主角上级、现在被主角超过去的人，写出那份别扭：客气里带着不自在，或者硬撑着老资格。
 - 主角升了或者掉了，周围人的态度要跟着变：下属、老同事、家里人、找上门的人。
 - 新出场的人从主角眼下这个圈子里来：档位高了，新认识的多半也是有位置的人；档位低，就是身边的普通人。
-- 主角的位置只有引擎能升降，正文里不许自己写他提拔了、被撤了。`;
+- 普通模式主角的位置只有引擎能升降；言出法随玩家指定的身份改变可以直接写，并通过 newJob 同步更新。`;
 // 聊天、群、朋友圈：人物自己说话，不套文风
 const CHAT_SYSTEM = `你在一个中文现代生活模拟游戏里扮演主角手机上的联系人。像真人发微信、真人当面说话：短、口语、有语气词，可以答非所问。不许旁白，不许升华，不许说教。不出现真实存在的公司、品牌、真人姓名。`;
 // 私聊专用：规矩和返回格式放系统提示，每轮一字不差，后面的对话记录只往后加，缓存能吃满
@@ -545,14 +546,14 @@ ${TIER_ATTITUDE}
 function finalCheck(extra) {
   return `【交稿前逐条对一遍，有一条不对就改了再交】
 1. 上面【引擎已经结算】【本段引擎判定】【最终结果】里写的成败、钱数、日期、身体状况，正文一个字都不许改，不许把失败写成成功，也不许把成功写成"差一点"。
-2. 钱的数目照引擎给的写；playerChanges 只写这一段另外的零碎增减，不超过【这一段能记的零碎】里给的数。
+2. 钱的数目照引擎给的写；${E.fdm(S).fiat ? 'playerChanges 可以记尚未落账的实际成果，不设收入比例上限，已结算的收支不能重复给。' : 'playerChanges 只写这一段另外的零碎增减，不超过【这一段能记的零碎】里给的数。'}
 3. ${cfg.person === 'ta' ? '通篇第三人称' : '通篇用"你"称呼主角'}；有人出场就有直接对白，用中文引号，不许转述。
 4. 文风照系统说明里的【文风】写；不许感悟、不许升华、不许拿感慨收尾。
 5. 玩家括号里的限制和要求照办；玩家没让你替他做的决定，不许替他做。
-6. 不许自己宣布里程碑达成（引擎已经确认的照写）；不许跳过时间。
+6. ${E.fdm(S).fiat ? '玩家要求达成的当前里程碑可以写成达成，milestoneClaim 填阶梯里的完整标题，引擎直接确认；职位和月薪的改变填 newJob。' : '不许自己宣布里程碑达成（引擎已经确认的照写）；'}不许跳过时间。
 7. 人物照【人物名册】写：名字一字不差，性别、年龄、跟主角的关系、干什么的、要一直记着的事都不许写错；名册里有的人是老相识，不许写成初次见面；名册里没有的人才算新登场，要写进 newNpcs。出场和被提到的已有人物，每人在 npcUpdates 里写一条 mem。${extra ? '\n' + extra : ''}
-8. 住处、兼职、手里的东西、银行里的钱照【家】【兼职】【手里的东西】【银行】写：不许凭空给主角添东西、换住处、加兼职收入，买东西、送东西只认引擎结算的。
-9. 谁给谁汇报、谁对谁客气，照【位置】【你上面是谁、下面是谁】和名册里的级别写：不许让主角给比他低的人汇报，比主角低的人不许对他没分寸；主角的位置不许在正文里自己升降。
+8. ${E.fdm(S).fiat ? '已有资产和银行账目对得上；玩家指定的新成果要兑现，支持的字段同步更新，无专用字段的写进故事和记忆。' : '住处、兼职、手里的东西、银行里的钱照【家】【兼职】【手里的东西】【银行】写：不许凭空给主角添东西、换住处、加兼职收入，买东西、送东西只认引擎结算的。'}
+9. ${E.fdm(S).fiat ? '玩家要求的身份变化可以直接实现并填 newJob；之后的称呼、上下级关系和人物态度按新身份写。' : '谁给谁汇报、谁对谁客气，照【位置】【你上面是谁、下面是谁】和名册里的级别写：不许让主角给比他低的人汇报，比主角低的人不许对他没分寸；主角的位置不许在正文里自己升降。'}
 10. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
 }
 function NARR_COMMON() {
@@ -564,10 +565,17 @@ function NARR_COMMON() {
 - 这一段里主角跟谁发生了关系（双方都是成年人），就在那个人的 npcUpdates（新认识的写在 newNpcs）里写 intimate:true，没有就写 false。正文点到为止，不写露骨细节。
 - 主角这一段要是得罪了谁、坑了谁、欠了谁没还，写进 newRifts；把梁子解开了（道歉认了、钱还了、事办了）写进 riftEased。别滥用，一段最多一条。
 - 这一段里谁答应了谁什么、主角回绝了什么，写进 pledges；【答应过的事】里这一段办掉的，写进 pledgeDone。
-- 志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；引擎没确认的，不许在剧情里直接写成办成了。
+- ${E.fdm(S).fiat ? '玩家要求迈过当前志业阶梯时，直接写成办成，milestoneClaim 填完整标题。' : '志业阶梯上这一步，只有引擎能宣布迈过去。你觉得主角够格冲了，就把里程碑标题写进 milestoneClaim，由引擎裁定；引擎没确认的，不许在剧情里直接写成办成了。'}
 - 除非主角死亡或玩家要求收尾，gameOver 必须是 false。
 - 只输出一个合法 JSON，不要任何别的字。下面另给了格式的（开局、年终、结局、关键局开场），照下面给的；没另给的，一律用这个格式：
-${SCHEMA}`;
+${SCHEMA}
+${E.fdm(S).fiat ? `【言出法随·返回字段的放宽】
+- 玩家要求的入职、跳槽、升职、换职位、涨薪，哪怕仍在职，也填 newJob:{"employer":"东家","title":"具体职位","salary":月薪,"lv":对应位置表从0起的级别}，引擎会直接更新。没有改薪时沿用当前月薪；没改的身份字段沿用现状。
+- 玩家要求达成的当前志业里程碑，正文可以直接写成，milestoneClaim 填完整标题；无需积攒指标或另打一场关键局。连续达成多步时按阶梯顺序填。
+- playerChanges 的钱、属性、精力、口碑、做人和理想进度可以按行动实际成果填写，取消单段增减上限；属性、精力和关系的量表仍有边界。npcUpdates.rel 可填 -100 到 100；statusRemove 可以让指定的疾病立即痊愈。
+- 玩家在行动里已经拿到、花掉或借到的钱，不在 playerChanges 或 messages.pay 重复给；资金缺口由引擎补足的照实写，不改成失败或额外欠债。
+- 无专用数据字段的愿望也要在正文兑现，并记入 summary、npcUpdates.mem/fact 或 scene；不能以“系统没有这个功能”为由拒绝。
+- 本局不受赛道说明里的晋升年限、年龄、伤病、出身或行情限制；仍保留虚构背景和内容表达要求。` : ''}`;
 }
 // 系统提示里已经有世界观和规矩了；这里只给聊天类请求一句短的
 function worldRules(chat) {
@@ -591,7 +599,7 @@ const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（2
 "together":"这一段里主角跟谁明确确定了恋爱关系（说开了、答应了、在一起了）就写那人名字，没有就写空字符串",
 "newRifts":[{"who":"跟主角结下梁子的人","reason":"为什么","kind":"债主|前东家|竞对|私怨|甲方","heat":20}],
 "riftEased":["这一段里主角把梁子解开了的人名"],
-"newJob":null或{"employer":"新东家名字","title":"岗位（干什么的，比如「编辑助理」「后厨」「客户经理」）","salary":月薪数字,"lv":0到5的职级},
+"newJob":null或{"employer":"新东家名字","title":"岗位（干什么的，比如「编辑助理」「后厨」「客户经理」）","salary":月薪数字,"lv":按【位置】对应表从0起的职级},
 "options":["四个下一步的行动，每条12字内，具体、可执行、互相不同"],
 "pledges":[{"who":"人名","what":"答应或回绝的具体事（20字内）","kind":"主角答应|对方答应|主角拒绝","inDays":几天内要办，没期限填0}],
 "pledgeDone":["【答应过的事】里这一段办掉了的，照抄原话"],
@@ -715,7 +723,7 @@ ${M.recents}
 【未了的事】${S.unresolved.join('；') || '暂时没有'}
 【主角眼下】${p.age}岁，营生：${E.jobLabel(S)}｜属性 专业${p.attrs['专业']} 表达${p.attrs['表达']} 谋划${p.attrs['谋划']} 情绪${p.attrs['情绪']} 体能${p.attrs['体能']}｜精力${p.energy}｜身上的毛病：${S.status.map(s => `${s.name}（还有${s.days}天）`).join('、') || '没有'}${S.chronic.length ? `，去不掉的：${S.chronic.map(c => c.name).join('、')}` : ''}
 【钱】存款${p.money}元，月薪${L2.salary}${L2.subsidy ? `，家里每月给${L2.subsidy}` : ''}，房租${L2.rent}，生活${L2.living}${L2.remit ? `，每月往家寄${L2.remit}` : ''}${S.broke ? '。【已经透支，账上是负的】' : ''}｜行业口碑${p.信誉}，做人${p.人品}
-${S.partialNote ? `【补记】${S.partialNote}\n` : ''}${posChangeBlock()}${pingBlock()}【这一段能记的零碎】钱上下不超过${Math.round(E.capMoney(S) * 0.3)}元，每项属性不超过±2.5，精力不超过±35，口碑、做人不超过±8，理想的功夫不超过35；超了引擎只认到这个数，正文也照这个写。工资不在这里改，只走考核、谈加薪和找工作。
+${S.partialNote ? `【补记】${S.partialNote}\n` : ''}${posChangeBlock()}${pingBlock()}${E.fdm(S).fiat ? '【这一段的成果】钱、成长和关系不设普通模式的单段增减上限；按玩家行动填实际成果。已结算的钱不重复给。职位和月薪变化填 newJob，在职也能改；指定的疾病可以直接痊愈，当前里程碑可以直接达成并申报完整标题。' : `【这一段能记的零碎】钱上下不超过${Math.round(E.capMoney(S) * 0.3)}元，每项属性不超过±2.5，精力不超过±35，口碑、做人不超过±8，理想的功夫不超过35；超了引擎只认到这个数，正文也照这个写。工资不在这里改，只走考核、谈加薪和找工作。`}
 【今天】${E.dateStr(S.date)}
 【人在哪】${S.place || '不详'}`;
 }
@@ -791,11 +799,11 @@ ${asks.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 - 括号里的话本身不要原样抄进叙事。
 `;
 const FIAT_RULE = act0 => { const act = splitAct(act0).doing; const res = S.plan && S.plan.results; return `【心想事成·这一段的口径】
-${res ? '上面【引擎已经结算】里标【成了】的事，在这一段里**都已经成了**，你要写的是怎么成的。标【没成】的是硬条件不够（钱不够、本来就没有），照实写，不许改成成了。' : `玩家写的这件事——「${act}」——在这一段里**已经成了**。你要写的是它怎么成的，不是它成不成。`}
+${res ? '上面【引擎已经结算】里标【成了】的事，在这一段里**都已经成了**，你要写的是怎么成的。资金缺口已经补足并记账，不许另写钱不够或因此失败；重复操作、无效对象等状态校验结果照实写，不重复创建已有资产。' : `玩家写的这件事——「${act}」——在这一段里**已经成了**。你要写的是它怎么成的，不是它成不成。`}
 - 不许写成"试了试""差一点""看起来有戏""对方说再看看"，也不许推到下一段去办。
 - 不许用"但是""可惜""然而""只是""不过"给它打折，段尾也不许埋一个把它推翻的钩子。
 - 该配合的人就配合：他要见的人见得到，要的东西拿得到，开的口对方接得住，要的钱有人给。
-- 除非是物理上不可能的事（人不会飞、死人不能复生），一律照办。就算荒唐，也要写得像真发生过。
+- 不用现实中的资历、钱、关系、年龄或常理打折；玩家指定的超常成果也照办，写得像本局里确实发生过。
 - 办成之后再往前推一步：随之而来的好处、新认识的人、新冒出来的机会，一并写进去，别只写"成了"两个字。`; };
 
 function judgeBlock(j) {
@@ -852,7 +860,7 @@ ${stateBlocks()}
 ${actBlock}
 
 【本段引擎判定（不可更改）】
-${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。这一段别再往大里写，数值按引擎认的那个来。\n` : ''}${S.claimNote ? `\n【引擎驳回】${S.claimNote}。这一段不许把这一步写成办成了，可以写他差在哪。\n` : ''}
+${judgeBlock(seg.judge)}${!E.fdm(S).fiat && S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。这一段别再往大里写，数值按引擎认的那个来。\n` : ''}${!E.fdm(S).fiat && S.claimNote ? `\n【引擎驳回】${S.claimNote}。这一段不许把这一步写成办成了，可以写他差在哪。\n` : ''}
 
 【本段时间】${E.shortDate(from)} 到 ${E.shortDate(to)}，一共${days}天
 【这些天里发生的小事（引擎记下的，必须体现，但不必条条都写）】
@@ -881,7 +889,7 @@ ${stateBlocks()}
 【主角这就要做的事】${planBlock() ? splitAct(S.lastAction).doing + '\n' + planBlock() : S.lastAction}
 
 【本段引擎判定（不可更改）】
-${judgeBlock(seg.judge)}${S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。数值按引擎认的那个来。\n` : ''}
+${judgeBlock(seg.judge)}${!E.fdm(S).fiat && S.capNote ? `\n【上一段被引擎砍掉的】${S.capNote}。数值按引擎认的那个来。\n` : ''}
 【这两天里引擎记下的】${events.length ? events.slice(-6).map(e => `[${e.t}] ${e.s}`).join('；') : '（没什么）'}
 【时间】${seg.adv.days === 0 ? `${E.shortDate(from)}，就今天这一个时段` : `${E.shortDate(from)} 到 ${E.shortDate(to)}`}${ap ? `，中间撞上一件事：${ap.detail}` : ''}
 
@@ -1091,7 +1099,7 @@ function renderOptions(opts) {
   const row = document.createElement('div');
   row.className = 'act-row';
   const fiat = !!E.fdm(S).fiat;
-  row.innerHTML = `<input id="freeAct" placeholder="${fiat ? '想做什么就写，括号里写要怎么写（写细一点）' : '或者自己写一件要做的事'}" maxlength="${fiat ? 300 : 120}"/><button class="act-go" id="goBtn">去做</button>`;
+  row.innerHTML = `<input id="freeAct" placeholder="${fiat ? '想做什么就写，括号里写要怎么写（写细一点）' : '或者自己写一件要做的事'}" maxlength="${fiat ? 1000 : 120}"/><button class="act-go" id="goBtn">去做</button>`;
   box.appendChild(row);
   $('goBtn').onclick = () => {
     const v = $('freeAct').value.trim();
@@ -1138,7 +1146,7 @@ const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只�
 - limits：玩家明确提的限制（"不要替我答应""等我选""先别告诉家里"），照抄原话，没有就空数组
 - style：玩家对怎么写的要求（"写细一点""多写对话"），没有就空数组
 - stopWhen：玩家说"等到什么时候再叫我"才填：{"type":"money","n":数额} 或 {"type":"days","n":天数} 或 {"type":"npc","who":"人名"}（等某人回话）；没有就 null
-- 玩家说了几件事就拆几步，顺序照他说的，最多三步；超过三件的，把第三件和后面的并成最后一步，一件都不许丢。括号里的话是要求，不算步骤。
+- 玩家说了几件事就拆几步，顺序照他说的。普通模式最多三步，言出法随最多十二步；超过本局上限时，把最后一步和后面的并成最后一步，一件都不许丢。括号里的话是要求，不算步骤。
 
 只输出 JSON：
 {"steps":[{"type":"other","text":"","diff":"普通","attr":"表达","who":"","amount":0,"days":0,"kind":"","name":"","target":"","borrow":false,"term":0}],"days":1,"limits":[],"style":[],"stopWhen":null}`;
@@ -1149,6 +1157,7 @@ function parsePrompt(act) {
 【主角眼下】${p.age}岁，${S.job.out ? '没有工作' : `在${S.job.employer || '一家单位'}上班，月薪${S.ledger.salary}`}；存款${p.money}元${(S.debts || []).filter(d => d.left > 0).length ? `；欠的钱：${S.debts.filter(d => d.left > 0).map(d => `欠${d.who}${d.left}`).join('、')}` : ''}${S.biz && !S.biz.dead ? `；自己开着${S.biz.kind}「${S.biz.name}」` : '；没有自己的生意'}${S.focus ? `；手头正闷头做「${S.focus.what}」` : ''}
 【玩家写的】${act}
 
+${E.fdm(S).fiat ? '【言出法随】保留玩家指定的金额、身份和成果，不按主角财力、资历或现实合理性打折。最多拆12步；金额可以超过十亿元。只说拿到钱而没说借的，不得改成贷款或借款；金额没说时仍按常理估。' : ''}
 按系统说明拆成步骤，只输出 JSON。`;
 }
 async function doAction(action, typed) {
@@ -1161,9 +1170,9 @@ async function doAction(action, typed) {
   {
     setBusy(true, '正在琢磨你要做的事……');
     try {
-      const raw = await llmJSON(parsePrompt(action), null, { maxTokens: 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000, noRetry: true });
+      const raw = await llmJSON(parsePrompt(action), null, { maxTokens: E.fdm(S).fiat ? 2400 : 800, temperature: 0.2, system: PARSE_SYSTEM, noThink: true, timeout: 45000, noRetry: true });
       if (!raw || !Array.isArray(raw.steps) || !raw.steps.length || raw.steps.some(x => !x || !E.STEP_TYPES.includes(x.type))) throw new Error('行动格式不完整');
-      plan = E.sanitizePlan(raw, action, !!typed);
+      plan = E.sanitizePlan(raw, action, !!typed, S);
     } catch (e) {
       setBusy(false);
       toast('这次行动没识别清楚，尚未执行，也没有推进时间，请再试一次');
@@ -1258,7 +1267,7 @@ async function writePending() {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
     });
-    d = E.sanitizeTurn(raw);
+    d = E.sanitizeTurn(raw, S);
     d._partial = !!(raw && raw._partial);
     if (!d.narrative) throw new Error('模型没写出正文');
   } catch (e) {
@@ -1698,8 +1707,8 @@ function renderLadder() {
         ${m.desc && !m.done ? `<div class="tip">${esc(m.desc)}</div>` : ''}
         ${!m.done && cur ? `
           <div class="bar" style="margin-top:8px"><div class="bar-in${stt.ok ? ' good' : ''}" style="width:${stt.pct}%"></div></div>
-          <div class="tip">${esc(stt.label)} ${stt.cur}${stt.unit} / ${stt.need}${stt.unit}${stt.ok ? '　够了' : `　还差 ${stt.need - stt.cur}${stt.unit}`}</div>
-          <div class="tip">门槛：${esc(m.gate || m.scene)}（得打一场${esc(m.scene)}）</div>
+          <div class="tip">${esc(stt.label)} ${stt.cur}${stt.unit} / ${stt.need}${stt.unit}${E.fdm(S).fiat ? '　仅供参考' : stt.ok ? '　够了' : `　还差 ${stt.need - stt.cur}${stt.unit}`}</div>
+          <div class="tip">${E.fdm(S).fiat ? '言出法随：指标只供参考，可以直接写行动达成，也可以去谈。' : `门槛：${esc(m.gate || m.scene)}（得打一场${esc(m.scene)}）`}</div>
           ${stt.ok ? `<button class="primary sm" style="margin-top:9px" onclick="askKey(${m.id})">去谈这一场</button>`
                    : '<div class="tip dim">硬指标没到，谈也没人听</div>'}` : ''}
       </div>`);
@@ -1997,7 +2006,7 @@ ${convoLog(n)}
 ${c.gist ? `【这次聊到现在的要点】${c.gist}\n` : ''}${said.length ? `【你这次已经说过的，别再说】${said.slice(-6).map(t => '「' + String(t).slice(0, 24) + '」').join('')}\n` : ''}【主角手头】存款${S.player.money}元${c.paidNote ? `\n【刚才】${c.paidNote}` : ''}
 ${judge
     ? `【引擎判定（不可更改）】主角求的这件事：${judge.what}。${judge.attr}${judge.val}，掷骰${judge.roll}＝${judge.total}，难度${judge.need}，判定【${judge.success ? '答应' : '没答应'}】${judge.crit ? '（' + judge.crit + '）' : ''}。${judge.note ? `引擎落实的：${judge.note}。答复里的数和日子要跟这个对得上。` : ''}\n这一轮写${n.name}对这件事的答复。\n`
-    : ''}【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}
+    : ''}${E.fdm(S).fiat ? '【言出法随】主角明确开口求的事要配合，不因关系生分、对方家底或现实门槛拒绝、减量或拖延；借钱照他说的数填 ask.money，由引擎先落实，再照判定答复。没有开口求的事不擅自答应。\n' : ''}【主角刚发的这句——你这一轮要回的就是它】${say || '（见上面对话的最后一句）'}
 
 【回之前对一遍】你是${n.name}，不是主角；只回主角刚发的这句，不接很早以前的话茬；这次说过的话不再说；${judge ? '答复照引擎判定的结果来，' : ''}钱、日子、说定的事对得上；只输出系统说明里那个 JSON。`;
 }
@@ -2148,7 +2157,7 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CONVO_SYSTEM }));
+    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CONVO_SYSTEM }), S);
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -2681,7 +2690,7 @@ function askMarry() {
   const P = E.partnerOf(S);
   if (!P) return;
   const cost = Math.round((E.CITIES[S.city] || E.CITIES['新一线']).rent * 30);
-  if (S.player.money < cost) { toast(`办下来少说要 ${cost}，手头不够`); return; }
+  if (!E.fdm(S).fiat && S.player.money < cost) { toast(`办下来少说要 ${cost}，手头不够`); return; }
   runKey({ scene: '摊牌', gate: `跟${P.name}谈结婚的事`, title: '结婚', kind: 'marry', who: P.name, mileId: null, hard: Math.round(64 - P.warm * 0.3) });
 }
 async function doBreak() {
@@ -2787,10 +2796,10 @@ function renderBiz() {
   if (!B) {
     const kinds = Object.keys(E.BIZ_KINDS);
     return `<h4>自立门户</h4><div class="card">
-      <div class="tip">自己开一摊子：上班的时间从此都拿来照看自己的生意，工资没了，赚多少看本事、口碑和你盯得紧不紧。开之前先攒够启动的钱。</div>
+      <div class="tip">自己开一摊子：上班的时间从此都拿来照看自己的生意，工资没了，赚多少看本事、口碑和你盯得紧不紧。${E.fdm(S).fiat ? '言出法随：启动资金缺口自动到位并记账。' : '开之前先攒够启动的钱。'}</div>
       ${kinds.map(k => {
         const K = E.BIZ_KINDS[k], need = E.bizSetup(S, k);
-        const can = S.player.money >= need;
+        const can = E.fdm(S).fiat || S.player.money >= need;
         return `<div class="li"><b>${k}</b><span class="rel${can ? '' : ' bad'}">${need}元</span>
           <div class="tip">${esc(K.desc)}｜看${K.attr}｜最多${K.cap}个人手</div>
           <button class="ghost sm" style="margin-top:6px" ${can ? '' : 'disabled'} onclick="askOpenBiz('${k}')">${can ? '就开这个' : '钱不够'}</button></div>`;
@@ -3172,8 +3181,8 @@ function openFun() {
 function openFunWith(id) {
   const f = E.funOf(id);
   funPick = { id, treat: false };
-  const cand = S.npcs.filter(n => E.relTier(n.rel) >= 1 && !/前任|前妻|前夫/.test(n.tie || '')).sort((a, b) => b.rel - a.rel).slice(0, 14);
-  sheet(`<h2>${f.name}</h2><div class="tip" style="margin-top:-10px">叫上谁？最多三个。不熟的人不一定来。</div>
+  const cand = S.npcs.filter(n => E.fdm(S).fiat || (E.relTier(n.rel) >= 1 && !/前任|前妻|前夫/.test(n.tie || ''))).sort((a, b) => b.rel - a.rel).slice(0, 14);
+  sheet(`<h2>${f.name}</h2><div class="tip" style="margin-top:-10px">叫上谁？最多三个。${E.fdm(S).fiat ? '言出法随：邀请的人都会来。' : '不熟的人不一定来。'}</div>
     <div class="card" style="margin-top:14px">${cand.map(n => `<label class="li chk"><input type="checkbox" value="${esc(n.name)}" class="funwho"/> <b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span></label>`).join('') || '<div class="tip">没什么人能叫，自己去</div>'}</div>
     ${f.per ? `<div class="segs" id="funPay"><button class="seg on" onclick="setFunPay(false)">AA</button><button class="seg" onclick="setFunPay(true)">我请</button></div>` : ''}
     <div class="btns"><button class="ghost" onclick="openFun()">换一样</button><button class="primary" onclick="doFunGo()">去</button></div>`);
@@ -3203,7 +3212,7 @@ function openBoard() {
   saveGame();
   sheet(`<h2>招聘</h2><div class="tip" style="margin-top:-10px">投了先过筛，过了约面试；面试谈成，岗位和月薪照这里记。${E.boardNext(S) ? `${E.boardNext(S)}天后换一批。` : ''}</div>
     <div class="card" style="margin-top:14px">${B.list.map(P => `<div class="li"><div class="lirow"><b>${esc(P.employer)}·${esc(P.job)}</b><span class="rel">${P.lo}–${P.hi}${P.vary ? '（看提成）' : ''}</span></div>
-      <div class="tip">看${P.attr}｜${E.STRAIN[P.strain]}活${P.cert ? '｜要先考试（考证班）' : ''}</div>
+      <div class="tip">看${P.attr}｜${E.STRAIN[P.strain]}活${P.cert ? E.fdm(S).fiat ? '｜言出法随免证书门槛' : '｜要先考试（考证班）' : ''}</div>
       <div class="lirow">${P.state ? `<span class="tip">${P.state}</span>` : `<button class="ghost sm" onclick="doApply(${P.id})">投简历</button>`}</div></div>`).join('')}</div>
     <div class="btns"><button class="ghost" onclick="sheetOff()">关掉</button></div>`);
 }
@@ -3268,7 +3277,7 @@ function bankCard() {
     <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
     ${rows.join('') || '<div class="tip">没有存款、理财和贷款。</div>'}
     <div class="btns"><button class="ghost" onclick="openDeposit()">存定期</button><button class="ghost" onclick="openInvest()">买理财</button><button class="ghost" onclick="openLoan()">贷款</button></div>
-    <div class="tip">月供扣不出来就是逾期：连着三个月会被催收，征信坏了买房、贷款都难。</div></div>`;
+    <div class="tip">${E.fdm(S).fiat ? '借款仍记录余额和还款计划；言出法随下，征信不阻挡买房和贷款。' : '月供扣不出来就是逾期：连着三个月会被催收，征信坏了买房、贷款都难。'}</div></div>`;
 }
 function bankAfter(r) {
   if (!r.ok) { toast(r.why); return false; }
@@ -3331,7 +3340,7 @@ async function doInvest(k) {
 }
 function openLoan() {
   if (!canAct()) return;
-  sheet(`<h2>贷款</h2><div class="tip" style="margin-top:-10px">额度和利率看月薪、在职多久、口碑和征信。每月1号跟房租一起扣月供。</div>
+  sheet(`<h2>贷款</h2><div class="tip" style="margin-top:-10px">${E.fdm(S).fiat ? '言出法随：不受收入、资历和征信门槛限制；贷款仍按期还本付息。' : '额度和利率看月薪、在职多久、口碑和征信。'}每月1号跟房租一起扣月供。</div>
     <div class="card" style="margin-top:14px">${Object.keys(E.LOANS).map(k => {
       const q = E.loanQuote(S, k);
       return q.ok
@@ -3436,6 +3445,7 @@ function openSettings() {
   bindSeg('setFree', v => {
     if (!canAct()) { openSettings(); return; }
     S.freedom = v; saveGame();
+    renderOptions(S.lastOptions || []);
     toast(v === '心想事成' ? '言出法随：你写什么就发生什么' : '口径改成' + v);
     $('setFreeNote').textContent = FREE_NOTE[v] || '';
   });
