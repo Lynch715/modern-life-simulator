@@ -95,14 +95,14 @@ vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/ui.js'),'utf8').repl
 ctx.mk=mk;ctx.ladder=ladder;const run=code=>vm.runInContext(code,ctx);
 run(`toast=()=>{};rebuildTop=()=>{};renderOptions=()=>{};renderPanel=()=>{};beginChapter=()=>{};finishChapter=async()=>{};updateChapterNarrative=()=>{};faceHtml=()=>'';artImg=()=>'';icon=()=>'';HOME_ART={};BIZ_ART={};`);
 (async()=>{
- let r=await run(`(async()=>{S=mk();busy=false;S.player.money=0;ladder(S);let parses=0;llmJSON=async(p,cb,o)=>{if(o&&o.system===PARSE_SYSTEM){parses++;return {steps:[{type:'spend',text:'付项目款',amount:5e9}]}}throw Error('叙事断线')};await doAction('付五十亿元项目款',true);const before=JSON.stringify({money:S.player.money,rows:S.acct,days:S.stats.days});S=E.migrate(JSON.parse(JSON.stringify(S)));llmJSON=async()=>({narrative:'项目办成，直接任董事长。',summary:'项目完成',newJob:{employer:'自由集团',title:'董事长',salary:5e9,lv:7},milestoneClaim:['完成首个项目']});await retryPending();await retryPending();return {parses,before,after:JSON.stringify({money:S.player.money,rows:S.acct,days:S.stats.days}),salary:S.ledger.salary,done:S.ideal.stages[0].milestones[0].done,pending:S.pending}})()`);
- ok(r.parses===1 && r.before===r.after && !r.pending,'断线读档重试不再补钱、不再扣钱、不重复推进');
- ok(r.salary===5e9 && r.done,'UI双重清洗保留大额月薪并直接达成里程碑');
+ let r=await run(`(async()=>{S=mk();busy=false;S.player.money=0;ladder(S);let parses=0;llmJSON=async(p,cb,o)=>{if(o&&o.system===PARSE_SYSTEM)parses++;throw Error('叙事断线')};await doAction('让我直接任董事长并获得五十亿元，完成首个项目',true);const before=JSON.stringify({money:S.player.money,rows:S.acct,days:S.stats.days});S=E.migrate(JSON.parse(JSON.stringify(S)));llmJSON=async()=>({narrative:'项目办成，直接任董事长，五十亿元到账。',summary:'项目完成',fiatChanges:{player:{money:5e9},job:{employer:'自由集团',title:'董事长',salary:5e9,lv:7},milestones:['完成首个项目']}});await retryPending();const once=JSON.stringify(S);await retryPending();return {parses,before,once,after:JSON.stringify(S),salary:S.ledger.salary,done:S.ideal.stages[0].milestones[0].done,pending:S.pending}})()`);
+ ok(r.parses===0 && r.once===r.after && !r.pending,'沙盒不走固定解析，断线读档重试只结算一次');
+ ok(r.salary===5e9 && r.done,'UI世界改写同步月薪并直接达成里程碑');
  run(`S=mk();S.convo={hist:[],lines:[]};`);
- ok(run(`stateBlocks().includes('不设普通模式的单段增减上限') && !stateBlocks().includes('钱上下不超过')`),'提示词同步去掉零碎金额上限');
- ok(run(`finalCheck().includes('可以写成达成') && NARR_COMMON().includes('哪怕仍在职') && parsePrompt('拿到五十亿元').includes('最多拆12步')`),'叙事与解析使用放宽规则');
- ok(run(`convoPrompt(S.npcs.find(n=>n.name==='周青'),'借五十亿元').includes('不因关系生分')`),'私聊提示使用放宽规则');
- run(`S.plan={limits:['不要替我签约'],style:[]};`);ok(run(`LIMIT_RULE(limitAsks()).includes('替主角拿主意')`),'玩家限制仍然优先');
+ ok(run(`styleSystem().includes('可以改写已发生的结果') && !styleSystem().includes('不许跳过时间')`),'独立提示词支持改写旧事实和时间');
+ ok(run(`fiatSystem().includes('没有商品目录限制') && fiatSystem().includes('不要返回代码')`),'任意成果有落点，输出只收数据');
+ ok(run(`fiatChatSystem(false).includes('必须兑现')`),'私聊也使用沙盒规则');
+ run(`S.plan={limits:['不要替我签约'],style:[]};`);ok(run(`fiatSystem().includes('别替我答应')`),'玩家限制仍然优先');
  const legacy=require('./fixtures/legacy-v1.json');
  for(const old of Object.values(legacy)) {
    if(!old.player)continue;const s=clone(old);s.freedom='心想事成';const before=clone(s),t=E.migrate(s);

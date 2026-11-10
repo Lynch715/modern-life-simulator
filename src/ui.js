@@ -352,7 +352,7 @@ async function llmJSON(prompt, onPartial, opt) {
 }
 
 const FREE_NOTE = {
-  '心想事成': '言出法随。写下的行动直接兑现：要钱按数到账，花钱缺口自动补足并记账；职位、月薪和成长可大幅跃升，不受出身、学历、证书、资历和关系门槛阻挡。里程碑可直接达成，关键局主动推进就谈成；你明确写的限制仍然有效。',
+  '心想事成': '言出法随·完全沙盒。你输入的指令就是本局规则：财富、身份、时间、人物、关系、健康、资产和超常设定都可直接改写，不设动作种类、步骤、输入字数或玩法数值上限。旧判定、退休和待办不拦你；成果同步到面板、世界记录和存档。你说不要做的事仍然不做。',
   '都市传奇': '比现实好走一些，主角有主角的运气，但该付的代价要付，失败是真失败。',
   '写实人生': '概率贴着现实来。跳槽大多只涨一点，创业大概率黄，贵人不常有，好事不扎堆。'
 };
@@ -441,7 +441,7 @@ const STYLES = {
 };
 function styleOf() { const k = S && S.style; return STYLES[k] ? k : '白描'; }
 // 所有文风、人称和口径共用同一段完整规则前缀；切换偏好也能复用前面的缓存。
-const styleSystem = () => `${SAY_RULE}
+const legacyStyleSystem = () => `${SAY_RULE}
 
 ${STYLE_COMMON}
 
@@ -460,6 +460,7 @@ ${PERSON()}
 ${STYLES[styleOf()].rule}
 
 ${(E.FREEDOM[S && S.freedom] || E.FREEDOM['都市传奇']).tone}`;
+const styleSystem = () => S && E.fdm(S).fiat ? fiatSystem() : legacyStyleSystem();
 // 规矩打架时听谁的：只在这里排一次，别处不再写"压过一切"
 const RULE_ORDER = `【规矩打架时的先后（从先到后）】
 1. 引擎已经定下的事实：【引擎已经结算】【本段引擎判定】【最终结果】里的成败、钱数、日期、位置、身体状况。
@@ -1032,13 +1033,14 @@ async function finishChapter() {
   curChapter = null;
 }
 
+function cashText(v) { const n=Number(v); return Math.abs(n)>=1e18 ? n.toExponential(4) : n.toLocaleString('zh-CN'); }
 function rebuildTop() {
   if (!S) return;
   const p = S.player;
   $('topDate').textContent = E.dateStr(S.date);
-  $('topMoney').textContent = (p.money < 0 ? '−' : '') + '¥' + Math.abs(p.money).toLocaleString('zh-CN');
+  $('topMoney').textContent = p.wealthLabel || (p.money < 0 ? '−' : '') + '¥' + cashText(Math.abs(p.money));
   $('topMoney').className = 'kv' + (p.money < 0 ? ' bad' : '');
-  $('enBar').style.width = p.energy + '%';
+  $('enBar').style.width = E.clamp(p.energy,0,100) + '%';
   $('enBar').className = 'bar-in' + (p.energy < 30 ? ' bad' : p.energy > 70 ? ' good' : '');
   $('enNum').textContent = p.energy;
   const bad = S.status.length ? `｜${S.status.map(s => s.name).join('、')}` : '';
@@ -1048,8 +1050,9 @@ function rebuildTop() {
 
 function renderOptions(opts) {
   const box = $('acts');
+  const fiat = !!E.fdm(S).fiat;
   box.innerHTML = '';
-  if (S.over) {
+  if (S.over && !fiat) {
     box.innerHTML = `<div class="ended">${esc(S.endTitle || '这一局')}　—　${esc(S.ending || '')}</div>`;
     const go = document.createElement('button');
     go.className = 'act-btn full'; go.textContent = '日子还得过下去（再给十年）';
@@ -1069,18 +1072,18 @@ function renderOptions(opts) {
     box.appendChild(b);
     const tip = document.createElement('div');
     tip.className = 'tip'; tip.style.marginTop = '8px';
-    tip.textContent = '日子已经过了，判定也定了，只是故事没写出来。再写一次不会多花时间。';
+    tip.textContent = S.pending.fiat ? '世界尚未改写，重试不会重复结算；也可以直接输入新指令。' : '日子已经过了，判定也定了，只是故事没写出来。再写一次不会多花时间。';
     box.appendChild(tip);
-    return;
+    if (!fiat) return;
   }
-  if (S.promiseAsk) {
+  if (S.promiseAsk && !fiat) {
     const pr = S.promiseAsk;
     box.innerHTML = `<div class="promise"><div class="prhd">${esc(pr.date || '')}　${pr.type === 'pledge' ? '说好的事到期了' : '约好的日子到了'}</div>
       <div class="prtx">${esc(pr.type === 'pledge' ? `你答应${pr.who}：${pr.what}` : pr.title)}</div>
       <div class="prbtns"><button class="primary" onclick="promiseGo()">${pr.kind === '面试' ? '去面试' : '去办'}</button><button class="ghost" onclick="promiseDelay()">改期</button><button class="ghost" onclick="promiseBreak()">不去了</button></div></div>`;
     return;
   }
-  if ((S.stopQueue || []).length) {
+  if (!fiat && (S.stopQueue || []).length) {
     box.innerHTML = '<button class="act-btn full" onclick="skipAhead()">看看今天还有什么事</button><div class="tip">仍是同一天，先看完已经发生的事，不会重复扣费或多过一天。</div>';
     return;
   }
@@ -1098,15 +1101,14 @@ function renderOptions(opts) {
   });
   const row = document.createElement('div');
   row.className = 'act-row';
-  const fiat = !!E.fdm(S).fiat;
-  row.innerHTML = `<input id="freeAct" placeholder="${fiat ? '想做什么就写，括号里写要怎么写（写细一点）' : '或者自己写一件要做的事'}" maxlength="${fiat ? 1000 : 120}"/><button class="act-go" id="goBtn">去做</button>`;
+  row.innerHTML = (fiat ? '<textarea id="freeAct" rows="3" placeholder="输入你的指令：改写世界、财富、时间或人物；想怎么来就怎么写"></textarea>' : '<input id="freeAct" placeholder="或者自己写一件要做的事" maxlength="120"/>') + '<button class="act-go" id="goBtn">去做</button>';
   box.appendChild(row);
   $('goBtn').onclick = () => {
     const v = $('freeAct').value.trim();
     if (!v) { toast('先写点什么'); return; }
     doAction(v, true);
   };
-  $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter') $('goBtn').click(); });
+  $('freeAct').addEventListener('keydown', e => { if (e.key === 'Enter' && (!fiat || e.ctrlKey || e.metaKey)) { e.preventDefault(); $('goBtn').click(); } });
   const sk = document.createElement('div');
   sk.className = 'act-row3';
   sk.innerHTML = `<button class="skip" id="funBtn">找点乐子</button><button class="skip" id="focusBtn">闷头做一阵</button><button class="skip" id="skipBtn">往下过日子</button>`;
@@ -1117,6 +1119,71 @@ function renderOptions(opts) {
 }
 
 /* ================= 一段推进 ================= */
+// 沙盒不借用普通模式的动作解析、骰子、日结和提示词：原指令一次送达，完整结果一次落档。
+const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没改的字段必须省略，不能拿0或空数组占位。所有数值都是改写后的绝对值，只有 moneyDelta 是增减量；同一笔钱选一种方式填写。
+- player:{name,gender,age,money,energy,attributes:{专业,表达,谋划,情绪,体能},信誉,人品,ideal,skillName,bg:{edu,school,major,persona,looks}}。数值不受普通量表约束；无限财富可把 money 写成“无限”。
+- job:{employer,title,lv,salary,out}：任何自定义身份、头衔、级别和月薪都可直接设置，转职不要求先辞职。
+- date:{y,m,d} 或 days:相对今天推进的天数，可负数回到过去；没要求时间变化就省略，不自动多过一天。
+- health:{clear:true} 立即清除所有病症与病根；也可指定 status/chronic 数组。永生、青春常驻等长期设定另记 rules。
+- home:{name,kind:"买或租",place,price,tier,rent}：可以直接获得新住处，默认全款；多处房产可逐个写 assets，所有资产都会保留。
+- businesses:[{name,kind,detail,staff:[]}]：可同时持有任意多的事业，任意规模；assets:[{name,detail,quantity,value}] 可记任意物品、股份、房产、载具、领地或能力，没有商品目录限制。按name更新，移除填remove:true。
+- npcs:[{name,oldName,gender,age,job,tie,rel,close,note,facts:[],mem:[]}]：可创建或改写人物；相同名字更新已有角色，改名时name写新名、oldName写旧名，需要移除的人填remove:true，不要把没提到的人删掉。
+- family:{partner:{name,stage,warm}或null,kids:[{name,age,unborn:false}]}，可以直接改写家庭。
+- clearDebts:true 清掉所有欠款和房贷；bank:{credit,mmf,fund:{units,cost,mark},fixed:[],wm:[],loans:[]}；借款只在玩家明确要求借款时生成，不擅自加贷款。
+- milestones:[现有阶梯的完整标题或自定义成果]：直接达成指定步骤，可以跳级，全部完成填["*"]。
+- facts:[{name,detail}] 保存任何不属于现有面板的成果、身份、能力和世界事实；rules:[{name,detail}] 保存今后持续生效的规则，同名更新，取消填remove:true。超出常理、超出现成系统的愿望也必须在这里有真实、持久的落点。
+- place、city、origin 可改地点和出身；clearEvents:true 表示玩家要求解除当前关键局、约定、投入和事件；over:true/false 与 ending 仅在玩家要求结束或继续时填写。
+所有条目都按玩家意图填写；不要返回代码、HTML或存档内部控制字段。`;
+function fiatSystem() {
+  return `你是中文生活模拟游戏的“言出法随”沙盒世界引擎。玩家输入是游戏世界的设定和改写指令，你负责完整兑现并返回可保存的结果。
+【本局最高玩法规则】
+- 玩家这次明确指定的结果和限制优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
+- 不用“系统不支持”“硬条件不足”“先完成待办”“等退休/养病/攒钱”等理由打折；不把直接获得改成申请、面试、等待或追加代价，不在段尾翻案。
+- 玩家没让时间走就留在今天；要求跨时就同步改date/days。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
+- 玩家明确说“别替我答应/等我选/先不做”的部分留给玩家，不擅自扩张他的意图。括号里的世界改写与写法要求都有效。
+- 数值、人物、身份和资产的变化必须填fiatChanges，不能只有爽文而面板没有成果；无法归入现有面板的全部记facts/assets/rules。已经满足的愿望照样承认，可以重申或扩大。
+${FIAT_FIELDS}
+【叙事】${PERSON()}。${STYLES[styleOf()].rule}
+有人出现就写直接对白。按玩家指定的篇幅和风格写，默认400字左右。正文和fiatChanges必须是同一个结果，不总结说教，不额外埋失败。
+只输出一个合法JSON：{"narrative":"兑现指令的故事","summary":"本次实际成果","fiatChanges":{},"unresolved":["仍未了结且玩家愿意管的事"],"options":["接下来可以做的事"]}`;
+}
+function fiatPrompt(action, settledNote) { return `【眼下的世界与已有记录，玩家的新指令可改写】\n${E.fiatContext(S)}\n\n【玩家这次的完整指令】\n${action}\n\n${settledNote ? '【面板操作已经落实的部分，只写过程，不要重复增减】'+settledNote : '尚未结算任何新钱或时间'}。逐项兑现，返回完整的故事与fiatChanges，不要遗漏或重复。`; }
+function fiatChatSystem(group) { return `${CHAT_SYSTEM}\n这是言出法随的完全沙盒。主角最后发来的明确指令就是本局世界改写，必须兑现，不受关系、财力、年龄、身份、历史或现实门槛限制；玩家未要求的结果不擅自改。普通聊天仍像真人说话。\n${FIAT_FIELDS}\n已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
+async function doFiatAction(action, typed, settledNote) {
+  if (busy || !S || !String(action || '').trim()) return;
+  S.lastAction = String(action); S.actTyped = !!typed; S.plan = null;
+  S.seg++; S.stats.segs++;
+  S.pending = { fiat:true, prompt:fiatPrompt(action, settledNote), system:fiatSystem(), action:String(action), head:E.shortDate(S.date), sub:'言出法随', busyText:'正在兑现你的指令……' };
+  closePanel(); $('key').classList.remove('on');
+  saveGame(); beginChapter(S.pending.head, S.pending.sub, action, null); renderOptions([]);
+  await writePending();
+}
+async function writeFiatPending(P) {
+  setBusy(true, P.busyText);
+  let settled;
+  try {
+    const raw = await llmJSON(P.prompt, text => { const n=extractPartialField(text,'narrative'); if(n) updateChapterNarrative(n); }, { system:P.system || fiatSystem() });
+    settled = E.settleFiatTurn(S, raw, P.action);
+  } catch(e) {
+    updateChapterNarrative('（这次回复尚未收完整，没有结算财富、时间或改写世界。可重试，也可以输入新指令。）');
+    toast(e.message || '这次没收完整，请重试'); renderOptions([]);
+    setBusy(false); return;
+  }
+  S = settled.state;
+  if (curChapter) { const mark=curChapter.querySelector('.chapmark'); if(mark) mark.textContent=E.shortDate(S.date); }
+  updateChapterNarrative(settled.narrative); saveGame();
+  try { await finishChapter(); } catch(e) { console.error('保存章节：',e); }
+  rebuildTop(); renderPanel(); renderOptions(S.lastOptions);
+  setBusy(false);
+}
+function returnToFiatInput() { if(busy)return; $('key').classList.remove('on'); closePanel(); renderOptions(S.lastOptions); $('freeAct').focus(); }
+function fiatWorldCard() {
+  const W=S.fiatWorld;
+  if(!W) return '';
+  const groups=[['世界规则',W.rules],['已兑现的事实与能力',W.facts],['资产',W.assets],['持有的事业',W.businesses],['住处与房产',W.homes]];
+  const description=x=>[typeof x.detail==='string'?x.detail:'',x.place,x.kind,x.price!==undefined?'价值'+cashText(x.price)+'元':'',x.quantity!==undefined?'数量'+x.quantity:'',Array.isArray(x.staff)?'团队'+x.staff.length+'人':''].filter(Boolean).join(' · ') || '已兑现';
+  return `<h4>言出法随 · 我的世界</h4><div class="card">${groups.map(([name,list])=>!list || !list.length ? '' : `<h4>${name}</h4>${list.map(x=>`<div class="li"><b>${esc(x.name)}</b><div class="tip">${esc(description(x))}</div></div>`).join('')}`).join('')}<div class="tip">已兑现 ${(W.commands||[]).length} 条指令；这些设定会随存档保留，并带入后续剧情。</div></div>`;
+}
 // 玩家亲手写的一句话，先拆成引擎能执行的步骤（不写故事）
 const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。
 
@@ -1161,6 +1228,7 @@ ${E.fdm(S).fiat ? '【言出法随】保留玩家指定的金额、身份和成�
 按系统说明拆成步骤，只输出 JSON。`;
 }
 async function doAction(action, typed) {
+  if (S && E.fdm(S).fiat) return doFiatAction(action, typed);
   if (busy || !S || S.over) return;
   if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
@@ -1187,6 +1255,7 @@ async function doAction(action, typed) {
   await runSegment({ quick: true });
 }
 async function skipAhead() {
+  if (S && E.fdm(S).fiat) return doFiatAction('按我已经生效的世界设定，继续过一段日子；不要擅自推翻我的成果。', false);
   if (busy || !S || S.over) return;
   if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
@@ -1206,6 +1275,7 @@ function makeJudge(action) {
 async function runSegment(opt) {
   if (busy) return;
   if (S.pending) { await retryPending(); return; }
+  if (E.fdm(S).fiat) return doFiatAction(S.lastAction || '按我已经生效的设定继续过日子。', S.actTyped, S.plan && S.plan.results ? S.plan.results.map(r=>r.note).join('；') : '');
   opt = opt || {};
   const rng = Math.random;
   const judge = makeJudge(S.lastAction);
@@ -1260,13 +1330,14 @@ async function runSegment(opt) {
 async function writePending() {
   const P = S.pending;
   if (!P) return;
+  if (P.fiat) return writeFiatPending(P);
   setBusy(true, P.busyText || '正在记下这几天……');
   let d;
   try {
     const raw = await llmJSON(P.prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
-    });
+    }, E.fdm(S).fiat ? { system:legacyStyleSystem() } : undefined);
     d = E.sanitizeTurn(raw, S);
     d._partial = !!(raw && raw._partial);
     if (!d.narrative) throw new Error('模型没写出正文');
@@ -1558,7 +1629,7 @@ function renderPanel() {
     const net = (S.job.out ? L.subsidy : inc) - out + bizNet;
     const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${Math.abs(v).toLocaleString('zh-CN')}</span></div>`;
     box.innerHTML = `<h3>账本</h3>
-    <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">¥${p.money.toLocaleString('zh-CN')}</div><div class="tip">存款</div></div>
+    <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">${p.wealthLabel ? esc(p.wealthLabel) : '¥'+cashText(p.money)}</div><div class="tip">存款</div></div>
     <h4>每个月固定的</h4>
     <div class="card"><div class="lines">
       ${S.job.out ? '<div><b>工资</b><span class="tip">没有工作</span></div>' : row(`工资（${L.salaryDay}号）`, L.salary, 1)}
@@ -1588,6 +1659,7 @@ function renderPanel() {
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
     <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
+    ${fiatWorldCard()}
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
       <div><b>行业口碑</b><span>${p.信誉}</span></div>
@@ -1604,10 +1676,10 @@ function renderPanel() {
       : `<div class="lines">
           <div><b>单位</b><span>${esc(S.job.employer || S.player.job || '—')}</span></div>
           <div><b>岗位</b><span>${esc(S.job.post || '没名目')}</span></div>
-          <div><b>职级</b><span>${E.jobTitle(S)}</span></div>
+          <div><b>职级</b><span>${esc(E.jobTitle(S))}</span></div>
           <div><b>月薪</b><span>${L.salary}${S.job.vary ? '（底薪，提成另算）' : ''}</span></div>
           <div><b>累不累</b><span>${E.STRAIN[E.num(S.job.strain === undefined ? 1 : S.job.strain)]}</span></div>
-          <div><b>下次考核</b><span>${E.nextReview(S)}天后</span></div>
+          <div><b>下次考核</b><span>${E.fdm(S).fiat ? '由你的指令决定' : E.nextReview(S)+'天后'}</span></div>
         </div>
         <div class="cardhd" style="margin-top:10px">这个季度的绩效</div>
         <div class="bar"><div class="bar-in${S.job.perf > 45 ? ' good' : S.job.perf < 15 ? ' bad' : ''}" style="width:${Math.min(100, Math.round(S.job.perf / 70 * 100))}%"></div></div>
@@ -1865,6 +1937,7 @@ function renderKey() {
       <b>${icon(MOVE_ICON[k])}${k}</b><i>${mv.tip}</i><u>${mv.attr}${S.player.attrs[mv.attr]}${seen ? `　用过${seen}次` : ''}</u></button>`;
   }).join('');
   $('keyMoves').querySelectorAll('.kmove').forEach(b => b.onclick = () => keyGo(b.dataset.m));
+  if (E.fdm(S).fiat) $('keyMoves').insertAdjacentHTML('beforeend','<button class="ghost" onclick="returnToFiatInput()">直接输入指令改写这一场</button>');
   $('keyMoves').style.display = K.over ? 'none' : '';
   $('keyEnd').style.display = K.over ? '' : 'none';
   if (K.over) $('keyEnd').textContent = `${K.result}　—　看看这一场怎么写`;
@@ -2157,7 +2230,8 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge), null, { maxTokens: 1200, temperature: 1.05, system: CONVO_SYSTEM }), S);
+    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge) + (E.fdm(S).fiat ? '\n【可改写的世界】'+E.fiatContext(S) : ''), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
+    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -2269,7 +2343,8 @@ async function groupTurn(say) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say), null, { maxTokens: 1400, temperature: 1.05, system: CHAT_SYSTEM }), g.members);
+    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say) + (E.fdm(S).fiat ? '\n【可改写的世界】'+E.fiatContext(S) : ''), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
+    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
     for (const r of d.replies) c.lines.push({ who: 'ta', from: r.who, text: r.text });
@@ -2801,7 +2876,7 @@ function renderBiz() {
         const K = E.BIZ_KINDS[k], need = E.bizSetup(S, k);
         const can = E.fdm(S).fiat || S.player.money >= need;
         return `<div class="li"><b>${k}</b><span class="rel${can ? '' : ' bad'}">${need}元</span>
-          <div class="tip">${esc(K.desc)}｜看${K.attr}｜最多${K.cap}个人手</div>
+          <div class="tip">${esc(K.desc)}｜看${K.attr}｜${E.fdm(S).fiat ? '人手规模由你决定' : '最多'+K.cap+'个人手'}</div>
           <button class="ghost sm" style="margin-top:6px" ${can ? '' : 'disabled'} onclick="askOpenBiz('${k}')">${can ? '就开这个' : '钱不够'}</button></div>`;
       }).join('')}</div>`;
   }
@@ -3233,7 +3308,7 @@ function gigCard() {
       <div class="lirow"><button class="ghost sm" onclick="doDropGig('${esc(g.name)}')">不干了</button></div></div>`).join('') || '<div class="tip">没在做兼职</div>'}
     ${off ? `<div class="li"><b>${esc(off.who)}介绍的${esc(off.gig)}</b><div class="tip">${E.gigWhen(off.gig)}，一次大概${E.gigPay(S, off.gig)}</div><div class="lirow"><button class="ghost sm" onclick="doTakeGig('${esc(off.gig)}',true)">接</button></div></div>` : ''}
     <div class="btns"><button class="ghost" onclick="openGigs()">找份兼职</button></div>
-    <div class="tip">最多两份。做兼职那个时段就干不了别的，日程照它排。</div>`;
+    <div class="tip">${E.fdm(S).fiat ? '言出法随：兼职数量和时间冲突不设门槛。' : '最多两份。做兼职那个时段就干不了别的，日程照它排。'}</div>`;
 }
 function openGigs() {
   const G = E.GIGS;

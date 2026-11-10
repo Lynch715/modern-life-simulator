@@ -19,7 +19,7 @@ vm.runInContext(`toast=()=>{};closePanel=()=>{};rebuildTop=()=>{};renderOptions=
 const run = x => vm.runInContext(x,ctx);
 async function main() {
   // 日历停点必须完成整天的固定结算，多个到期事项不得丢失。
-  for (const mode of Object.keys(E.FREEDOM)) {
+  for (const mode of Object.keys(E.FREEDOM).filter(mode=>!E.FREEDOM[mode].fiat)) {
     const S=mk(mode); S.date={y:2026,m:6,d:30};S.flags.nightCnt=12;S.player.money=100000;
     S.appts.push({y:2026,m:7,d:1,title:'见朋友甲',done:false},{y:2026,m:7,d:1,title:'见朋友乙',done:false});
     const r=E.advance(S,{maxDays:1,quiet:true,rng:()=>0.5});
@@ -64,8 +64,8 @@ async function main() {
   // 同一动作的快捷和手输路径一致；解析失败不推进日子。
   for(const mode of Object.keys(E.FREEDOM)) for(const typed of [false,true]) {
     ctx.mode=mode;ctx.typed=typed;
-    x=await run(`(async()=>{S=mk(mode);busy=false;let parsed=0;llmJSON=async(p,cb,o)=>{if(o&&o.system===PARSE_SYSTEM){parsed++;return {steps:[{type:'quit',text:'辞职'}]}}return {narrative:'辞职完成',options:['继续']}};await doAction('辞职',typed);return {parsed,out:S.job.out,salary:S.ledger.salary,days:S.stats.days}})()`);
-    ok(x.parsed===1 && x.out && x.salary===0 && x.days===1,mode+'快捷/手输同源 '+typed);
+    x=await run(`(async()=>{S=mk(mode);busy=false;let parsed=0;llmJSON=async(p,cb,o)=>{if(o&&o.system===PARSE_SYSTEM){parsed++;return {steps:[{type:'quit',text:'辞职'}]}}return {narrative:'辞职完成',fiatChanges:{job:{out:true}},options:['继续']}};await doAction('辞职',typed);return {parsed,out:S.job.out,salary:S.ledger.salary,days:S.stats.days}})()`);
+    ok(x.parsed===(mode==='心想事成'?0:1) && x.out && x.salary===0 && x.days===(mode==='心想事成'?0:1),mode+'快捷/手输同源 '+typed);
   }
   x=await run(`(async()=>{S=mk();const before=JSON.stringify(S);llmJSON=async()=>{throw Error('解析断网')};await doAction('辞职',false);return JSON.stringify(S)===before})()`);ok(x,'解析失败不伪造成功或改变状态');
   x=await run(`(async()=>{S=mk();const before=JSON.stringify(S);llmJSON=async()=>({steps:[{type:'unknown'}]});await doAction('辞职',false);return JSON.stringify(S)===before})()`);ok(x,'无效解析类型也不执行');

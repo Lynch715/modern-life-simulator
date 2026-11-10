@@ -7,6 +7,7 @@ import pathlib, sys, re
 root = pathlib.Path(__file__).resolve().parent.parent
 tpl = (root / 'src' / 'template.html').read_text(encoding='utf-8')
 eng = (root / 'src' / 'engine.js').read_text(encoding='utf-8')
+fiat = (root / 'src' / 'fiat.js').read_text(encoding='utf-8')
 ui = (root / 'src' / 'ui.js').read_text(encoding='utf-8')
 art = (root / 'src' / 'art.js').read_text(encoding='utf-8')
 # 只引用已经做出来的图
@@ -19,7 +20,7 @@ art = art.replace('/*==AVATAR_READY==*/null', json.dumps(avs), 1)
 print(f'已就位的头像 {len(avs)} 张')
 inst = (root / 'src' / 'install.js').read_text(encoding='utf-8')
 
-for name, code in (('ENGINE', eng), ('ART', art), ('UI', ui), ('INSTALL', inst)):
+for name, code in (('ENGINE', eng), ('FIAT', fiat), ('ART', art), ('UI', ui), ('INSTALL', inst)):
     if '</script' in code.lower():
         sys.exit(f'{name} 里出现了 </script，会把页面截断')
     tpl = tpl.replace(f'/*=={name}==*/', '\n' + code + '\n')

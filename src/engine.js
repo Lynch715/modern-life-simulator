@@ -9,7 +9,7 @@ const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const r2 = v => Math.round(v * 100) / 100;
 // 仅用于言出法随的数值存储边界，不再用收入、关系或城市行情截断行动金额。
-const FIAT_AMOUNT = 1e12;
+const FIAT_AMOUNT = Number.MAX_VALUE;
 function fundAction(S, amount, note) {
   if (!Number.isFinite(amount) || amount < 0) return false;
   if (S.player.money >= amount) return true;
@@ -57,7 +57,7 @@ function bgLine(p) {
   const b = p && p.bg;
   if (!b) return '';
   return [`${b.school}${b.school === '名校' || b.school === '重点' ? '' : '学校'}${b.major ? b.major + '专业' : ''}${b.edu}毕业`,
-    b.persona ? `性子${b.persona}（${PERSONAS[b.persona].desc}）` : '', b.looks ? LOOKS[b.looks] : ''].filter(Boolean).join('，');
+    b.persona ? `性子${b.persona}（${(PERSONAS[b.persona] || {desc:b.persona}).desc}）` : '', b.looks ? LOOKS[b.looks] : ''].filter(Boolean).join('，');
 }
 
 const ORIGINS = {
@@ -701,6 +701,7 @@ function pickTag(S, rng) {
 /* ---------- 推进器：一天天跑，跑到该停为止 ---------- */
 function advance(S, opt) {
   opt = opt || {};
+  if (fdm(S).fiat) return API.fiatAdvance(S, opt);
   const rng = opt.rng || Math.random;
   const quiet = !!opt.quiet;          // 就地办事的短段：只认躲不开的事，别拿闲事打断
   const maxDays = opt.maxDays !== undefined ? opt.maxDays : 35;
@@ -886,7 +887,7 @@ function sanitizePlan(raw, act, typed, S) {
   const steps = [];
   for (const x0 of d.steps) {
     const x = T.obj(x0);
-    if (!x || !STEP_TYPES.includes(x.type)) continue;
+    if (!x || (!fiat && !STEP_TYPES.includes(x.type))) continue;
     const st = { type: x.type, text: T.str(x.text, 60) || x.type, diff: DIFFS[x.diff] !== undefined ? x.diff : '普通', attr: ATTRS.includes(x.attr) ? x.attr : guessAttr(x.text) };
     if (x.who) st.who = T.str(x.who, 12);
     if (x.amount !== undefined) st.amount = Math.round(T.num(x.amount, 0, fiat ? FIAT_AMOUNT : 1e9));
@@ -900,7 +901,7 @@ function sanitizePlan(raw, act, typed, S) {
   }
   if (!steps.length) return base;
   const maxSteps = fiat ? 12 : 3;
-  if (steps.length > maxSteps) {
+  if (!fiat && steps.length > maxSteps) {
     const rest = steps.splice(maxSteps - 1);
     steps.push({ type: 'other', text: rest.map(r => r.text).join('，').slice(0, 60), diff: rest.reduce((a, r) => DIFFS[r.diff] > DIFFS[a] ? r.diff : a, '普通'), attr: rest[0].attr });
   }
@@ -1491,10 +1492,11 @@ function sanitizePay(v, S) {
   if (!o || !(num(o.amount) > 0)) return null;
   return { kind: o.kind === '红包' ? '红包' : '转账', amount: Math.round(T.num(o.amount, 1, S && fdm(S).fiat ? FIAT_AMOUNT : 1e7)), note: T.str(o.note, 30) };
 }
-function sanitizeGroup(d, members) {
+function sanitizeGroup(d, members, S) {
   d = T.obj(d) || {};
   const ok = new Set(members || []);
   return {
+    fiatChanges: S && fdm(S).fiat && API.cleanFiat ? API.cleanFiat(d.fiatChanges) : undefined,
     replies: T.arr(d.replies, 3).map(T.obj).filter(x => x && x.who && x.text && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 200) })),
     gist: T.str(d.gist, 80), summary: T.str(d.summary, 30),
     deal: T.arr(d.deal, 2).map(T.obj).filter(x => x && x.what && x.who && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', what: T.str(x.what, 40), inDays: T.num(x.inDays, 0, 365) }))
@@ -1504,6 +1506,7 @@ function sanitizeConvo(d, S) {
   d = T.obj(d) || {};
   const a = T.obj(d.ask);
   return {
+    fiatChanges: S && fdm(S).fiat && API.cleanFiat ? API.cleanFiat(d.fiatChanges) : undefined,
     replies: (Array.isArray(d.reply) ? d.reply : [d.reply]).map(x => T.str(x, 160)).filter(Boolean).slice(0, 3),
     quick: T.arr(d.quick, 3).map(x => T.str(x, 20)).filter(Boolean),
     reply: (Array.isArray(d.reply) ? d.reply.map(x => T.str(x, 160)).filter(Boolean).join(' ') : T.str(d.reply, 300)) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -3, 3),
@@ -1715,7 +1718,7 @@ function npcMem(S, n, text) {
 function applyConvo(S, name, res) {
   const n = S.npcs.find(x => x.name === name);
   if (!n) return;
-  if (num(res.rel)) n.rel = clamp(r2(n.rel + num(res.rel)), 0, 100);
+  if (num(res.rel)) n.rel = fdm(S).fiat ? r2(n.rel + num(res.rel)) : clamp(r2(n.rel + num(res.rel)), 0, 100);
   n.lastSeen = S.stats.days;
   if (res.mem) npcMem(S, n, `聊过：${res.mem}`);
   if (res.note) n.note = String(res.note).slice(0, 50);
@@ -1923,6 +1926,7 @@ function scoreLines(S) {
   };
 }
 function endReason(S) {
+  if (fdm(S).fiat) return null;
   const p = S.player;
   if (p.age >= (S.retireAge || 60)) return { why: '到了岁数', text: `${p.age}岁，该收了` };
   if ((S.chronic || []).length >= 4) return { why: '身体垮了', text: '一身的毛病，跑不动了' };
@@ -2009,7 +2013,7 @@ function bizCandidates(S, rng) {
 function hireBiz(S, c) {
   const B = S.biz;
   if (!B || B.dead) return null;
-  if (B.staff.length >= BIZ_KINDS[B.kind].cap) return { ok: false, why: '地方就这么大，塞不下人了' };
+  if (!fdm(S).fiat && B.staff.length >= BIZ_KINDS[B.kind].cap) return { ok: false, why: '地方就这么大，塞不下人了' };
   B.staff.push(Object.assign({ months: 0 }, c));
   return { ok: true, who: c.name };
 }
@@ -2303,7 +2307,7 @@ function noteAil(S, name) {
 function chronicLoad(S) {
   return (S.chronic || []).reduce((a, c) => a + Math.max(0, 1 - num(c.eased) * 0.34), 0);
 }
-function energyCap(S) { return Math.round(100 - chronicLoad(S) * 7 + Math.min(8, num(S.gym && S.gym.cap))); }
+function energyCap(S) { if(fdm(S).fiat) return Math.max(100,num(S.player.energy)); return Math.round(100 - chronicLoad(S) * 7 + Math.min(8, num(S.gym && S.gym.cap))); }
 
 /* ================= 单位与饭碗 ================= */
 const LEVELS = [
@@ -3035,10 +3039,10 @@ function takeGig(S, name) {
   if (!g) return { ok: false, why: '没有这种兼职' };
   S.gigs = S.gigs || [];
   if (S.gigs.some(x => x.name === name)) return { ok: false, why: '已经在做了' };
-  if (S.gigs.length >= 2) return { ok: false, why: '最多同时做两份' };
+  if (!fdm(S).fiat && S.gigs.length >= 2) return { ok: false, why: '最多同时做两份' };
   if (!fdm(S).fiat && g.edu && eduLv(S) < g.edu) return { ok: false, why: '这活要本科以上' };
   const clash = S.gigs.find(x => GIGS[x.name].slot === g.slot && GIGS[x.name].days.some(d => g.days.includes(d)));
-  if (clash) return { ok: false, why: `跟${clash.name}的时间撞了` };
+  if (clash && !fdm(S).fiat) return { ok: false, why: `跟${clash.name}的时间撞了` };
   S.gigs.push({ name, since: shortDate(S.date), times: 0, owed: 0, total: 0 });
   return { ok: true, note: `接了${name}：${gigWhen(name)}，一次大概${gigPay(S, name)}` };
 }
@@ -3751,9 +3755,9 @@ function migrate(S) {
   if (!hadRent2) delete S.flags.rent2;
   const p = S.player;
   if (!TRACKS[p.track]) p.track = '职场';
-  for (const a of ATTRS) { p.attrs[a] = num(p.attrs[a]) || 20; if (p.attrF[a] === undefined) p.attrF[a] = p.attrs[a]; }
+  for (const a of ATTRS) { p.attrs[a] = fdm(S).fiat && p.attrs[a] !== undefined ? num(p.attrs[a]) : num(p.attrs[a]) || 20; if (p.attrF[a] === undefined) p.attrF[a] = p.attrs[a]; }
   for (const k of ['money', 'energy', '信誉', '人品', 'age']) p[k] = num(p[k]);
-  if (!p.age) p.age = 22;
+  if (!p.age && !fdm(S).fiat) p.age = 22;
   for (const k of ['rent', 'living', 'remit', 'subsidy', 'salary', 'loan', 'base']) S.ledger[k] = num(S.ledger[k]);
   if (!isObj(S.date) || !num(S.date.y)) S.date = Object.assign({}, S.startDate || tpl.date);
   if (!isObj(S.startDate)) S.startDate = Object.assign({}, S.date);
@@ -3852,7 +3856,7 @@ const JOB_LADDER = { '从政': '从政', '行医': '行医', '教书': '教书',
 const FIELD_LADDER = { '捞偏门': '捞偏门', '创业': '生意', '手艺': '生意', '做博主': '名气', '表演': '名气', '创作': '名气', '体育': '名气', '公益': '公益', '回乡': '回乡' };
 function jobLadder(S) { return JOB_LADDER[S.player.track] || '职场'; }
 function jobMax(S) { return RANKS[jobLadder(S)].length - 1; }
-function jobTitle(S, lv) { const R = RANKS[jobLadder(S)]; return R[clamp(Math.round(num(lv === undefined ? S.job.lv : lv)), 0, R.length - 1)]; }
+function jobTitle(S, lv) { if (lv === undefined && S.job.fiatTitle) return S.job.fiatTitle; const R = RANKS[jobLadder(S)]; return R[clamp(Math.round(num(lv === undefined ? S.job.lv : lv)), 0, R.length - 1)]; }
 // 体制内工资涨得慢；其他照职级倍数
 function payMul(S, lv) {
   lv = clamp(Math.round(num(lv)), 0, LEVELS.length - 1);
@@ -3877,7 +3881,7 @@ function fieldIdx(S) {
 // 主角眼下的位置：单位里一个，圈子里一个（挂在工作上的赛道两个是一回事）
 function posOf(S) {
   const jl = jobLadder(S), jIdx = clamp(num(S.job.lv), 0, jobMax(S));
-  const job = { ladder: jl, idx: jIdx, max: jobMax(S), title: RANKS[jl][jIdx], out: !!S.job.out, org: S.job.employer || '' };
+  const job = { ladder: jl, idx: jIdx, max: jobMax(S), title: jobTitle(S), out: !!S.job.out, org: S.job.employer || '' };
   const fl = fieldLadder(S);
   const field = fl ? { ladder: fl, idx: fieldIdx(S), max: RANKS[fl].length - 1, title: RANKS[fl][fieldIdx(S)] } : null;
   return { job, field };
@@ -4021,7 +4025,7 @@ const API = {
   DEPO, LOANS, bankOf, creditWord, jobTenure, loanQuote, takeLoan, prepay, deposit, withdrawFixed, invest, fundValue, redeem, bankTick, loanTick, bankLine, slotsLeft, useSlot,
   FUN, funOf, funCost, doFun, BUSY, npcBusy, talkOf, fixNpcLife, pingTick, settlePings, helpTick, giveLiJin, lifeTick, fixLife
 };
-if (typeof module !== 'undefined' && module.exports) module.exports = API;
+if (typeof module !== 'undefined' && module.exports) { module.exports = API; require('./fiat.js')(API); }
 root.ENGINE = API;
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
