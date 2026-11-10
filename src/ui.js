@@ -545,7 +545,8 @@ ${TIER_ATTITUDE}
 
 // 每次写故事的请求最后都贴这一段：系统提示里的规矩模型容易读着读着就忘，最后再压一遍
 function finalCheck(extra) {
-  return `【交稿前逐条对一遍，有一条不对就改了再交】
+  return `${E.storyContext(S,S.lastAction||'')}
+【交稿前逐条对一遍，有一条不对就改了再交】
 1. 上面【引擎已经结算】【本段引擎判定】【最终结果】里写的成败、钱数、日期、身体状况，正文一个字都不许改，不许把失败写成成功，也不许把成功写成"差一点"。
 2. 钱的数目照引擎给的写；${E.fdm(S).fiat ? 'playerChanges 可以记尚未落账的实际成果，不设收入比例上限，已结算的收支不能重复给。' : 'playerChanges 只写这一段另外的零碎增减，不超过【这一段能记的零碎】里给的数。'}
 3. ${cfg.person === 'ta' ? '通篇第三人称' : '通篇用"你"称呼主角'}；有人出场就有直接对白，用中文引号，不许转述。
@@ -557,8 +558,14 @@ function finalCheck(extra) {
 9. ${E.fdm(S).fiat ? '玩家要求的身份变化可以直接实现并填 newJob；之后的称呼、上下级关系和人物态度按新身份写。' : '谁给谁汇报、谁对谁客气，照【位置】【你上面是谁、下面是谁】和名册里的级别写：不许让主角给比他低的人汇报，比主角低的人不许对他没分寸；主角的位置不许在正文里自己升降。'}
 10. 只输出一个合法 JSON，字段照系统说明里的格式，不要任何别的字。`;
 }
+const STORY_PACE = `【剧情要向前】
+- 每段必须给出新的具体结果、信息、关系变化或可采取的下一步。progress.focus 用同一短标题标记同一件事，progress.change 只写本段新增的进展；没有新增内容就先改正文，不许把上段总结换个说法交稿。文风可以重复词句，剧情不能原地打转。
+- 普通小事默认本段办完：确认一次即可，不把一句客套、一次误会、一张单据或一笔小钱反复升级为核心矛盾。已解决、拒绝或放下的事情写入 progress.closed，原样照抄未决条目；不得在后续消息、待办和选项中换词复活。
+- 玩家明确要求细写、追问、聊天或继续同一件事时照办，但每轮应有新回答、新细节或明确结果，不能循环疑虑、安慰、道歉、核对和等待。不因换话题强迫失败、制造代价、替玩家决定或越过允许的时间。
+- 承认已经完成的成果，略过重复手续和背景解释；只给仍有实际选择的选项，已办成的事不再让玩家重做。`;
 function NARR_COMMON() {
-  return `【每一段都要做到的】
+  return `${STORY_PACE}
+【每一段都要做到的】
 - 手机消息写进 messages，1-3 条，短。
 - moments 写 0-2 条朋友圈：发的人得是【认识的人】里已有的某位，内容是他自己的日子（加班、吃饭、孩子、抱怨天气、转发一句什么），不必跟主角有关，也不许全是好事，像真人一样。
 - 数值变化写进 playerChanges，全部是增减量。钱要具体。身体出问题写 statusAdd。
@@ -586,6 +593,7 @@ function worldRules(chat) {
 }
 
 const SCHEMA = `{"narrative":"这一段的叙事","summary":"一句话概括（25字内）",
+"progress":{"focus":"当前事件短标题，同一件事沿用标题","change":"本段新增的具体进展","closed":["本段已解决或放下的未决原文"]},
 "scene":{"location":"这段结束时主角人在哪","unresolved":["眼下真正悬着且主角打算管的事，至多4条"]},
 "resolvedInfo":["本段了结或放下的事，原样照抄未了之事里的那句"],
 "check":null或{"type":"判定名","attr":"属性","need":70,"success":true},
@@ -1134,21 +1142,24 @@ const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没�
 - facts:[{name,detail}] 保存任何不属于现有面板的成果、身份、能力和世界事实；rules:[{name,detail}] 保存今后持续生效的规则，同名更新，取消填remove:true。超出常理、超出现成系统的愿望也必须在这里有真实、持久的落点。
 - place、city、origin 可改地点和出身；clearEvents:true 表示玩家要求解除当前关键局、约定、投入和事件；over:true/false 与 ending 仅在玩家要求结束或继续时填写。
 所有条目都按玩家意图填写；不要返回代码、HTML或存档内部控制字段。`;
-function fiatSystem() {
+function fiatBase() {
   return `你是中文生活模拟游戏的“言出法随”沙盒世界引擎。玩家输入是游戏世界的设定和改写指令，你负责完整兑现并返回可保存的结果。
 【本局最高玩法规则】
-- 玩家这次明确指定的结果和限制优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
+- 玩家这次明确指定的结果和限制必须兑现，优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
 - 不用“系统不支持”“硬条件不足”“先完成待办”“等退休/养病/攒钱”等理由打折；不把直接获得改成申请、面试、等待或追加代价，不在段尾翻案。
 - 玩家没让时间走就留在今天；要求跨时就同步改date/days。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
 - 玩家明确说“别替我答应/等我选/先不做”的部分留给玩家，不擅自扩张他的意图。括号里的世界改写与写法要求都有效。
 - 数值、人物、身份和资产的变化必须填fiatChanges，不能只有爽文而面板没有成果；无法归入现有面板的全部记facts/assets/rules。已经满足的愿望照样承认，可以重申或扩大。
 ${FIAT_FIELDS}
-【叙事】${PERSON()}。${STYLES[styleOf()].rule}
-有人出现就写直接对白。按玩家指定的篇幅和风格写，默认400字左右。正文和fiatChanges必须是同一个结果，不总结说教，不额外埋失败。
-只输出一个合法JSON：{"narrative":"兑现指令的故事","summary":"本次实际成果","fiatChanges":{},"unresolved":["仍未了结且玩家愿意管的事"],"options":["接下来可以做的事"]}`;
+${STORY_PACE}
+【交稿前核对】把玩家原文逐项对照正文和改写字段，每一项指定的结果、限制、人物、数量都要有对应落点；未涉及的字段省略，局部修改沿用其余现状，不凭空清空房贷、团队或家庭关系。只说“办成了”不算数，状态成果必须同步到对应字段，没有专用字段的成果写facts/assets/rules。`;
 }
-function fiatPrompt(action, settledNote) { return `【眼下的世界与已有记录，玩家的新指令可改写】\n${E.fiatContext(S)}\n\n【玩家这次的完整指令】\n${action}\n\n${settledNote ? '【面板操作已经落实的部分，只写过程，不要重复增减】'+settledNote : '尚未结算任何新钱或时间'}。逐项兑现，返回完整的故事与fiatChanges，不要遗漏或重复。`; }
-function fiatChatSystem(group) { return `${CHAT_SYSTEM}\n这是言出法随的完全沙盒。主角最后发来的明确指令就是本局世界改写，必须兑现，不受关系、财力、年龄、身份、历史或现实门槛限制；玩家未要求的结果不擅自改。普通聊天仍像真人说话。\n${FIAT_FIELDS}\n已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
+function fiatSystem() { return `${fiatBase()}
+有人出现就写直接对白。按玩家指定的篇幅和风格写，默认400字左右。正文和fiatChanges必须是同一个结果，不总结说教，不额外埋失败。
+只输出一个合法JSON：{"narrative":"兑现指令的故事","summary":"本次实际成果","fiatChanges":{},"progress":{"focus":"事件短标题","change":"本段新增的进展","closed":["已解决或放下的未决原文"]},"unresolved":["仍未了结且玩家愿意管的事"],"options":["接下来可以做的事"]}
+【叙事】${PERSON()}。${STYLES[styleOf()].rule}`; }
+function fiatPrompt(action, settledNote) { return `【眼下的世界与已有记录，玩家的新指令可改写】\n${E.fiatContext(S)}\n\n${E.storyContext(S,action)}\n\n【玩家这次的完整指令】\n${action}\n\n${settledNote ? '【面板操作已经落实的部分，只写过程，不要重复增减】'+settledNote : '尚未结算任何新钱或时间'}。逐项兑现，返回完整的故事与fiatChanges，不要遗漏或重复。`; }
+function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
 async function doFiatAction(action, typed, settledNote) {
   if (busy || !S || !String(action || '').trim()) return;
   S.lastAction = String(action); S.actTyped = !!typed; S.plan = null;
@@ -2230,7 +2241,7 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON(convoPrompt(n, say, judge) + (E.fdm(S).fiat ? '\n【可改写的世界】'+E.fiatContext(S) : ''), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
+    const d = E.sanitizeConvo(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + convoPrompt(n, say, judge), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
     if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
@@ -2343,11 +2354,11 @@ async function groupTurn(say) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeGroup(await llmJSON(groupPrompt(g, say) + (E.fdm(S).fiat ? '\n【可改写的世界】'+E.fiatContext(S) : ''), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
+    const d = E.sanitizeGroup(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + groupPrompt(g, say), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
     if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
-    for (const r of d.replies) c.lines.push({ who: 'ta', from: r.who, text: r.text });
+    for (const r of d.replies) c.lines.push({ who: 'ta', from: E.whoIs(S,r.who), text: r.text });
     if (!d.replies.length) c.lines.push({ who: 'sys', text: '群里没人接话' });
     for (const dl of d.deal) {
       if (E.addPledge(S, { who: dl.who, what: dl.what, kind: dl.kind, inDays: dl.inDays }))

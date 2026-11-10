@@ -43,6 +43,18 @@ run("S.convo.lines=Array.from({length:40},(_,i)=>({who:'me',text:'消息'+i}));"
 const longGroup = run("groupPrompt(testGroup,'消息39')");
 ok(!longGroup.includes('林远：消息0\n') && longGroup.includes('林远：消息10\n') && longGroup.includes('林远：消息39'), '长群聊窗口保持最近 30 句，未扩大或缩短');
 ok(longGroup.includes('更早的略，要点是：第二轮摘要'), '超出窗口仍保留摘要');
+run("S.freedom='心想事成'");
+const fiatNarrator=run('fiatSystem()'),fiatChat=run('fiatChatSystem(false)');
+ok(common(fiatNarrator,fiatChat)>=run('fiatBase().length'),'沙盒剧情与聊天共享完整的固定世界改写规则前缀');
+run("cfg.person='ni';S.style='白描'");
+const fiatChanged=run('fiatSystem()');
+ok(common(fiatNarrator,fiatChanged)>=fiatNarrator.indexOf('【叙事】')&&fiatChanged.includes('通篇用第二人称'),'沙盒文风人称在固定规则和完整格式之后，偏好立即生效');
+ok(fiatChanged.includes('progress')&&fiatChanged.includes('局部修改沿用其余现状'),'沙盒保留进度与局部修改要求');
+console.log('沙盒共享系统前缀字符：'+common(fiatNarrator,fiatChat)+'；切换文风人称：'+common(fiatNarrator,fiatChanged));
+const fullAction='给我三座城市，并且不要替我签约。'.repeat(100);
+ctx.fullAction=fullAction;
+ok(run('fiatPrompt(fullAction).includes(fullAction)'),'缓存优化完整发送长复合指令，不截断玩家限制');
+run("S.freedom='都市传奇'");
 const parse1 = run("parsePrompt('去吃饭')");
 run('S.player.money-=50');
 const parse2 = run("parsePrompt('回家')");

@@ -22,7 +22,21 @@ function clean(v) {
   }
   return out;
 }
-const worldOf = S => S.fiatWorld || (S.fiatWorld = { facts: [], rules: [], assets: [], businesses: [], homes: [], commands: [] });
+function worldOf(S) {
+  const W=obj(S.fiatWorld)?S.fiatWorld:(S.fiatWorld={});
+  for(const k of ['facts','rules','assets','businesses','homes','commands']) if(!Array.isArray(W[k])) W[k]=[];
+  return W;
+}
+function renamePerson(S, before, after) {
+  const fields=(list,keys)=>{for(const x of list||[])if(obj(x))for(const k of keys)if(x[k]===before)x[k]=after;};
+  fields(S.msgs,['from']); fields(S.debts,['who']); fields(S.pays,['from','to']); fields(S.rifts,['who']); fields(S.pledges,['who']); fields(S.stopWhen,['who']); fields(S.stopQueue,['who']); fields(S.appts,['who']);
+  for(const a of S.appts||[]) if(a.wed) fields([a.wed],['who']);
+  for(const g of S.groups||[]) { g.members=g.members.map(n=>n===before?after:n); fields(g.msgs,['from']); }
+  for(const m of S.moments||[]) { fields([m],['who']); fields(m.cs,['who','to']); for(const k of ['likers','likes']) if(Array.isArray(m[k]))m[k]=m[k].map(n=>n===before?after:n); }
+  fields([S.family.partner,S.promiseAsk],['name','who']); fields(S.family.kids,['name']); fields(S.peers,['name']);
+  if(S.key) { fields([S.key],['who']); fields([S.key.opp],['name']); }
+  if(S.convo) { fields([S.convo],['name']); fields(S.convo.lines,['from']); fields(S.convo.hist,['from']); }
+}
 function upsert(list, entries, make) {
   for (const raw of Array.isArray(entries) ? entries : []) {
     const x = typeof raw === 'string' ? { name: raw } : raw;
@@ -94,7 +108,7 @@ function applyChanges(S, input) {
     for (const k of ['employer', 'post', 'title']) if (typeof c.job[k] === 'string') J[k === 'title' ? 'post' : k] = c.job[k];
     if (own(c.job, 'lv')) J.lv = Math.max(0, finite(c.job.lv));
     if (own(c.job, 'out')) J.out = c.job.out === true;
-    else J.out = false;
+    else if (c.job.employer || c.job.title || c.job.post) J.out = false;
     if (c.job.title || c.job.post) J.fiatTitle = String(c.job.title || c.job.post);
     if (own(c.job, 'salary')) S.ledger.salary = Math.max(0, finite(c.job.salary));
     if (J.out) { J.fiatTitle = ''; S.ledger.salary = 0; }
@@ -126,28 +140,28 @@ function applyChanges(S, input) {
   }
   if (Array.isArray(c.debts)) S.debts = c.debts.filter(x => obj(x) && x.who).map(x => ({ who: String(x.who), amount: finite(x.amount), left: finite(x.left, finite(x.amount)), due: x.due ? validDate(x.due) : E.addDays(S.date, 60), late: false }));
   if (obj(c.home)) {
-    const h = c.home;
+    const h = c.home, oldLoan=S.home.loan;
+    const acquired=!!(h.name && h.name!==S.home.name) || (h.kind==='买' && S.home.kind!=='买');
     if (S.home && h.name && S.home.name && S.home.name !== h.name) upsert(W.homes, [Object.assign({ name: S.home.name }, S.home)], name => ({ name }));
-    S.home = Object.assign({}, S.home, h, { kind: h.kind === '租' ? '租' : '买', since: E.shortDate(S.date) });
+    S.home = Object.assign({}, S.home, h, { kind: h.kind || (acquired ? '买' : S.home.kind), since: acquired ? E.shortDate(S.date) : S.home.since });
     if (S.home.kind === '买') {
       S.ledger.rent = 0;
       // 指令直接获得的房子默认为全款，只有明确给出贷款才保留贷款。
-      S.home.loan = obj(h.loan) ? Object.assign({ left: 0, monthly: 0, months: 360, paid: 0 }, h.loan) : null;
+      if(own(h,'loan') || acquired) S.home.loan = obj(h.loan) ? Object.assign({ left: 0, monthly: 0, months: 360, paid: 0 }, !acquired&&obj(oldLoan)?oldLoan:{}, h.loan) : null;
       S.ledger.loan = S.home.loan ? finite(S.home.loan.monthly) : 0;
     } else {
       if (!E.HOUSING[S.home.tier]) S.home.tier = '整租一居';
       if (own(h, 'rent')) S.ledger.rent = finite(h.rent);
     }
-    upsert(W.homes, [Object.assign({ name: h.name || h.place || '当前住处' }, h)], name => ({ name }));
+    upsert(W.homes, [Object.assign({}, S.home, { name: S.home.name || h.place || '当前住处' })], name => ({ name }));
   }
-  for (const x of Array.isArray(c.npcs) ? c.npcs : []) if (obj(x) && x.oldName && x.name && x.oldName!==x.name) {
-    for (const m of S.msgs) if (m.from===x.oldName) m.from=x.name;
-    for (const d of S.debts) if (d.who===x.oldName) d.who=x.name;
-    for (const g of S.groups || []) g.members=g.members.map(n=>n===x.oldName?x.name:n);
-    if (S.family.partner && S.family.partner.name===x.oldName) S.family.partner.name=x.name;
-    if (S.convo && S.convo.name===x.oldName) S.convo.name=x.name;
-  }
+  for (const x of Array.isArray(c.npcs) ? c.npcs : []) if (obj(x) && x.oldName && x.name && x.oldName!==x.name) renamePerson(S,x.oldName,x.name);
   upsert(S.npcs, c.npcs, name => ({ name, age: 0, ageY: S.date.y, gender: '', job: '', tie: '新相识', care: '', note: '', rel: 50, close: false, facts: [], mem: [], lastSeen: S.stats.days }));
+  for(const x of Array.isArray(c.npcs)?c.npcs:[]) if(obj(x)) {
+    const n=S.npcs.find(n=>n.name===x.name); if(!n)continue;
+    if(own(x,'age')) n.ageY=S.date.y;
+    if(x.oldName && x.oldName!==x.name) n.aliases=[...new Set([...(n.aliases||[]),x.oldName])];
+  }
   for (const n of S.npcs) {
     if (!Array.isArray(n.facts)) n.facts = [];
     if (!Array.isArray(n.mem)) n.mem = [];
@@ -156,16 +170,26 @@ function applyChanges(S, input) {
     if (n.intimate===false) delete n.intimate;
   }
   if (obj(c.family)) {
-    if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, c.family.partner);
+    if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, S.family.partner||{}, c.family.partner);
     if (Array.isArray(c.family.kids)) S.family.kids = c.family.kids.filter(x => obj(x) && x.name).map(x => Object.assign({ age: 0, unborn: false, born: E.shortDate(S.date), bornY: S.date.y }, x));
   }
   upsert(W.assets, c.assets, name => ({ name, detail: '', quantity: 1 }));
-  upsert(W.businesses, c.businesses, name => ({ name, kind: '自定义事业', staff: [], detail: '', dead: false }));
+  const businesses=(Array.isArray(c.businesses)?c.businesses:[]).map(b=>typeof b==='string'?{name:b}:b).filter(obj);
+  if(S.biz && !S.biz.dead && businesses.some(b=>(b.oldName||b.name)===S.biz.name)) {
+    const cached=W.businesses.find(b=>b.name===S.biz.name), previousKind=cached&&cached.kind;
+    upsert(W.businesses,[S.biz],name=>({name}));
+    if(previousKind) W.businesses.find(b=>b.name===S.biz.name).kind=previousKind;
+  }
+  const existingNames=new Set(W.businesses.map(b=>b.name));
+  upsert(W.businesses, businesses, name => ({ name, kind: '自定义事业', staff: [], detail: '', dead: false }));
   for (const b of W.businesses) if (!Array.isArray(b.staff)) b.staff = [];
-  if (Array.isArray(c.businesses) && c.businesses.length) {
-    const b = W.businesses[W.businesses.length - 1];
+  if (businesses.length) {
+    const removed=businesses.some(b=>b.remove && S.biz && (b.oldName||b.name)===S.biz.name);
+    const newly=businesses.filter(b=>!b.remove&&!existingNames.has(b.name)).at(-1);
+    const current=S.biz && W.businesses.find(b=>b.name===S.biz.name);
+    const b = newly ? W.businesses.find(b=>b.name===newly.name) : current || ((!S.biz||removed)?W.businesses[W.businesses.length-1]:null);
     if (b) S.biz = Object.assign({ name: b.name, kind: '小公司', since: E.shortDate(S.date), sinceY: S.date.y, rent: 0, staff: [], rep: 100, tend: 0, months: 0, rev: 0, cost: 0, net: 0, lossMonths: 0, best: 0, total: 0, setup: 0, dead: false }, b, { kind: E.BIZ_KINDS[b.kind] ? b.kind : '小公司' });
-    else if (c.businesses.some(b=>b.remove && S.biz && b.name===S.biz.name)) S.biz=null;
+    else if (removed) S.biz=null;
   }
   upsert(W.facts, c.facts, name => ({ name, detail: '' }));
   upsert(W.rules, c.rules, name => ({ name, detail: '' }));
@@ -183,8 +207,41 @@ function applyChanges(S, input) {
   if (Number.isFinite(money) && money) E.acct(S, '言出法随·世界改写', money, S.lastAction || '', beforeMoney);
   return true;
 }
+// 先放稳定设定与追加记录，再放余额、日期；完整状态照常发送，不缓存旧答案。
 function context(S) {
-  return JSON.stringify({ date:S.date, player:S.player, origin:S.origin, city:S.city, place:S.place, job:S.job, ledger:S.ledger, home:S.home, biz:S.biz, bank:S.bank, debts:S.debts, health:{status:S.status,chronic:S.chronic}, family:S.family, npcs:S.npcs, ideal:S.ideal, world:S.fiatWorld || {}, unresolved:S.unresolved, recent:S.history.slice(-12), events:{promise:S.promiseAsk,key:S.key,focus:S.focus,queue:S.stopQueue}, over:S.over }, null, 0);
+  const {name,gender,ideal,skillName,bg,track,...mutable}=S.player;
+  const {commands=[],...world}=S.fiatWorld || {};
+  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands,
+    player:mutable, place:S.place, job:S.job, ledger:S.ledger, home:S.home, biz:S.biz, bank:S.bank, debts:S.debts,
+    health:{status:S.status,chronic:S.chronic}, family:S.family, npcs:S.npcs, ideal:S.ideal, unresolved:S.unresolved,
+    recent:S.history.slice(-12), events:{promise:S.promiseAsk,key:S.key,focus:S.focus,queue:S.stopQueue}, over:S.over, date:S.date }, null, 0);
+}
+const topicKey=s=>String(s||'').replace(/[\s，。！？、；：,.!?;:「」“”]/g,'');
+const sameTopic=(a,b)=>!!topicKey(a)&&topicKey(a)===topicKey(b);
+function cleanProgress(p) {
+  if(!obj(p))return undefined;
+  return {focus:String(p.focus||''),change:String(p.change||''),closed:Array.isArray(p.closed)?p.closed.map(String).filter(Boolean):[]};
+}
+function recordProgress(S,d,action) {
+  const p=cleanProgress(d.progress), closed=[...(Array.isArray(d.resolvedInfo)?d.resolvedInfo:[]),...(p?p.closed:[])];
+  if(!p&&!closed.length&&!S.storyProgress)return;
+  const R=S.storyProgress || (S.storyProgress={resolved:[],beats:[]});
+  if(!Array.isArray(R.resolved))R.resolved=[];
+  if(!Array.isArray(R.beats))R.beats=[];
+  // 只过滤同名的已结事项，不凭相似度删除玩家的其他目标。玩家点名重提时可重新挂起。
+  const mentioned=t=>topicKey(action).includes(topicKey(t));
+  R.resolved=R.resolved.filter(t=>!mentioned(t));
+  for(const t of closed)if(!R.resolved.some(x=>sameTopic(x,t)))R.resolved.push(String(t));
+  S.unresolved=(S.unresolved||[]).filter(t=>!R.resolved.some(x=>sameTopic(x,t)));
+  if(p)R.beats.push({seg:S.seg,focus:p.focus,change:p.change});
+  R.beats=R.beats.slice(-8);
+}
+function storyContext(S,action) {
+  const R=S.storyProgress||{}, beats=(R.beats||[]).slice(-3), recent=S.recent||[];
+  const focus=beats.at(-1)?.focus;
+  const repeated=!!focus&&beats.length>=2&&beats.slice(-2).every(b=>sameTopic(b.focus,focus));
+  const similarity=E.stuckLevel(S);
+  return `【剧情进度，记忆保留但不要把旧事重演】\n${JSON.stringify({已结案或放下:R.resolved||[],最近进展:beats,最近正文:recent.slice(-2).map(r=>String(r.narrative||'').slice(-700)),当前未决:S.unresolved||[]})}\n${repeated||similarity>=45?'连续聚焦同一件事或正文高度相似。这一段必须带来实际新信息或结果，不能换句话复述疑虑、确认、安慰、手续或等待。':'承接上一段的结果，直接写新的进展。'}玩家本次明确要求细写、追问、重提或继续某事时照办；同一场景也要有新回答。不得为了换话题代替玩家决策、强迫失败、添代价或擅自快进。`;
 }
 function settle(S, raw, action) {
   if (!E.fdm(S).fiat) throw Error('当前不是言出法随');
@@ -198,6 +255,7 @@ function settle(S, raw, action) {
   next.history.push({ seg:S.seg, date:E.shortDate(next.date), summary:String(d.summary || d.narrative), act:String(action) });
   next.recent.push({ seg:S.seg, action:String(action), narrative:d.narrative });
   next.unresolved = Array.isArray(d.unresolved) ? d.unresolved.map(String) : next.unresolved;
+  recordProgress(next,d,action);
   next.lastOptions = Array.isArray(d.options) ? d.options.map(String).filter(Boolean) : [];
   next.pending = null; next.plan = null; next.lastAction = null; next.actTyped = false;
   return { state:next, narrative:d.narrative };
@@ -217,5 +275,6 @@ function applyAtomic(S, changes) {
   Object.assign(S,next);
   return true;
 }
-Object.assign(E, { cleanFiat:clean, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance });
+Object.assign(E, { cleanFiat:clean, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
+  cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
 });

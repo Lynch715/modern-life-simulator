@@ -234,7 +234,7 @@ function fixPace(S) { if (!S.pace || !PACES[S.pace]) setPace(S, '两头兼顾');
 
 /* ---------- 日期 ---------- */
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
-function dOf(s) { return new Date(s.y, s.m - 1, s.d); }
+function dOf(s) { const d=new Date(0); d.setFullYear(s.y,s.m-1,s.d); d.setHours(0,0,0,0); return d; }
 function fromDate(dt) { return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() }; }
 function addDays(s, n) { const dt = dOf(s); dt.setDate(dt.getDate() + n); return fromDate(dt); }
 function wdOf(s) { return WD[dOf(s).getDay()]; }
@@ -1430,6 +1430,7 @@ function sanitizeTurn(d, S) {
   const fiat = !!(S && fdm(S).fiat);
   d = T.obj(d) || {};
   const o = {};
+  if (API.cleanStoryProgress) o.progress = API.cleanStoryProgress(d.progress);
   if (d._partial === true) o._partial = true;
   if (d.narrative !== undefined) o.narrative = T.str(d.narrative, 6000);
   if (d.summary !== undefined) o.summary = T.str(d.summary, 60);
@@ -1494,20 +1495,23 @@ function sanitizePay(v, S) {
 }
 function sanitizeGroup(d, members, S) {
   d = T.obj(d) || {};
+  const fiat=!!(S && fdm(S).fiat);
   const ok = new Set(members || []);
+  if(S && fdm(S).fiat) for(const n of Array.isArray(d.fiatChanges?.npcs)?d.fiatChanges.npcs:[]) if(n && ok.has(n.oldName) && n.name && !n.remove)ok.add(String(n.name));
   return {
     fiatChanges: S && fdm(S).fiat && API.cleanFiat ? API.cleanFiat(d.fiatChanges) : undefined,
-    replies: T.arr(d.replies, 3).map(T.obj).filter(x => x && x.who && x.text && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 200) })),
+    replies: (fiat && Array.isArray(d.replies)?d.replies:T.arr(d.replies, 3)).map(T.obj).filter(x => x && x.who && x.text && ok.has(String(x.who).trim())).map(x => ({ who: fiat?String(x.who).trim():T.str(x.who, 12), text: fiat?String(x.text):T.str(x.text, 200) })),
     gist: T.str(d.gist, 80), summary: T.str(d.summary, 30),
     deal: T.arr(d.deal, 2).map(T.obj).filter(x => x && x.what && x.who && ok.has(String(x.who).trim())).map(x => ({ who: T.str(x.who, 12), kind: PLEDGE_KINDS.includes(x.kind) ? x.kind : '主角答应', what: T.str(x.what, 40), inDays: T.num(x.inDays, 0, 365) }))
   };
 }
 function sanitizeConvo(d, S) {
   d = T.obj(d) || {};
+  const fiat=!!(S && fdm(S).fiat), replies=(Array.isArray(d.reply)?d.reply:[d.reply]).map(x=>fiat&&typeof x==='string'?x:T.str(x,160)).filter(Boolean);
   const a = T.obj(d.ask);
   return {
     fiatChanges: S && fdm(S).fiat && API.cleanFiat ? API.cleanFiat(d.fiatChanges) : undefined,
-    replies: (Array.isArray(d.reply) ? d.reply : [d.reply]).map(x => T.str(x, 160)).filter(Boolean).slice(0, 3),
+    replies: fiat?replies:replies.slice(0,3),
     quick: T.arr(d.quick, 3).map(x => T.str(x, 20)).filter(Boolean),
     reply: (Array.isArray(d.reply) ? d.reply.map(x => T.str(x, 160)).filter(Boolean).join(' ') : T.str(d.reply, 300)) || '……', mood: T.str(d.mood, 6), rel: T.num(d.rel, -3, 3),
     gist: T.str(d.gist, 80), cold: T.bool(d.cold) || T.bool(d.end),
@@ -1660,6 +1664,7 @@ function applyTurn(S, d) {
   if (d.nextStop) addStopWhen(S, d.nextStop);
   if (d.gameOver === true) { S.over = true; S.ending = d.ending || '此局终了'; }
   S.capNote = cut.length ? cut.slice(0, 3).join('；') : null;
+  if (API.recordStoryProgress) API.recordStoryProgress(S,d,S.lastAction||'');
   return S;
 }
 
@@ -1671,6 +1676,8 @@ const whoKey = t => { t = String(t || '').trim(); return WHO_KEY[t] || t; };
 function whoIs(S, who) {
   who = String(who || '').trim();
   if (!who || S.npcs.some(n => n.name === who)) return who;
+  const alias=S.npcs.find(n=>Array.isArray(n.aliases)&&n.aliases.includes(who));
+  if(alias)return alias.name;
   // 「周德胜（房东）」「房东周德胜」这种：括号去掉、名字包在里面的，都认回通讯录里那个人
   const base = who.replace(/[（(][^）)]*[）)]/g, '').replace(/\s+/g, '').trim();
   if (base && base !== who && S.npcs.some(n => n.name === base)) return base;
@@ -3759,7 +3766,7 @@ function migrate(S) {
   for (const k of ['money', 'energy', '信誉', '人品', 'age']) p[k] = num(p[k]);
   if (!p.age && !fdm(S).fiat) p.age = 22;
   for (const k of ['rent', 'living', 'remit', 'subsidy', 'salary', 'loan', 'base']) S.ledger[k] = num(S.ledger[k]);
-  if (!isObj(S.date) || !num(S.date.y)) S.date = Object.assign({}, S.startDate || tpl.date);
+  if (!isObj(S.date) || !Number.isInteger(S.date.y)) S.date = Object.assign({}, S.startDate || tpl.date);
   if (!isObj(S.startDate)) S.startDate = Object.assign({}, S.date);
   if (!isObj(S.schedule.work)) S.schedule.work = Object.assign({}, DEF_SCHEDULE.work);
   if (!isObj(S.schedule.rest)) S.schedule.rest = Object.assign({}, DEF_SCHEDULE.rest);

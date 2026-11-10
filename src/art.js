@@ -103,18 +103,17 @@ function nameHash(name) { let h = 0; for (let i = 0; i < name.length; i++) h = (
 function ageBand(age) { return age >= 55 ? 'old' : age >= 35 ? 'mid' : 'young'; }
 // 某人在某一年的美术年龄；年龄不详按称呼推
 function personAge(S, n, year) {
-  const y = year || S.date.y;
+  const y = year ?? S.date.y;
   if (n === S.player) return S.player.age - (S.date.y - y);
-  const base = Number(n.age) || 0;
-  if (base) return base + (y - (n.ageY || S.date.y));
+  if (n.age !== undefined && n.age !== null && n.age !== '' && Number.isFinite(Number(n.age)) && (Number(n.age)!==0 || ENGINE.fdm(S).fiat)) return Number(n.age) + (y - (n.ageY ?? S.date.y));
   const t = String(n.tie || '');
   if (/同学|室友|对象|同事|同期|朋友|爱人/.test(t)) return S.player.age - (S.date.y - y);
   return 44;
 }
 // 分配身份族：同性别里当前通讯录用得最少的，并列按名字哈希
 function assignFace(S, n) {
-  if (n.face) return n.face;
   const pool = FACE_POOL[n.gender];
+  if (n.face && (!pool || pool.includes(n.face))) return n.face;
   if (!pool) return '';
   const used = {};
   for (const x of S.npcs) if (x.face) used[x.face] = (used[x.face] || 0) + 1;
@@ -134,7 +133,7 @@ function ensureFaces(S) {
   if (!S || !S.npcs) return;
   for (const n of S.npcs) {
     if (n.gender === undefined) n.gender = ENGINE.guessGender('', n.tie, n.job, n.name);
-    if (!n.ageY) n.ageY = S.date.y;
+    if (n.ageY === undefined || n.ageY === null) n.ageY = S.date.y;
   }
 }
 // size: 'sm' 30 / '' 34 / 'md' 48 / 'me' 64 / 'lg' 80；year 用于朋友圈旧帖
@@ -145,10 +144,10 @@ function faceHtml(S, name, size, year) {
   if (!avatarsOn()) return block;
   const p = facePerson(S, name);
   if (!p || !p.gender) return block;
-  const had = !!p.face;
+  const had = p.face;
   const face = assignFace(S, p);
   if (!face) return block;
-  if (!had && typeof saveGame === 'function') saveGame();
+  if (had !== face && typeof saveGame === 'function') saveGame();
   const src = avatarSrc(face, ageBand(personAge(S, p, year)));
   if (!src) return block;
   return `<img class="${cls}" src="${src}" alt="" loading="lazy" decoding="async" data-ch="${ch}" data-h="${hue}" onerror="faceFail(this)"/>`;
