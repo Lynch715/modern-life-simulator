@@ -2,6 +2,21 @@
 const E = ENGINE;
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function actionAttrs(action, args, close) {
+  return `data-ui-action="${action}" data-ui-args="${esc(JSON.stringify(args))}"${close ? ' data-ui-close="yes"' : ''}`;
+}
+function dispatchAction(event) {
+  const el = event.target.closest('[data-ui-action]');
+  if (!el) return;
+  const actions = { openThread, openCard, giveFromCard, openConvo, askLove, doGive, openShop, doComment, showNpc, doBuy, doDropGig, doTakeGig };
+  const fn = Object.prototype.hasOwnProperty.call(actions, el.dataset.uiAction) && actions[el.dataset.uiAction];
+  if (!fn) return;
+  let args; try { args = JSON.parse(el.dataset.uiArgs); } catch (_) { return; }
+  if (!Array.isArray(args)) return;
+  event.stopPropagation();
+  if (el.dataset.uiClose === 'yes') mask('npcMask', false);
+  fn(...args);
+}
 const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
 const API_PRESETS = {
@@ -47,6 +62,7 @@ function setSkin(k, v) {
   cfg[k] = v;
   try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { }
   applySkin();
+  fitTabs();
 }
 
 /* ================= 提示与开关 ================= */
@@ -97,16 +113,72 @@ function ask(o) {
 
 /* ================= 全本存 IndexedDB ================= */
 let idbP = null;
+// 存档中的章节是外部输入：只恢复排版，不恢复脚本、事件或外链。
+function safeChapter(html) {
+  const raw = String(html || ''), tpl = document.createElement('template');
+  if (!tpl.content) return esc(raw); // 不支持 inert template 的环境只显示文本。
+  tpl.innerHTML = raw;
+  const tags = new Set(['DIV','ARTICLE','SECTION','HEADER','H4','SPAN','P','Q','B','STRONG','I','EM','U','S','BR','FIGURE','IMG']);
+  const drop = new Set(['SCRIPT','STYLE','TEMPLATE','IFRAME','OBJECT','EMBED','SVG','MATH','LINK','META','BASE']);
+  const classes = new Set('chapter chaphead chapmark chaptime action-echo ntext say typing dicebar die good bad great fate fdie ftxt landed art cover ban ending capnote ended endblock kbar bar bar-in tip'.split(' '));
+  const walk = parent => {
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType === 3) continue;
+      if (node.nodeType !== 1 || drop.has(node.tagName)) { node.remove(); continue; }
+      walk(node);
+      if (!tags.has(node.tagName)) { node.replaceWith(...node.childNodes); continue; }
+      const cls = (node.getAttribute('class') || '').split(/\s+/).filter(c => classes.has(c)).join(' ');
+      const src = node.getAttribute('src') || '', alt = node.getAttribute('alt') || '';
+      const width = (node.getAttribute('style') || '').match(/(?:^|;)\s*width:\s*(\d+(?:\.\d+)?)%\s*(?:;|$)/i);
+      const seq = node.getAttribute('data-chapter-seq');
+      for (const a of Array.from(node.attributes)) node.removeAttribute(a.name);
+      if (cls) node.setAttribute('class', cls);
+      if (cls.split(' ').includes('bar-in') && width) node.style.width=Math.min(100,Number(width[1]))+'%';
+      if (seq !== null && /^\d+$/.test(seq)) node.setAttribute('data-chapter-seq', seq);
+      if (node.tagName === 'IMG') {
+        if (!/^(?:\.\/)?assets\/art\/(?:scenes|avatars)\/[a-z0-9_]+\.webp$/.test(src)) { node.remove(); continue; }
+        node.setAttribute('src', src); node.setAttribute('alt', alt);
+        node.setAttribute('loading', 'lazy'); node.setAttribute('decoding', 'async');
+      }
+    }
+  };
+  walk(tpl.content);
+  return tpl.innerHTML;
+}
+function safeSaveChapters(state) {
+  state.chapters = (state.chapters || []).map(safeChapter);
+  state.unfiledChapters = (state.unfiledChapters || []).filter(r => r && Number.isInteger(r.seq) && typeof r.html === 'string').map(r => ({ seq:r.seq, html:safeChapter(r.html) }));
+  return state;
+}
+// 用序号和正文合并两处章节；旧档没有序号时保留尚未归档的正文。
+function mergeBook(state, rows) {
+  const bySeq = new Map();
+  for (const r of rows || []) if (r && Number.isInteger(r.seq) && typeof r.html === 'string') bySeq.set(r.seq, { seq:r.seq, html:safeChapter(r.html) });
+  const recent = (state.chapters || []).map((html, i) => {
+    const m = html.match(/data-chapter-seq=["'](\d+)["']/);
+    return { seq:m ? Number(m[1]) : Math.max(0, state.seg - state.chapters.length + 1 + i), html:safeChapter(html), explicit:!!m };
+  }).concat((state.unfiledChapters || []).map(r => ({ ...r, html:safeChapter(r.html), explicit:true })));
+  for (const r of recent) {
+    if (Array.from(bySeq.values()).some(x => x.html === r.html)) continue;
+    if (!r.explicit && bySeq.has(r.seq)) r.seq = Math.max(-1, ...bySeq.keys()) + 1;
+    bySeq.set(r.seq, { seq:r.seq, html:r.html });
+  }
+  return Array.from(bySeq.values()).sort((a,b) => a.seq-b.seq).map(r => ({ ...r, run:state.runId, id:state.runId+'-'+r.seq }));
+}
 function idb() {
   if (idbP) return idbP;
   idbP = new Promise((res, rej) => {
     if (typeof indexedDB === 'undefined') return rej(new Error('no idb'));
-    const rq = indexedDB.open(IDB_NAME, 1);
+    const rq = indexedDB.open(IDB_NAME, 2);
     rq.onupgradeneeded = () => {
       const db = rq.result;
       if (!db.objectStoreNames.contains(IDB_STORE)) {
         const st = db.createObjectStore(IDB_STORE, { keyPath: 'id' });
         st.createIndex('run', 'run', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('archive')) {
+        const st = db.createObjectStore('archive', { keyPath:'id' });
+        st.createIndex('run', 'run', { unique:false });
       }
     };
     rq.onsuccess = () => res(rq.result);
@@ -115,11 +187,14 @@ function idb() {
   return idbP;
 }
 async function bookPut(rec) {
+  return bookPutMany([rec]);
+}
+async function bookPutMany(records) {
   const db = await idb();
   return new Promise((res, rej) => {
     const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(rec);
-    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    for (const rec of records) tx.objectStore(IDB_STORE).put({ ...rec, html:safeChapter(rec.html) });
+    tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error || new Error('章节写入中断'));
   });
 }
 async function bookAll(run) {
@@ -132,13 +207,68 @@ async function bookAll(run) {
   });
 }
 async function bookClear(run) {
-  const db = await idb(), rows = await bookAll(run);
+  const db = await idb(), rows = await bookAll(run), archive = await archiveAll(run);
   return new Promise((res, rej) => {
-    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const tx = db.transaction([IDB_STORE,'archive'], 'readwrite');
     const st = tx.objectStore(IDB_STORE);
     for (const r of rows) st.delete(r.id);
-    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    for (const r of archive) tx.objectStore('archive').delete(r.id);
+    tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error);
   });
+}
+async function archiveAll(run) {
+  const db=await idb();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction('archive','readonly'), rq=tx.objectStore('archive').index('run').getAll(run);
+    rq.onsuccess=()=>res((rq.result||[]).sort((a,b)=>a.order-b.order));rq.onerror=()=>rej(rq.error);
+  });
+}
+async function archivePut(records) {
+  if (!records.length) return;
+  const db=await idb();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction('archive','readwrite'),st=tx.objectStore('archive');
+    for(const r of records)st.put(r);
+    tx.oncomplete=()=>res();tx.onerror=tx.onabort=()=>rej(tx.error||new Error('历史归档中断'));
+  });
+}
+const archiving = new WeakSet(), archiveTasks = new WeakMap();
+async function recallHistory(state, action) {
+  if (!state.archiveOrder || !/(回顾|以前|当年|之前|上次|曾经|历史|原先|最早|那件|earlier|previous|recall|before)/i.test(String(action))) return '';
+  const tokens=new Set();
+  for(const part of String(action).match(/[a-z0-9]{2,}|[\u4e00-\u9fff]{2,}/gi)||[]) {
+    if (/^[a-z0-9]+$/i.test(part)) tokens.add(part.toLowerCase());
+    else for(let i=0;i<part.length-1;i++)tokens.add(part.slice(i,i+2));
+  }
+  for(const n of state.npcs||[])if(String(action).includes(n.name))tokens.add(n.name.toLowerCase());
+  const rows=await archiveAll(state.runId), seen=new Set();
+  const hits=rows.map(r=>{const text=JSON.stringify(r.value).toLowerCase();return {r,score:Array.from(tokens).reduce((n,t)=>n+(text.includes(t)?1:0),0)};})
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score||b.r.order-a.r.order).filter(x=>{
+      const key=x.r.kind+':'+x.r.value.seg;if(seen.has(key))return false;seen.add(key);return true;
+    }).slice(0,6).map(x=>({id:x.r.id,kind:x.r.kind,record:x.r.value}));
+  return '\n【从本局完整历史检索的原文；以最新世界改写为准】\n'+JSON.stringify(hits);
+}
+function queueArchive(state) {
+  if (archiving.has(state) || !state.runId) return archiveTasks.get(state);
+  const plan=E.fiatArchivePlan(state);
+  if (!plan.length) return Promise.resolve();
+  archiving.add(state);
+  const order=state.archiveOrder||0, records=[];
+  for (const p of plan) for (const value of p.values) {
+    const n=order+records.length+1;records.push({id:state.runId+'-archive-'+n,run:state.runId,order:n,kind:p.kind,value});
+  }
+  const task=archivePut(records).then(()=>{
+    // 只有写入成功才裁活动窗口。等待期间追加的记录保留。
+    for (const p of plan) p.owner[p.key].splice(0,p.count);
+    state.archiveOrder=order+records.length;
+    state.archiveCounts=state.archiveCounts||{};
+    for(const p of plan)state.archiveCounts[p.kind]=(state.archiveCounts[p.kind]||0)+p.count;
+    if (S===state) saveGame();
+  }).catch(e=>{
+    console.warn('历史仍保留在主档中',e);
+    if (!queueArchive.warned) {queueArchive.warned=true;toast('历史暂未归档，原文仍保留。请导出备份，稍后会再尝试。');}
+  }).finally(()=>{archiving.delete(state);archiveTasks.delete(state);});
+  archiveTasks.set(state,task);return task;
 }
 
 /* ================= 接口 ================= */
@@ -359,7 +489,7 @@ const FREE_NOTE = {
 
 /* ================= 口径 ================= */
 const PERSON = () => cfg.person === 'ta'
-  ? `【人称】通篇用第三人称写主角，主语用他的名字或者"他"。`
+  ? `【人称】通篇用第三人称写主角，主语用主角的名字或者"${S && S.player.gender === '女' ? '她' : '他'}"。`
   : `【人称】通篇用第二人称写主角：主语是"你"，不许用他的名字当主语，也不许用"他""主角"指代主角。别人说话时可以直接叫他的名字。`;
 
 const SAY_RULE = `【必须有人说话】这是最要紧的一条。
@@ -631,7 +761,7 @@ function rosterBlock() {
   if (!S.npcs.length) return '【人物名册】（还没认识什么人）';
   return `【人物名册（主角认识的所有人，按认识先后；身份、性别、年龄、关系以这里为准，不许改，不许把两个人当成一个，不许让已经认识的人重新认识主角）】
 ${S.npcs.slice(0, 80).map(n => {
-    const age = n.age ? `${n.age + (S.date.y - (n.ageY || S.date.y))}岁` : '年龄未定';
+    const age = (n.age || E.fdm(S).fiat) ? `${E.personAge(S,n)}岁` : '年龄未定';
     const bits = [n.gender || '性别未定', age, callName(n) || n.tie || '关系未定', n.job || '干什么的未定'].join('｜');
     const g = E.npcGap(S, n);
     return `- ${n.name}：${bits}${n.note ? '｜' + n.note : ''}${n.pos ? `｜位置：${n.pos}${g != null ? `（${E.gapWord(g)}）` : ''}` : ''}${(n.facts || []).length ? `｜要一直记着：${n.facts.join('；')}` : ''}`;
@@ -1033,15 +1163,28 @@ function updateChapterNarrative(t) {
 function scrollDown() { const s = $('story'); s.scrollTop = s.scrollHeight; }
 async function finishChapter() {
   if (!curChapter) return;
-  S.chapters.push(curChapter.outerHTML);
+  curChapter.setAttribute('data-chapter-seq', String(S.seg));
+  const snapshot=curChapter.cloneNode(true);
+  snapshot.querySelectorAll('.fdie').forEach(fd=>{
+    if (/^\d+$/.test(fd.dataset.v || '')) { fd.textContent=fd.dataset.v;fd.classList.remove('rolling'); }
+  });
+  const rec = { seq:S.seg, html:safeChapter(snapshot.outerHTML) };
+  S.chapters.push(rec.html);
   S.chapters = S.chapters.slice(-40);
+  S.unfiledChapters = (S.unfiledChapters || []).filter(r => r.seq !== rec.seq).concat([rec]);
+  saveGame();
   if (S.runId) {
-    try { await bookPut({ id: S.runId + '-' + S.seg, run: S.runId, seq: S.seg, html: curChapter.outerHTML }); } catch (_) { }
+    const state = S, pending = state.unfiledChapters.slice();
+    try {
+      await bookPutMany(pending.map(r => ({ ...r, run:state.runId, id:state.runId+'-'+r.seq })));
+      state.unfiledChapters = state.unfiledChapters.filter(r => !pending.includes(r));
+    } catch (_) { toast('章节暂存在进度里，全文库恢复后会补存'); }
   }
   curChapter = null;
+  saveGame();
 }
 
-function cashText(v) { const n=Number(v); return Math.abs(n)>=1e18 ? n.toExponential(4) : n.toLocaleString('zh-CN'); }
+function cashText(v) { const n=Number(v); if(!Number.isFinite(n))return '超大数额'; return Math.abs(n)>=1e18 ? n.toExponential(4) : n.toLocaleString('zh-CN'); }
 function rebuildTop() {
   if (!S) return;
   const p = S.player;
@@ -1162,9 +1305,16 @@ function fiatPrompt(action, settledNote) { return `【眼下的世界与已有�
 function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
 async function doFiatAction(action, typed, settledNote) {
   if (busy || !S || !String(action || '').trim()) return;
+  const state=S;
+  setBusy(true, '正在保存已有进度……');
+  let recalled='';
+  try { await queueArchive(state); recalled=await recallHistory(state,action); }
+  catch(e) {toast('历史暂时读不出来，原进度仍保留，请稍后再试');return;}
+  finally {setBusy(false);}
+  if (S!==state) return;
   S.lastAction = String(action); S.actTyped = !!typed; S.plan = null;
   S.seg++; S.stats.segs++;
-  S.pending = { fiat:true, prompt:fiatPrompt(action, settledNote), system:fiatSystem(), action:String(action), head:E.shortDate(S.date), sub:'言出法随', busyText:'正在兑现你的指令……' };
+  S.pending = { fiat:true, prompt:fiatPrompt(action, settledNote)+recalled, system:fiatSystem(), action:String(action), head:E.shortDate(S.date), sub:'言出法随', busyText:'正在兑现你的指令……' };
   closePanel(); $('key').classList.remove('on');
   saveGame(); beginChapter(S.pending.head, S.pending.sub, action, null); renderOptions([]);
   await writePending();
@@ -1174,6 +1324,7 @@ async function writeFiatPending(P) {
   let settled;
   try {
     const raw = await llmJSON(P.prompt, text => { const n=extractPartialField(text,'narrative'); if(n) updateChapterNarrative(n); }, { system:P.system || fiatSystem() });
+    await queueArchive(S);
     settled = E.settleFiatTurn(S, raw, P.action);
   } catch(e) {
     updateChapterNarrative('（这次回复尚未收完整，没有结算财富、时间或改写世界。可重试，也可以输入新指令。）');
@@ -1184,8 +1335,10 @@ async function writeFiatPending(P) {
   if (curChapter) { const mark=curChapter.querySelector('.chapmark'); if(mark) mark.textContent=E.shortDate(S.date); }
   updateChapterNarrative(settled.narrative); saveGame();
   try { await finishChapter(); } catch(e) { console.error('保存章节：',e); }
-  rebuildTop(); renderPanel(); renderOptions(S.lastOptions);
-  setBusy(false);
+  await queueArchive(S);
+  try { rebuildTop(); renderPanel(); renderOptions(S.lastOptions); }
+  catch(e) { console.error(e); closePanel(); renderOptions(S.lastOptions); toast('进度已保存，面板暂未展开，可以继续行动'); }
+  finally { setBusy(false); }
 }
 function returnToFiatInput() { if(busy)return; $('key').classList.remove('on'); closePanel(); renderOptions(S.lastOptions); $('freeAct').focus(); }
 function fiatWorldCard() {
@@ -1193,7 +1346,7 @@ function fiatWorldCard() {
   if(!W) return '';
   const groups=[['世界规则',W.rules],['已兑现的事实与能力',W.facts],['资产',W.assets],['持有的事业',W.businesses],['住处与房产',W.homes]];
   const description=x=>[typeof x.detail==='string'?x.detail:'',x.place,x.kind,x.price!==undefined?'价值'+cashText(x.price)+'元':'',x.quantity!==undefined?'数量'+x.quantity:'',Array.isArray(x.staff)?'团队'+x.staff.length+'人':''].filter(Boolean).join(' · ') || '已兑现';
-  return `<h4>言出法随 · 我的世界</h4><div class="card">${groups.map(([name,list])=>!list || !list.length ? '' : `<h4>${name}</h4>${list.map(x=>`<div class="li"><b>${esc(x.name)}</b><div class="tip">${esc(description(x))}</div></div>`).join('')}`).join('')}<div class="tip">已兑现 ${(W.commands||[]).length} 条指令；这些设定会随存档保留，并带入后续剧情。</div></div>`;
+  return `<h4>言出法随 · 我的世界</h4><div class="card">${groups.map(([name,list])=>!list || !list.length ? '' : `<h4>${name}</h4>${list.map(x=>`<div class="li"><b>${esc(x.name)}</b><div class="tip">${esc(description(x))}</div></div>`).join('')}`).join('')}<div class="tip">已兑现 ${(S.archiveCounts && S.archiveCounts.commands || 0)+(W.commands||[]).length} 条指令；这些设定会随存档保留，并带入后续剧情。</div></div>`;
 }
 // 玩家亲手写的一句话，先拆成引擎能执行的步骤（不写故事）
 const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。
@@ -1618,8 +1771,8 @@ function renderPanel() {
     }).join('');
     box.innerHTML = head + `<button class="ghost sm gmake" onclick="openMakeGroup()">＋ 发起群聊</button><div class="msgs">${groups}${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
-        return `<div class="thread" onclick="openThread('${esc(r.name)}')">
-          <span class="facetap" onclick="event.stopPropagation();openCard('${esc(r.name)}')">${faceHtml(S, r.name, 'sm')}</span>
+        return `<div class="thread" ${actionAttrs('openThread',[r.name])}>
+          <span class="facetap" ${actionAttrs('openCard',[r.name])}>${faceHtml(S, r.name, 'sm')}</span>
           <div class="thbody">
             <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
@@ -1635,10 +1788,10 @@ function renderPanel() {
   } else if (curTab === 'book') {
     const loan = E.homePayment(S), kid = E.kidCost(S);
     const bizNet = S.biz && !S.biz.dead ? E.num(S.biz.net) : 0;
-    const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 ? x.monthly : 0), 0);
+    const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 || x.owe > 0 ? x.monthly : 0), 0);
     const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit + bankPay;
     const net = (S.job.out ? L.subsidy : inc) - out + bizNet;
-    const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${Math.abs(v).toLocaleString('zh-CN')}</span></div>`;
+    const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${cashText(Math.abs(v))}</span></div>`;
     box.innerHTML = `<h3>账本</h3>
     <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">${p.wealthLabel ? esc(p.wealthLabel) : '¥'+cashText(p.money)}</div><div class="tip">存款</div></div>
     <h4>每个月固定的</h4>
@@ -1652,7 +1805,7 @@ function renderPanel() {
       ${row('吃穿用度', L.living, -1)}
       ${kid ? row('养孩子', kid, -1) : ''}
       ${L.remit ? row('寄回家', L.remit, -1) : ''}
-      <div class="sum"><b>一个月剩</b><span class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '−' : ''}${Math.abs(net).toLocaleString('zh-CN')}</span></div>
+      <div class="sum"><b>一个月剩</b><span class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '−' : ''}${cashText(Math.abs(net))}</span></div>
     </div>
     <div class="tip" style="margin-top:6px">${S.broke ? '账上已经是负的了，做什么都差一口气。'
       : net >= 0 ? `照这样过，一个月能剩 ${net}${bizNet ? '（生意按上个月算）' : ''}。剧情里额外的进出不算在内，看下面的明细。`
@@ -1669,7 +1822,7 @@ function renderPanel() {
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
-    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
+    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${esc(p.gender)}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
     ${fiatWorldCard()}
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
@@ -1734,23 +1887,23 @@ function renderAcct() {
   const isCur = acctMonth === cur || i === ks.length - 1 && acctMonth > cur;
   const close = i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
   const rows = M.rows.slice();
-  const sum = rows.reduce((a, r) => a + r.amt, 0);
+  const sum = rows.reduce((a, r) => E.finiteNumber(a + r.amt), 0);
   const odd = Math.round(close - M.open - sum);
-  const fmt = v => (v < 0 ? '−' : '+') + Math.abs(v).toLocaleString('zh-CN');
+  const fmt = v => (v < 0 ? '−' : '+') + cashText(Math.abs(v));
   const [y, m] = acctMonth.split('-').map(Number);
   const tabs = ks.slice(-6).map(k => { const [yy, mo] = k.split('-').map(Number); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
-  const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => a + r.amt, 0) + Math.max(0, odd);
-  const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => a + r.amt, 0) + Math.min(0, odd);
+  const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.max(0, odd);
+  const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.min(0, odd);
   return `<div class="segs wrap acctTabs">${tabs}</div>
     <div class="acct">
-      <div class="acctrow open"><span></span><span>${m}月初存款</span><span>${M.open.toLocaleString('zh-CN')}</span></div>
+      <div class="acctrow open"><span></span><span>${m}月初存款</span><span>${cashText(M.open)}</span></div>
       ${rows.map(r => `<div class="acctrow"><span>${r.d}日</span><span>${esc(r.item)}${r.note ? `<i>${esc(r.note)}</i>` : ''}</span><span class="${r.amt < 0 ? 'bad' : 'good'}">${fmt(r.amt)}</span></div>`).join('')}
       ${odd ? `<div class="acctrow"><span></span><span>零碎<i>没单独记的小进出</i></span><span class="${odd < 0 ? 'bad' : 'good'}">${fmt(odd)}</span></div>` : ''}
     </div>
     <div class="lines acctsum">
-      <div><b>这个月进</b><span class="good">+${inSum.toLocaleString('zh-CN')}</span></div>
-      <div><b>这个月出</b><span class="bad">−${Math.abs(outSum).toLocaleString('zh-CN')}</span></div>
-      <div class="sum"><b>${isCur ? '到今天' : `${m}月底`}存款</b><span class="${close < 0 ? 'bad' : ''}">${close.toLocaleString('zh-CN')}</span></div>
+      <div><b>这个月进</b><span class="good">+${cashText(inSum)}</span></div>
+      <div><b>这个月出</b><span class="bad">−${cashText(Math.abs(outSum))}</span></div>
+      <div class="sum"><b>${isCur ? '到今天' : `${m}月底`}存款</b><span class="${close < 0 ? 'bad' : ''}">${cashText(close)}</span></div>
     </div>`;
 }
 function paceCard() {
@@ -1778,7 +1931,7 @@ function renderLadder() {
   box.push(`<h3>理想</h3>
     <div class="card"><div class="big">${esc(S.player.ideal)}</div>
       <div class="tip">${esc(S.player.track)}｜${esc(S.player.skillName)} ${S.player.attrs['专业']}｜在这件事上攒的功夫 ${Math.round(S.ideal.progress)}</div></div>`);
-  if (!S.ideal.stages.length) { box.push('<div class="card tip">这一局没立下阶梯（老存档），下一局开局时会生成。</div>'); return box.join(''); }
+  if (!S.ideal.stages.length) box.push('<div class="card"><div class="tip">还没有设定理想阶梯，未了的事和约定照常记录。你可以继续行动、实现自己的目标。</div><button class="ghost" style="margin-top:8px" onclick="repairLadder()">补上理想阶梯</button></div>');
 
   S.ideal.stages.forEach((st, i) => {
     box.push(`<h4>第${i + 1}段　${esc(st.name)}</h4><div class="card">`);
@@ -1805,6 +1958,19 @@ function renderLadder() {
     : '<div class="tip">没有</div>'}</div>`);
   if (S.stats.keys) box.push(`<div class="card tip">关键局打过 ${S.stats.keys} 场，谈成 ${S.stats.keyWins || 0} 场。</div>`);
   return box.join('');
+}
+async function repairLadder() {
+  if (!canAct() || S.ideal.stages.length) return;
+  const state=S;
+  setBusy(true,'正在整理理想阶梯……');
+  try {
+    const d=await llmJSON(`${stateBlocks()}\n只为主角现有理想补建今后的阶梯，不推进时间、不改财富、不重写已完成的经历。按当前能力与资历拆成三段，每段三个可行动的里程碑，不设置认识多少人的门槛。metric只能是${Object.keys(E.METRICS).join('/')}；scene只能是${E.SCENES.join('/')}。只返回JSON：{"ladder":[{"name":"阶段","milestones":[{"title":"具体成果","desc":"说明","metric":"投入","need":60,"scene":"提案","gate":"达成时需要谈的事情"}]}]}`,null,{maxTokens:2400});
+    const ladder=E.normLadder(d.ladder);
+    if(!ladder.length) throw Error('没有收到完整阶梯，请稍后再试');
+    if(S!==state || S.ideal.stages.length) return;
+    S.ideal.stages=ladder;saveGame();renderPanel();toast('阶梯已补上，已有进度和约定都保留');
+  } catch(e) {toast(e.message||'阶梯还没整理好，可以重试');}
+  finally {setBusy(false);}
 }
 
 /* ================= 关键局 ================= */
@@ -1996,7 +2162,7 @@ function showNpc(name) {
   if (!n) return;
   const gap = S.stats.days - (n.lastSeen || 0);
   $('npcBox').innerHTML = `<div class="cardhead">${faceHtml(S, n.name, 'lg')}<div><h2>${esc(n.name)}</h2>
-    <div class="tip">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div></div></div>
+    <div class="tip">${n.age || E.fdm(S).fiat ? E.personAge(S,n) + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div></div></div>
     <div class="card" style="margin-top:14px"><div class="lines">
       <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
       ${n.intimate ? `<div><b>你们之间</b><span>${esc(n.intimate.first)}起有过关系${n.intimate.times > 1 ? `，${n.intimate.times}回` : ''}</span></div>` : ''}
@@ -2006,17 +2172,17 @@ function showNpc(name) {
       ${n.pos ? `<div><b>位置</b><span>${esc(n.pos)}${E.npcGap(S, n) != null ? `｜${E.npcGap(S, n) > 0 ? '比你高' + E.npcGap(S, n) + '级' : E.npcGap(S, n) === 0 ? '跟你平级' : '比你低' + (-E.npcGap(S, n)) + '级'}` : ''}</span></div>` : ''}
     </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
     ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.slice(-8).reverse().map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
-    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="ghost" onclick="giveFromCard('${esc(n.name)}')">送东西</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="ghost" ${actionAttrs('giveFromCard',[n.name])}>送东西</button><button class="primary" ${actionAttrs('openConvo',[n.name],true)}>找他聊聊</button></div>
     ${!E.partnerOf(S) && (n.rel >= 55 || n.intimate) && !/爱人|前任|前妻|前夫/.test(n.tie || '') && !isKin(n.tie)
-      ? `<div class="btns"><button class="ghost" onclick="mask('npcMask',false);askLove('${esc(n.name)}')">把话挑明</button></div>`
+      ? `<div class="btns"><button class="ghost" ${actionAttrs('askLove',[n.name],true)}>把话挑明</button></div>`
       : ''}`;
   mask('npcMask', true);
 }
 function giveFromCard(name) {
   const B = E.bag(S);
   sheet(`<h2>给${esc(name)}送点什么</h2><div class="tip" style="margin-top:-10px">见面送过去。</div>
-    <div class="card" style="margin-top:14px">${B.map(b => `<div class="li tap" onclick="doGive('${esc(name)}',${b.uid})"><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
-    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" onclick="openShop('礼物','${esc(name)}')">现买一样</button></div>`);
+    <div class="card" style="margin-top:14px">${B.map(b => `<div class="li tap" ${actionAttrs('doGive',[name,b.uid])}><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" ${actionAttrs('openShop',['礼物',name])}>现买一样</button></div>`);
 }
 // 点头像看名片：只在消息里出现过、还没进通讯录的人，先补进来
 function openCard(name) {
@@ -2054,7 +2220,7 @@ function convoHead(n) {
   return `${worldRules(true)}
 
 你现在扮演的是【${n.name}】。
-【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}，属于「${E.TIERS[E.relTier(n.rel)]}」这一档）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
+【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}，属于「${E.TIERS[E.relTier(n.rel)]}」这一档）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【他的说话习惯（一直照这个来）】${n.talk || E.talkOf(n)}
 ${n.pos ? `【他的位置】${n.pos}${E.npcGap(S, n) != null ? `，${E.gapWord(E.npcGap(S, n))}：说话的分寸照这个来，跟关系好坏叠在一起` : ''}\n` : ''}【主角的位置】${E.posOf(S).job.out ? '眼下没工作' : E.posOf(S).job.title}${E.posOf(S).field ? '，圈子里' + E.posOf(S).field.title : ''}，在世人眼里：${E.BANDS[E.standing(S)]}
 【他最近在忙】${(n.busy && n.busy.t) || '老样子'}
@@ -2241,8 +2407,8 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + convoPrompt(n, say, judge), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
-    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
+    const d = E.sanitizeConvo(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n'+await recallHistory(S,say) : '') + convoPrompt(n, say, judge), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
+    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -2321,7 +2487,7 @@ const GROUP_RULES = `怎么写：
 function groupPrompt(g, say) {
   const c = S.convo;
   const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
-  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
+  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
   const L = c.lines.filter(l => l.who !== 'sys');
   const keep = L.slice(-30);
   const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
@@ -2354,8 +2520,8 @@ async function groupTurn(say) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeGroup(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + groupPrompt(g, say), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
-    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
+    const d = E.sanitizeGroup(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n'+await recallHistory(S,say) : '') + groupPrompt(g, say), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
+    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
     for (const r of d.replies) c.lines.push({ who: 'ta', from: E.whoIs(S,r.who), text: r.text });
@@ -2493,7 +2659,7 @@ function momCs(m) {
   if (!m.cs.length) return '';
   return `<div class="momcs">${m.cs.map((c, i) => {
     const mine = c.who === S.player.name;
-    return `<div class="mc${mine ? '' : ' tap'}"${mine ? '' : ` onclick="doComment('${m.id}','${esc(c.who)}')"`}><b>${esc(c.who)}</b>${c.to ? `<i>回复</i><b>${esc(c.to)}</b>` : ''}：${esc(c.text)}</div>`;
+    return `<div class="mc${mine ? '' : ' tap'}"${mine ? '' : ` ${actionAttrs('doComment',[m.id,c.who])}`}><b>${esc(c.who)}</b>${c.to ? `<i>回复</i><b>${esc(c.to)}</b>` : ''}：${esc(c.text)}</div>`;
   }).join('')}</div>`;
 }
 function renderMoments() {
@@ -2530,7 +2696,7 @@ function doLike(id) {
 // 朋友圈里的人：身份、跟主角的关系、记得什么
 function momPeople(names) {
   return names.map(w => S.npcs.find(n => n.name === w)).filter(Boolean).map(n =>
-    `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.facts || []).length ? `；要一直记着：${n.facts.join('；')}` : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
+    `- ${n.name}：${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.facts || []).length ? `；要一直记着：${n.facts.join('；')}` : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
 }
 // 留言串：标清楚哪条是主角、哪条是发帖人自己
 function momThread(m) {
@@ -2701,7 +2867,7 @@ function renderHome() {
       <div class="tip">重心放在「顾家」才顾得上；一直不着家，热乎气一周一周往下掉。</div>
       <div class="btns">
         ${P.stage !== '结婚' ? `<button class="primary" onclick="askMarry()">求婚</button>` : ''}
-        <button class="ghost" onclick="openConvo('${esc(P.name)}')">说说话</button>
+        <button class="ghost" ${actionAttrs('openConvo',[P.name])}>说说话</button>
         <button class="ghost" onclick="doBreak()">分了</button>
       </div>`);
   } else {
@@ -2715,7 +2881,7 @@ function renderHome() {
   if (lv.length) {
     out.push(`<h4>有过关系的人</h4><div class="card">${lv.map(n => {
       const st = P && P.name === n.name ? P.stage : /前任|前妻|前夫/.test(n.tie || '') ? n.tie : '没名分';
-      return `<div class="li" onclick="showNpc('${esc(n.name)}')"><b>${esc(n.name)}</b><span class="rel">${esc(st)}</span>
+      return `<div class="li" ${actionAttrs('showNpc',[n.name])}><b>${esc(n.name)}</b><span class="rel">${esc(st)}</span>
         <div class="tip">${esc([callName(n), `${n.intimate.first}头一回`, n.intimate.times > 1 ? `${n.intimate.times}回` : '', `最近${n.intimate.last}`, `关系${relWord(n.rel, n.tie)}`].filter(Boolean).join('｜'))}</div></div>`;
     }).join('')}
       ${!P ? '<div class="tip">想给谁一个名分，点开他的名片「把话挑明」。</div>' : ''}</div>`);
@@ -3040,7 +3206,7 @@ function openBorrow() {
   if (!cand.length) { toast('眼下没有能开口的人'); return; }
   $('npcBox').innerHTML = `<h2>找谁开口</h2><div class="tip" style="margin-top:-10px">开口是要还的，还不上关系就完了。</div>
     <div class="card" style="margin-top:14px">${cand.sort((a, b) => b.rel - a.rel).map(n =>
-      `<div class="li" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')"><b>${esc(n.name)}</b>
+      `<div class="li" ${actionAttrs('openConvo',[n.name],true)}><b>${esc(n.name)}</b>
         <span class="rel">${relWord(n.rel, n.tie)}</span><div class="tip">${esc(callName(n))}${callName(n) && n.job ? '｜' : ''}${esc(n.job || '')}</div></div>`).join('')}</div>
     <div class="tip">进了聊天之后直接开口，对方答不答应由引擎掷骰。</div>
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">算了</button></div>`;
@@ -3170,7 +3336,7 @@ function openShop(cat, forWho) {
       const own = it.keep && E.hasItem(S, it.id);
       return `<div class="li"><div class="lirow"><b>${esc(it.name)}</b><span class="rel">${fr ? `<s>${pr}</s> ${off}` : pr}元</span></div>
         <div class="tip">${esc(itemDesc(it))}${it.tags.length ? `｜送人：${it.tags.join('、')}` : ''}${it.note ? '｜' + esc(it.note) : ''}</div>
-        <div class="lirow">${own ? '<span class="tip">已经有了</span>' : `${shopFor ? '' : `<button class="ghost sm" onclick="doBuy('${it.id}',false)">买</button>`}${fr ? `<button class="ghost sm" onclick="doBuy('${it.id}',true)">找${esc(fr.name)}买</button>` : ''}${shopFor || !it.keep ? `<button class="ghost sm" onclick="doBuy('${it.id}',${fr ? 'true' : 'false'},'${esc(shopFor) || '?'}')">${shopFor ? `买了送${esc(shopFor)}` : '买了送人'}</button>` : ''}`}</div></div>`;
+        <div class="lirow">${own ? '<span class="tip">已经有了</span>' : `${shopFor ? '' : `<button class="ghost sm" onclick="doBuy('${it.id}',false)">买</button>`}${fr ? `<button class="ghost sm" onclick="doBuy('${it.id}',true)">找${esc(fr.name)}买</button>` : ''}${shopFor || !it.keep ? `<button class="ghost sm" ${actionAttrs('doBuy',[it.id,!!fr,shopFor || '?'])}>${shopFor ? `买了送${esc(shopFor)}` : '买了送人'}</button>` : ''}`}</div></div>`;
     }).join('')}</div>
     <div class="tip">账上 ${S.player.money} 元。${E.bag(S).length ? `包里有 ${E.bag(S).length} 样东西，在「我」里看。` : ''}</div>
     <div class="btns"><button class="ghost" onclick="shopFor='';sheetOff()">走了</button></div>`);
@@ -3209,7 +3375,7 @@ function pickGiveTarget(uid) {
   if (S.convo && !S.convo.group) { doGive(S.convo.name, uid); return; }
   const cand = S.npcs.slice().sort((a, b2) => b2.rel - a.rel).slice(0, 30);
   sheet(`<h2>把${esc(b.name)}送给谁</h2><div class="tip" style="margin-top:-10px">见面送过去。太贵的东西，关系不到的人可能不收。</div>
-    <div class="card" style="margin-top:14px">${cand.map(n => `<div class="li tap" onclick="doGive('${esc(n.name)}',${uid})"><b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span>
+    <div class="card" style="margin-top:14px">${cand.map(n => `<div class="li tap" ${actionAttrs('doGive',[n.name,uid])}><b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span>
       <div class="tip">${esc(callName(n))}${n.care ? '｜在意' + esc(n.care) : ''}</div></div>`).join('') || '<div class="tip">还不认识什么人</div>'}</div>
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
@@ -3241,8 +3407,8 @@ function chatGift() {
   if (!c || c.group) return;
   const B = E.bag(S);
   sheet(`<h2>送${esc(c.name)}点东西</h2>
-    <div class="card">${B.map(b => `<div class="li tap" onclick="doGive('${esc(c.name)}',${b.uid})"><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
-    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" onclick="openShop('礼物','${esc(c.name)}')">现买一样</button></div>`);
+    <div class="card">${B.map(b => `<div class="li tap" ${actionAttrs('doGive',[c.name,b.uid])}><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" ${actionAttrs('openShop',['礼物',c.name])}>现买一样</button></div>`);
 }
 
 /* ---- 找点乐子 ---- */
@@ -3316,8 +3482,8 @@ function gigCard() {
   const off = S.gigOffer && S.stats.days - S.gigOffer.day <= 14 && !G.some(x => x.name === S.gigOffer.gig) ? S.gigOffer : null;
   return `${G.map(g => `<div class="li"><div class="lirow"><b>${esc(g.name)}</b><span class="rel">${E.gigWhen(g.name)}</span></div>
       <div class="tip">一次大概${E.gigPay(S, g.name)}，耗精力${E.GIGS[g.name].en}｜${esc(g.since)}起做了${g.times}次，一共挣了${E.num(g.total) + E.num(g.owed)}${g.owed ? `（这周的${g.owed}周日结）` : ''}</div>
-      <div class="lirow"><button class="ghost sm" onclick="doDropGig('${esc(g.name)}')">不干了</button></div></div>`).join('') || '<div class="tip">没在做兼职</div>'}
-    ${off ? `<div class="li"><b>${esc(off.who)}介绍的${esc(off.gig)}</b><div class="tip">${E.gigWhen(off.gig)}，一次大概${E.gigPay(S, off.gig)}</div><div class="lirow"><button class="ghost sm" onclick="doTakeGig('${esc(off.gig)}',true)">接</button></div></div>` : ''}
+      <div class="lirow"><button class="ghost sm" ${actionAttrs('doDropGig',[g.name])}>不干了</button></div></div>`).join('') || '<div class="tip">没在做兼职</div>'}
+    ${off ? `<div class="li"><b>${esc(off.who)}介绍的${esc(off.gig)}</b><div class="tip">${E.gigWhen(off.gig)}，一次大概${E.gigPay(S, off.gig)}</div><div class="lirow"><button class="ghost sm" ${actionAttrs('doTakeGig',[off.gig,true])}>接</button></div></div>` : ''}
     <div class="btns"><button class="ghost" onclick="openGigs()">找份兼职</button></div>
     <div class="tip">${E.fdm(S).fiat ? '言出法随：兼职数量和时间冲突不设门槛。' : '最多两份。做兼职那个时段就干不了别的，日程照它排。'}</div>`;
 }
@@ -3346,18 +3512,18 @@ async function doDropGig(k) {
 
 
 /* ---- 银行：手机银行办，不占时间 ---- */
-const yuan = v => Math.round(v).toLocaleString('zh-CN');
+const yuan = v => cashText(Math.round(v));
 function bankCard() {
   const B = E.bankOf(S);
   const fv = E.fundValue(S);
-  const L = B.loans.filter(x => x.left > 0);
+  const L = B.loans.filter(x => x.left > 0 || x.owe > 0);
   const li = (title, right, tip, btns) => `<div class="li"><div class="lirow"><b>${title}</b><span class="rel">${right}</span></div>${tip ? `<div class="tip">${tip}</div>` : ''}${btns ? `<div class="lirow">${btns}</div>` : ''}</div>`;
   const rows = [];
   for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，到期自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
   if (B.mmf >= 1) rows.push(li('货币基金', yuan(Math.floor(B.mmf)), `年化1.5%上下，累计收益${yuan(B.mmfGain)}`, `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>`));
   for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜${esc(w.due)}到期，之前取不出来`));
   if (B.fund.units > 0) rows.push(li('股票基金', yuan(fv), `本金${yuan(B.fund.cost)}，<span class="${fv >= B.fund.cost ? 'good' : 'bad'}">${fv >= B.fund.cost ? '赚' : '亏'}${yuan(Math.abs(fv - B.fund.cost))}</span>｜净值${B.nav.toFixed(3)}`, `<button class="ghost sm" onclick="bankDo('fundOut')">卖掉</button>`));
-  for (const l of L) rows.push(li(l.kind, `还欠${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.late ? `｜<u>逾期${l.late}个月，欠着${yuan(l.owe)}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">提前还</button>`));
+  for (const l of L) rows.push(li(esc(l.kind), `本金${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.owe ? `｜<u>逾期未补${yuan(l.owe)}${l.late ? '，'+l.late+'个月' : ''}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">${l.left ? '提前还' : '补欠款'}</button>`));
   return `<h4>银行</h4><div class="card">
     <div class="lines"><div><b>征信</b><span class="${B.credit < 45 ? 'bad' : B.credit >= 65 ? 'good' : ''}">${E.creditWord(B.credit)}</span></div>
     <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
@@ -3392,7 +3558,7 @@ async function bankDo(what, id) {
   }
   if (what === 'prepay') {
     const l = E.bankOf(S).loans.find(x => x.id === id);
-    const v = await actionAsk({ title: `提前还${l.kind}`, text: `还欠 ${l.left}，账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+    const v = await actionAsk({ title: `提前还${l.kind}`, text: `本金还欠 ${l.left}，逾期未补 ${l.owe || 0}；欠息和罚息会一并结清。账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
     if (v === null) return;
     return bankAfter(E.prepay(S, id, Number(v)));
   }
@@ -3566,37 +3732,47 @@ function saveCfg() {
 // （同一个网址下几个游戏共用这点空间，满了存档就悄悄写不进去，刷新后日子会倒回去）
 function saveGame() {
   if (!S) return;
+  E.finiteState(S);
   if (S.chapters && S.chapters.length > 12) S.chapters = S.chapters.slice(-12);
   const j = JSON.stringify(S);
-  let ok = true;
-  try { localStorage.setItem(LS_SAVE, j); }
-  catch (_) {
-    try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.setItem(LS_SAVE, j); }
-    catch (e2) { ok = false; }
-  }
-  if (ok) { try { localStorage.setItem(LS_SAVE + '_bak', j); } catch (_) { try { localStorage.removeItem(LS_SAVE + '_bak'); } catch (__) { } } }
+  let ok = true, old = null;
+  try { old = localStorage.getItem(LS_SAVE); localStorage.setItem(LS_SAVE, j); }
+  catch (_) { ok = false; } // setItem 失败保留原值，绝不能先删原档腾空间。
+  if (ok) { try { localStorage.setItem(LS_SAVE + '_bak', validSave(old) ? old : j); } catch (_) { } }
   if (!ok && !saveGame.warned) { saveGame.warned = true; toast('存档写不进去了：浏览器空间满了，去设置里导出存档'); }
+  queueArchive(S);
+}
+function validSave(raw) {
+  if (!raw) return null;
+  try { let d = JSON.parse(raw); if (d && d.save) d = d.save; return E.migrate(d); } catch (_) { return null; }
 }
 function loadGame() {
-  let raw = localStorage.getItem(LS_SAVE);
-  if (!raw) { raw = localStorage.getItem(LS_SAVE + '_bak'); if (raw) { try { localStorage.setItem(LS_SAVE, raw); } catch (_) { } console.warn('主存档不见了，从备份接上'); } }
-  if (!raw) return false;
-  let data = null;
-  try { data = JSON.parse(raw); } catch (_) { data = null; }
-  if (data && data.save && data.save.player) data = data.save;     // 整个导出包被塞进来的
-  try { S = data ? E.migrate(data) : null; } catch (e) { console.error('存档补齐出错', e); S = null; }
+  const raw = localStorage.getItem(LS_SAVE), backup = localStorage.getItem(LS_SAVE + '_bak');
+  S = validSave(raw);
+  if (!S) {
+    if (raw) { try { localStorage.setItem(LS_SAVE + '_broken', raw); } catch (_) { } }
+    S = validSave(backup);
+    if (S) { try { localStorage.setItem(LS_SAVE, backup); } catch (_) { } console.warn('主存档不可用，从有效备份接上'); }
+  }
+  if (!raw && !backup) return false;
   if (!S) {
     // 读不出来：先把原样留一份，别让新开的一局把它盖掉
     try { localStorage.setItem(LS_SAVE + '_broken', raw); } catch (_) { }
     loadErr = '上次的存档读不出来，原样另存了一份，没有被盖掉';
     return false;
   }
+  safeSaveChapters(S);
   try { ensureFaces(S); } catch (e) { console.error(e); }
   try { $('story').innerHTML = S.chapters.join(''); } catch (_) { $('story').innerHTML = ''; }
-  if (S.runId) bookAll(S.runId).then(rows => {
-    if (!rows || rows.length <= S.chapters.length) return;
-    $('story').innerHTML = rows.map(r => r.html).join('');
+  const state = S, seq = S.seg;
+  if (S.runId) bookAll(S.runId).then(async rows => {
+    const merged = mergeBook(state, rows);
+    if (S !== state || S.seg !== seq) return;
+    $('story').innerHTML = merged.map(r => r.html).join('');
     scrollDown();
+    await bookPutMany(merged);
+    state.unfiledChapters = [];
+    saveGame();
   }).catch(() => { });
   try {
     rebuildTop();
@@ -3626,20 +3802,26 @@ async function restart() {
 }
 async function exportSave() {
   if (!S) return;
-  let rows = [];
-  try { rows = await bookAll(S.runId); } catch (_) { }
+  const state = S;
+  await queueArchive(state);
+  let rows = [], archive = [], fullBook = true;
+  try { rows = await bookAll(state.runId); archive = await archiveAll(state.runId); }
+  catch (_) {
+    if (state.archiveOrder) { toast('历史库暂时读不出来，请稍后重试导出，完整原文仍在本机'); return; }
+    fullBook=false;
+  }
   const pack = {
     what: '现代生活模拟器·存档', v: 1, at: new Date().toISOString(),
-    who: `${S.player.name} ${S.player.age}岁 ${E.dateStr(S.date)}`,
-    save: S, book: rows.map(r => ({ id: r.id, run: r.run, seq: r.seq, html: r.html }))
+    who: `${state.player.name} ${state.player.age}岁 ${E.dateStr(state.date)}`,
+    save: state, book: mergeBook(state, rows), archive, fullBook
   };
   const blob = new Blob([JSON.stringify(pack)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${S.player.name}-${S.date.y}年${S.date.m}月.mls.json`;
+  a.download = `${state.player.name}-${state.date.y}年${state.date.m}月.mls.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast('存档拿走了，另一台设备上导入就行');
+  toast(fullBook ? '存档拿走了，章节和归档历史都在里面' : '已导出当前进度；全文库暂不可读，文件仅含近期章节');
 }
 function importSave(file) {
   if (busy) { toast('先等这一段写完'); return; }
@@ -3654,26 +3836,30 @@ function importSave(file) {
     if (pack && pack.player && !pack.save) pack = { save: pack, book: [], who: `${pack.player.name || ''}` };   // 直接存的状态，不是导出包
     if (!pack || !pack.save || !pack.save.player) { toast('这不是这个游戏的存档'); return; }
     let fixed = null;
-    try { fixed = E.migrate(JSON.parse(JSON.stringify(pack.save))); } catch (e) { console.error(e); }
+    try { fixed = safeSaveChapters(E.migrate(JSON.parse(JSON.stringify(pack.save)))); } catch (e) { console.error(e); }
     if (!fixed) { toast('这个存档缺的东西太多，接不上'); return; }
     if (S && !await ask({ title: `导入「${pack.who || '别处的存档'}」？`, text: '这台设备上现在这局会被盖掉。', ok: '导入', danger: true })) return;
     if (busy || S !== state) { toast('当前状态变了，请重新导入'); return; }
+    if (pack.book !== undefined && !Array.isArray(pack.book)) { toast('存档的章节目录格式不正确，当前进度已保留'); return; }
+    if (pack.archive !== undefined && !Array.isArray(pack.archive)) { toast('存档的历史目录格式不正确，当前进度已保留'); return; }
+    const archive = (pack.archive || []).filter(r => r && ['commands','history','recent'].includes(r.kind) && Number.isInteger(r.order) && r.value && typeof r.value==='object');
+    if (archive.length !== (pack.archive||[]).length || archive.length < (fixed.archiveOrder||0)) { toast('存档的归档历史不完整，当前进度已保留'); return; }
+    // 用新命名空间准备全文，写入完成才切换主档；原章节和原存档始终可用。
+    fixed.runId = 'import-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    setBusy(true, '正在校验并保存导入的进度……');
     try {
-      // 先腾地方：旧的主存档和备份都占着空间，新存档大一点就写不进去
+      const rows = mergeBook(fixed, pack.book || []);
+      await bookPutMany(rows);
+      await archivePut(archive.map(r=>({ ...r, run:fixed.runId, id:fixed.runId+'-archive-'+r.order })));
       const j = JSON.stringify(fixed);
-      try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.removeItem(LS_SAVE + '_broken'); } catch (_) { }
-      try { localStorage.setItem(LS_SAVE, j); }
-      catch (_) {
-        localStorage.removeItem(LS_SAVE);
-        if (fixed.chapters && fixed.chapters.length > 4) fixed.chapters = fixed.chapters.slice(-4);   // 全本在 IndexedDB 里，这里只留最近几章
-        localStorage.setItem(LS_SAVE, JSON.stringify(fixed));
-      }
-      for (const r of (pack.book || [])) { try { if (r && r.id && r.html) await bookPut(r); } catch (_) { } }
-      // 关页面时会自动存一次当前这局：先把它摘掉，不然刚导入的存档又被盖回去
-      S = null;
+      const previous = localStorage.getItem(LS_SAVE);
+      localStorage.setItem(LS_SAVE, j);
+      if (previous) { try { localStorage.setItem(LS_SAVE + '_bak', previous); } catch (_) { } }
+      S = fixed;
       toast('导入了，正在重开页面');
       setTimeout(() => location.reload(), 700);
-    } catch (e) { toast('写不进去：' + (e.message || e)); }
+    } catch (e) { bookClear(fixed.runId).catch(() => {}); toast('导入没有完成，原进度已保留：' + (e.message || e)); }
+    finally { setBusy(false); }
   };
   fr.readAsText(file);
 }
@@ -3682,7 +3868,7 @@ async function exportBook() {
   if (!S) return;
   let rows = [];
   try { rows = await bookAll(S.runId); } catch (_) { }
-  const html = rows.length ? rows.map(r => r.html).join('') : S.chapters.join('');
+  const html = mergeBook(S, rows).map(r => r.html).join('');
   const div = document.createElement('div'); div.innerHTML = html;
   const done = [];
   for (const st of S.ideal.stages) for (const m of st.milestones) if (m.done) done.push(`${m.doneDate || ''} ${m.title}`);
@@ -3752,10 +3938,7 @@ function boot() {
   applySkin();
   fitTabs();
   window.addEventListener('resize', fitTabs);
-  // iOS 上 user-scalable 会被忽略，这里再挡一道
-  document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
-  document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
-  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  document.addEventListener('click', dispatchAction);
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => gotoTab(t.dataset.t));
   $('panelClose').onclick = closePanel;
   $('setSave').onclick = saveCfg;

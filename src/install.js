@@ -26,11 +26,11 @@
     if (auto && (standalone || localStorage.getItem(KEY) === 'installed')) return;
     const body = $('instBody');
     if (deferred) {
-      body.innerHTML = `<div class="hint">装到桌面之后，它就像个单独的应用：全屏、没有地址栏，断网也能接着玩。存档还是存在这台设备上。</div>`;
+      body.innerHTML = `<div class="hint">装到桌面之后，它就像个单独的应用：全屏、没有地址栏，离线可查看已缓存的页面和已有进度；生成新剧情需要联网。存档存在这台设备上。</div>`;
       $('instGo').style.display = '';
       $('instGo').textContent = '装上';
     } else if (isIOS) {
-      body.innerHTML = `<div class="hint">iPhone 上要手动加一下：<br>1　点底部工具栏中间的<b>分享</b>按钮<br>2　往下翻，找到<b>「添加到主屏幕」</b><br>3　右上角<b>添加</b><br><br>装完从主屏幕点进来就是全屏的，断网也能玩。</div>`;
+      body.innerHTML = `<div class="hint">iPhone 上要手动加一下：<br>1　点底部工具栏中间的<b>分享</b>按钮<br>2　往下翻，找到<b>「添加到主屏幕」</b><br>3　右上角<b>添加</b><br><br>装完从主屏幕点进来就是全屏的。离线可查看已缓存的页面和已有进度；生成新剧情需要联网。</div>`;
       $('instGo').style.display = 'none';
     } else if (isSafari) {
       body.innerHTML = `<div class="hint">Mac 上的 Safari：菜单栏 <b>文件</b> → <b>添加到程序坞</b>。<br>装完从程序坞点进来就是一个单独的窗口。</div>`;
@@ -60,7 +60,7 @@
   });
   window.openInstall = openInstall;
 
-  /* service worker：断网也能玩 */
+  /* service worker：缓存页面与已有进度，生成剧情仍需联网 */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').then(reg => {

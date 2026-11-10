@@ -11,7 +11,7 @@ const safeAdd = (a, b) => { const v = finite(a) + finite(b); return Number.isFin
 // 仅过滤无法保存的值和原型键，不对指令、条目数量、金额或文字长度设玩法上限。
 function clean(v) {
   if (v === null || typeof v === 'string' || typeof v === 'boolean') return v;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'number') return E.finiteNumber(v);
   if (Array.isArray(v)) return v.map(clean).filter(x => x !== undefined);
   if (!obj(v)) return undefined;
   const out = {};
@@ -26,6 +26,45 @@ function worldOf(S) {
   const W=obj(S.fiatWorld)?S.fiatWorld:(S.fiatWorld={});
   for(const k of ['facts','rules','assets','businesses','homes','commands']) if(!Array.isArray(W[k])) W[k]=[];
   return W;
+}
+function normalizeState(S) {
+  const numbers = (x, defaults) => { for (const [k,v] of Object.entries(defaults)) x[k]=finite(x[k],v); };
+  const strings = (x, keys) => { for (const k of keys) if (x[k] !== undefined) x[k]=String(x[k] ?? ''); };
+  if (obj(S.fiatWorld)) {
+    for(const k of ['facts','rules','assets','businesses','homes']) S.fiatWorld[k]=(Array.isArray(S.fiatWorld[k])?S.fiatWorld[k]:[])
+      .map(x=>typeof x==='string'?{name:x,detail:''}:x).filter(x=>obj(x)&&(x.name||x.title||x.what)).map(x=>({...x,name:String(x.name||x.title||x.what)}));
+    S.fiatWorld.commands=(Array.isArray(S.fiatWorld.commands)?S.fiatWorld.commands:[]).filter(obj);
+  }
+  const business = b => {
+    strings(b,['name','kind','since','detail']);
+    numbers(b,{months:0,rent:0,rep:100,tend:0,rev:0,cost:0,net:0,lossMonths:0,best:0,total:0,setup:0});
+    b.staff=(Array.isArray(b.staff)?b.staff:[]).filter(obj).map(st=>{
+      const n=Object.assign({name:'员工',role:'员工'},st); strings(n,['name','role']);
+      numbers(n,{skill:50,pay:0,loyal:60,months:0}); return n;
+    });
+  };
+  if (obj(S.biz)) business(S.biz);
+  if (obj(S.fiatWorld)) for (const b of (S.fiatWorld.businesses||[]).filter(obj)) business(b);
+  if (obj(S.family)) {
+    if (S.family.partner !== null && !obj(S.family.partner)) S.family.partner=null;
+    if (S.family.partner) { strings(S.family.partner,['name','stage','since','marriedAt']); numbers(S.family.partner,{warm:100,sinceDay:S.stats.days}); }
+    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{strings(k,['name','born']);numbers(k,{age:0,bornY:S.date.y,dueDay:S.stats.days});return k;});
+  }
+  for (const key of ['status','chronic']) S[key]=(Array.isArray(S[key])?S[key]:[]).filter(obj).map(x=>{strings(x,['name','desc']);numbers(x,{days:1,eased:0});return x;});
+  const B=E.bankOf(S);
+  numbers(B,{mmf:0,mmfGain:0,nav:1,credit:60,curAcc:0,id:0});
+  B.nav=Math.max(Number.MIN_VALUE,B.nav);
+  B.fund=obj(B.fund)?B.fund:{};numbers(B.fund,{units:0,cost:0,mark:0});
+  for (const key of ['fixed','wm','loans']) B[key]=(Array.isArray(B[key])?B[key]:[]).filter(obj).map(x=>{
+    if (!Number.isFinite(Number(x.id))) x.id=++B.id;
+    else { x.id=Number(x.id); B.id=Math.max(B.id,x.id); }
+    numbers(x,{amount:0,rate:0,day:S.stats.days,dueDay:S.stats.days+365});
+    if (key==='loans') { strings(x,['kind','date']); if(!x.kind)x.kind='信用贷'; numbers(x,{left:x.amount,monthly:0,months:12,paid:0,owe:0,late:0}); }
+    else { strings(x,['due']); if(!x.due)x.due=E.shortDate(S.date); if(key==='fixed')numbers(x,{term:12}); }
+    return x;
+  });
+  if (obj(S.home.loan)) numbers(S.home.loan,{left:0,monthly:0,months:360,paid:0});
+  return E.finiteState(S);
 }
 function renamePerson(S, before, after) {
   const fields=(list,keys)=>{for(const x of list||[])if(obj(x))for(const k of keys)if(x[k]===before)x[k]=after;};
@@ -76,6 +115,7 @@ function setTime(S, date, days, explicitAge) {
 function applyChanges(S, input) {
   if (!E.fdm(S).fiat || !obj(input)) return false;
   const c = clean(input), W = worldOf(S), p = S.player;
+  normalizeState(S);
   const beforeMoney = finite(p.money);
   const P = obj(c.player) ? c.player : {};
   if (P.money === '无限' || P.money === '无穷') {
@@ -170,6 +210,7 @@ function applyChanges(S, input) {
     if (n.intimate===false) delete n.intimate;
   }
   if (obj(c.family)) {
+    if (own(c.family,'partner') && c.family.partner!==null && !obj(c.family.partner)) throw Error('伴侣资料需要是一个对象或空值');
     if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, S.family.partner||{}, c.family.partner);
     if (Array.isArray(c.family.kids)) S.family.kids = c.family.kids.filter(x => obj(x) && x.name).map(x => Object.assign({ age: 0, unborn: false, born: E.shortDate(S.date), bornY: S.date.y }, x));
   }
@@ -203,6 +244,7 @@ function applyChanges(S, input) {
   if (c.clearEvents === true) { S.promiseAsk = null; S.stopQueue = []; S.key = null; S.focus = null; S.interview = null; S.appts = []; S.pledges = []; S.stopWhen = []; }
   if (own(c, 'over')) { S.over = c.over === true; S.ending = S.over ? String(c.ending || '按你的意思收尾') : null; }
   p.job = E.jobLabel(S); S.broke = false; S.capNote = null; S.claimNote = null;
+  normalizeState(S);
   const money = p.money - beforeMoney;
   if (Number.isFinite(money) && money) E.acct(S, '言出法随·世界改写', money, S.lastAction || '', beforeMoney);
   return true;
@@ -211,7 +253,7 @@ function applyChanges(S, input) {
 function context(S) {
   const {name,gender,ideal,skillName,bg,track,...mutable}=S.player;
   const {commands=[],...world}=S.fiatWorld || {};
-  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands,
+  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands:commands.slice(-12),
     player:mutable, place:S.place, job:S.job, ledger:S.ledger, home:S.home, biz:S.biz, bank:S.bank, debts:S.debts,
     health:{status:S.status,chronic:S.chronic}, family:S.family, npcs:S.npcs, ideal:S.ideal, unresolved:S.unresolved,
     recent:S.history.slice(-12), events:{promise:S.promiseAsk,key:S.key,focus:S.focus,queue:S.stopQueue}, over:S.over, date:S.date }, null, 0);
@@ -252,6 +294,7 @@ function settle(S, raw, action) {
   if (!own(d.fiatChanges,'over')) { next.over=false; next.ending=null; }
   const W = worldOf(next);
   W.commands.push({ seg:S.seg, date:E.dateStr(next.date), command:String(action), result:String(d.summary || d.narrative) });
+  rememberDirectives(W, action);
   next.history.push({ seg:S.seg, date:E.shortDate(next.date), summary:String(d.summary || d.narrative), act:String(action) });
   next.recent.push({ seg:S.seg, action:String(action), narrative:d.narrative });
   next.unresolved = Array.isArray(d.unresolved) ? d.unresolved.map(String) : next.unresolved;
@@ -275,6 +318,21 @@ function applyAtomic(S, changes) {
   Object.assign(S,next);
   return true;
 }
-Object.assign(E, { cleanFiat:clean, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
-  cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
+// 明示的持续要求保留原句。完整历史另行归档，当前世界事实始终完整发送。
+function rememberDirectives(W, action) {
+  if (!/(永远|一直|每次|每逢|今后|以后|从此|持续|始终|不要|不许|不得|不能|禁止|never|always|every time|from now on|do not|don't)/i.test(String(action))) return;
+  if(!Array.isArray(W.directives)) W.directives=[];
+  if(!W.directives.includes(String(action))) W.directives.push(String(action));
+}
+function archivePlan(S) {
+  const W=S.fiatWorld;
+  if (!obj(W)) return [];
+  for (const r of W.commands||[]) rememberDirectives(W,r.command);
+  return [['commands',W,'commands',24],['history',S,'history',120],['recent',S,'recent',12]].flatMap(([kind,owner,key,keep])=>{
+    const list=owner[key];
+    return Array.isArray(list)&&list.length>keep ? [{kind,owner,key,count:list.length-keep,values:list.slice(0,-keep)}] : [];
+  });
+}
+Object.assign(E, { cleanFiat:clean, normalizeFiatState:normalizeState, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
+  fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
 });

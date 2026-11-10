@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <meta name="theme-color" content="#101218"/>
 <title>现代生活模拟器</title>
 <link rel="icon" href="favicon.ico" sizes="any"/>
@@ -12,9 +12,9 @@
 <meta name="description" content="接入你自己的大模型，在一座虚构的城市里从22岁开始，把想干成的事一点点干起来。"/>
 <style>
 :root{
-  --fs:16.5px;
+  --fs:16.5px; --ui-scale:1;
   --maskbg:rgba(6,7,10,.86);
-  --bg:#0f1116; --bg2:#161922; --line:#242936; --ink:#e7e4de; --dim:#8d94a6; --dim2:#616a7e;
+  --bg:#0f1116; --bg2:#161922; --line:#242936; --ink:#e7e4de; --dim:#8d94a6; --dim2:#9ba4b4;
   --gold:#d6a25e; --good:#6fb894; --bad:#d4736b; --sel:#2b3242;
   --page:#07080b;            /* 壳子外面 */
   --bar:#12151d;             /* 行动区、底栏这类条 */
@@ -35,7 +35,7 @@
 }
 :root[data-theme="light"]{
   --maskbg:rgba(60,55,45,.42);
-  --bg:#f7f5f1; --bg2:#ffffff; --line:#e2ddd4; --ink:#23211d; --dim:#6b6558; --dim2:#96907f;
+  --bg:#f7f5f1; --bg2:#ffffff; --line:#e2ddd4; --ink:#23211d; --dim:#6b6558; --dim2:#706858;
   --gold:#9a6b2f; --good:#3f7d5c; --bad:#b04a3f; --sel:#ece7dd;
   --page:#e9e5dd; --bar:#f2efe9; --bar2:#eeeae2; --card2:#f3efe7; --btn:#f3efe7; --btn2:#f6f3ed;
   --chip:#efeae1; --ta:#f1ede5; --me:#f6e8cf; --meLine:#e0cba4;
@@ -44,7 +44,7 @@
 }
 :root[data-theme="paper"]{
   --maskbg:rgba(70,58,38,.40);
-  --bg:#f2ead9; --bg2:#fbf6ea; --line:#ddd2b8; --ink:#33302a; --dim:#6f6555; --dim2:#9b917c;
+  --bg:#f2ead9; --bg2:#fbf6ea; --line:#ddd2b8; --ink:#33302a; --dim:#6f6555; --dim2:#75694f;
   --gold:#96662a; --good:#3f7451; --bad:#a9483a; --sel:#e8dec6;
   --page:#e6dcc5; --bar:#eee5d2; --bar2:#e9dfc9; --card2:#f0e7d4; --btn:#f0e7d4; --btn2:#f4ecdb;
   --chip:#ebe1cc; --ta:#efe6d3; --me:#f7e7c2; --meLine:#dcc493;
@@ -65,51 +65,51 @@ body{display:flex;justify-content:center;align-items:stretch;width:100%}
 button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 input,select{font:inherit;color:var(--ink);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
 input:focus,select:focus{border-color:var(--gold)}
-h3{margin:2px 0 10px;font-size:17px;font-weight:600}
-h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
+h3{margin:2px 0 10px;font-size:calc(17px * var(--ui-scale));font-weight:600}
+h4{margin:18px 0 8px;font-size:calc(13px * var(--ui-scale));font-weight:600;color:var(--dim)}
 
-:root[data-font="s"]{--fs:15px}
-:root[data-font="l"]{--fs:18.5px}
-:root[data-font="xl"]{--fs:20.5px}
+:root[data-font="s"]{--fs:15px;--ui-scale:.95}
+:root[data-font="l"]{--fs:18.5px;--ui-scale:1.12}
+:root[data-font="xl"]{--fs:20.5px;--ui-scale:1.24}
 
 /* 顶栏 */
 #top{padding:calc(9px + env(safe-area-inset-top)) 14px 7px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--top1),var(--top2));flex:none}
 #topRow1{display:flex;align-items:center;gap:10px}
-#topDate{font-size:13px;color:var(--dim);flex:1}
-.kv{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+#topDate{font-size:calc(13px * var(--ui-scale));color:var(--dim);flex:1}
+.kv{font-size:calc(13px * var(--ui-scale));font-variant-numeric:tabular-nums;color:var(--ink)}
 .kv.bad{color:var(--bad)}
 #topBtn{width:26px;height:26px;opacity:.7}
 #topRow2{display:flex;align-items:center;gap:8px;margin-top:6px}
 .bar{flex:1;height:5px;border-radius:4px;background:var(--track);overflow:hidden}
 .bar-in{height:100%;background:var(--gold);transition:width .4s}
 .bar-in.good{background:var(--good)} .bar-in.bad{background:var(--bad)}
-#enNum{font-size:11px;color:var(--dim2);width:22px;text-align:right;font-variant-numeric:tabular-nums}
-#topSub{font-size:11px;color:var(--dim2);margin-top:4px;line-height:1.2}
+#enNum{font-size:calc(12px * var(--ui-scale));color:var(--dim2);width:22px;text-align:right;font-variant-numeric:tabular-nums}
+#topSub{font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:4px;line-height:1.2}
 #topSub:empty{display:none}
 
 /* 叙事流 */
-#story{flex:1;min-height:38vh;overflow-y:auto;overscroll-behavior:contain;padding:14px 16px 4px;scroll-behavior:smooth}
+#story{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:14px 16px 4px;scroll-behavior:smooth}
 .chapter{margin-bottom:22px;animation:fade .5s ease}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .chaphead{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px}
-.chapmark{font-size:14px;color:var(--gold);letter-spacing:.5px}
-.chaptime{font-size:11px;color:var(--dim2)}
+.chapmark{font-size:calc(14px * var(--ui-scale));color:var(--gold);letter-spacing:.5px}
+.chaptime{font-size:calc(12px * var(--ui-scale));color:var(--dim2)}
 .action-echo{margin:10px 0 0;padding:7px 10px;border-left:2px solid var(--gold);background:var(--card2);
-  font-size:13px;color:var(--dim);border-radius:0 6px 6px 0}
+  font-size:calc(13px * var(--ui-scale));color:var(--dim);border-radius:0 6px 6px 0}
 .dicebar{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.die{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--chip);color:var(--dim);border:1px solid var(--line)}
+.die{font-size:calc(12px * var(--ui-scale));padding:3px 8px;border-radius:20px;background:var(--chip);color:var(--dim);border:1px solid var(--line)}
 .die.good{color:var(--good);border-color:var(--goodLine)} .die.bad{color:var(--bad);border-color:var(--badLine)}
 .die.great{color:var(--gold);border-color:var(--goldLine)}
 .fate{display:flex;align-items:center;gap:11px;margin-top:10px;padding:8px 11px;border-radius:11px;background:var(--chip);border:1px solid var(--line)}
-.fdie{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;
+.fdie{flex:none;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:calc(16px * var(--ui-scale));font-weight:700;font-variant-numeric:tabular-nums;
   background:var(--bg2);border:1.5px solid var(--line);color:var(--ink);transform:rotate(-6deg)}
 .fdie.rolling{animation:fdroll .22s linear infinite;color:var(--dim2)}
 .fdie.landed{animation:fdland .32s ease-out}
 @keyframes fdroll{0%{transform:rotate(-14deg) scale(.94)}50%{transform:rotate(12deg) scale(1.04)}100%{transform:rotate(-14deg) scale(.94)}}
 @keyframes fdland{0%{transform:rotate(8deg) scale(1.18)}100%{transform:rotate(-6deg) scale(1)}}
 .ftxt{min-width:0;display:flex;flex-direction:column;gap:1px}
-.ftxt b{font-size:13px;font-weight:600}
-.ftxt span{font-size:12px;color:var(--dim2)}
+.ftxt b{font-size:calc(13px * var(--ui-scale));font-weight:600}
+.ftxt span{font-size:calc(12px * var(--ui-scale));color:var(--dim2)}
 .ftxt em{font-style:normal;color:var(--dim)}
 .fate.good .fdie{border-color:var(--goodLine);color:var(--good)} .fate.good b{color:var(--good)}
 .fate.bad .fdie{border-color:var(--badLine);color:var(--bad)} .fate.bad b{color:var(--bad)}
@@ -118,43 +118,43 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .ntext p{margin:0 0 14px;text-indent:2em}
 .ntext q.say{quotes:none;color:var(--say);font-style:normal}
 .ntext p.typing{color:var(--dim2)}
-.ended{padding:14px;text-align:center;color:var(--gold);font-size:14px}
+.ended{padding:14px;text-align:center;color:var(--gold);font-size:calc(14px * var(--ui-scale))}
 
 /* 行动区 */
-#acts{flex:none;padding:6px 10px 4px;border-top:1px solid var(--line);background:var(--bar);max-height:30vh;overflow-y:auto;overscroll-behavior:contain;
-  display:grid;grid-template-columns:1fr 1fr;gap:4px 5px;align-content:start}
+#acts{flex:0 1 auto;min-height:0;padding:6px 10px 4px;border-top:1px solid var(--line);background:var(--bar);max-height:44%;overflow-y:auto;overscroll-behavior:contain;
+  display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:max-content;gap:4px 5px;align-content:start}
 #acts>*:not(.act-btn){grid-column:1/-1}
-.act-btn{display:block;width:100%;text-align:left;padding:5px 9px;margin:0;border-radius:8px;min-width:0;
-  background:var(--btn);border:1px solid var(--line);font-size:12.5px;line-height:1.4;transition:.15s;
+.act-btn{min-height:34px;display:block;width:100%;text-align:left;padding:5px 9px;margin:0;border-radius:8px;min-width:0;
+  background:var(--btn);border:1px solid var(--line);font-size:calc(12.5px * var(--ui-scale));line-height:1.4;transition:.15s;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .act-btn:active{background:var(--sel)}
 .act-btn:disabled{opacity:.4}
 .act-row{display:flex;gap:6px;margin-top:1px}
-.act-row input{flex:1;font-size:13.5px;padding:6px 10px}
-.act-go{padding:7px 13px;border-radius:8px;background:var(--gold);color:var(--onGold);font-size:13.5px;font-weight:600;flex:none}
-.act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:var(--btn2);color:var(--dim);font-size:13.5px;flex:none}
+.act-row input{flex:1;font-size:calc(13.5px * var(--ui-scale));padding:6px 10px}
+.act-go{padding:7px 13px;border-radius:8px;background:var(--gold);color:var(--onGold);font-size:calc(13.5px * var(--ui-scale));font-weight:600;flex:none}
+.act-focus{padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:var(--btn2);color:var(--dim);font-size:calc(13.5px * var(--ui-scale));flex:none}
 .act-row input{min-width:0}
-.act-row textarea{flex:1;min-width:0;resize:vertical;min-height:76px;max-height:240px;font:inherit;font-size:13.5px;padding:9px 10px}
+.act-row textarea{flex:1;min-width:0;resize:vertical;min-height:76px;max-height:240px;font:inherit;font-size:calc(13.5px * var(--ui-scale));padding:9px 10px}
 .act-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:0}
 #chatQuick{display:none;gap:6px;padding:8px 12px 0;background:var(--bar);border-top:1px solid var(--line);overflow-x:auto}
 #chatQuick.on{display:flex}
-#chatQuick button{flex:none;max-width:70%;padding:7px 11px;border-radius:16px;background:var(--btn);border:1px solid var(--line);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#chatQuick button{flex:none;max-width:70%;padding:7px 11px;border-radius:16px;background:var(--btn);border:1px solid var(--line);font-size:calc(13px * var(--ui-scale));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .li.tap{cursor:pointer}
 .li.chk{display:flex;align-items:center;gap:8px}
 .li.chk .rel{margin-left:auto}
 .lirow>b{flex:1;min-width:0}
 .li s{color:var(--dim2)}
 .shopcats{margin:0 0 10px}
-.skip{width:100%;padding:5px 6px;border:1px dashed var(--line);border-radius:9px;font-size:13px;color:var(--dim);background:transparent;white-space:nowrap}
-.skip i{font-style:normal;font-size:11.5px;color:var(--dim2)}
+.skip{width:100%;padding:5px 6px;border:1px dashed var(--line);border-radius:9px;font-size:calc(13px * var(--ui-scale));color:var(--dim);background:transparent;white-space:nowrap}
+.skip i{font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2)}
 .skip:active{background:var(--btn2)}
-.ghost{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:var(--btn2);width:100%}
+.ghost{padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-size:calc(13px * var(--ui-scale));color:var(--dim);background:var(--btn2);width:100%}
 .ghost.sm{width:auto;padding:7px 10px}
 
 /* 底部 tab */
 #tabs{flex:none;display:flex;border-top:1px solid var(--line);background:var(--bar2);
   padding-bottom:max(2px,calc(env(safe-area-inset-bottom) - 12px))}
-.tab{flex:1;padding:6px 0 5px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:10px;min-width:0}
+.tab{flex:1;padding:6px 0 5px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--dim2);font-size:calc(12px * var(--ui-scale));min-width:0}
 .tab svg{flex:none}
 .tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tab.on{color:var(--gold)}
@@ -164,52 +164,52 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   transform:translateY(100%);transition:transform .25s ease;display:flex;flex-direction:column}
 #panel.on{transform:none}
 #panelHd{flex:none;display:flex;justify-content:flex-end;padding:calc(10px + env(safe-area-inset-top)) 14px 0}
-#panelClose{font-size:22px;color:var(--dim);line-height:1;padding:4px 8px}
+#panelClose{font-size:calc(22px * var(--ui-scale));color:var(--dim);line-height:1;padding:4px 8px}
 #panelBody{flex:1;overflow-y:auto;padding:4px 16px 24px;overscroll-behavior:contain}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
-.cardhd{font-size:12px;color:var(--dim);margin-bottom:8px}
-.big{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.cardhd{font-size:calc(12px * var(--ui-scale));color:var(--dim);margin-bottom:8px}
+.big{font-size:calc(20px * var(--ui-scale));font-weight:600;font-variant-numeric:tabular-nums}
 .big.bad{color:var(--bad)}
-.tip{font-size:12px;color:var(--dim2);line-height:1.7;margin-top:4px}
-.lines>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px dashed var(--dash);font-size:13.5px}
+.tip{font-size:calc(12px * var(--ui-scale));color:var(--dim2);line-height:1.7;margin-top:4px}
+.lines>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px dashed var(--dash);font-size:calc(13.5px * var(--ui-scale))}
 .lines>div:last-child{border:none}
 .lines b{font-weight:400;color:var(--dim)}
 .lines span{font-variant-numeric:tabular-nums}
 .lines .sum{margin-top:4px;border-top:1px solid var(--line);padding-top:8px}
 .lines .good{color:var(--good)} .lines .bad{color:var(--bad)}
 .acctTabs{margin-bottom:10px}
-.acct{font-size:13.5px}
+.acct{font-size:calc(13.5px * var(--ui-scale))}
 .acctrow{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px dashed var(--dash)}
-.acctrow>span:first-child{color:var(--dim2);font-size:12px;font-variant-numeric:tabular-nums}
+.acctrow>span:first-child{color:var(--dim2);font-size:calc(12px * var(--ui-scale));font-variant-numeric:tabular-nums}
 .acctrow>span:nth-child(2){min-width:0}
-.acctrow>span:nth-child(2) i{display:block;font-style:normal;font-size:12px;color:var(--dim2);margin-top:1px}
+.acctrow>span:nth-child(2) i{display:block;font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:1px}
 .acctrow>span:last-child{font-variant-numeric:tabular-nums;text-align:right}
 .acctrow.open{color:var(--dim)}
 .acctrow .good{color:var(--good)} .acctrow .bad{color:var(--bad)}
 .acctsum{margin-top:6px}
 #askMask{z-index:70}
 .askbox h2{margin-bottom:8px}
-.asktext{font-size:13.5px;color:var(--dim);line-height:1.7;white-space:pre-wrap}
-.asktext q{display:block;margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--btn2);color:var(--ink);quotes:none;font-size:13.5px}
+.asktext{font-size:calc(13.5px * var(--ui-scale));color:var(--dim);line-height:1.7;white-space:pre-wrap}
+.asktext q{display:block;margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--btn2);color:var(--ink);quotes:none;font-size:calc(13.5px * var(--ui-scale))}
 #askIn{width:100%;margin-top:12px}
 #askIn[hidden]{display:none}
 .primary.danger{background:var(--bad);color:#fff}
-.li{padding:7px 0;border-bottom:1px dashed var(--dash);font-size:13.5px}
+.li{padding:7px 0;border-bottom:1px dashed var(--dash);font-size:calc(13.5px * var(--ui-scale))}
 .li:last-child{border:none}
-.li span{color:var(--dim2);font-size:12px}
+.li span{color:var(--dim2);font-size:calc(12px * var(--ui-scale))}
 .rel{float:right;color:var(--gold)!important}
 .rel.bad{color:var(--bad)!important}
 .msgs .msg{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:8px}
-.mfrom{font-size:12px;color:var(--gold);display:flex;align-items:baseline}
+.mfrom{font-size:calc(12px * var(--ui-scale));color:var(--gold);display:flex;align-items:baseline}
 .mfrom span{color:var(--dim2);margin-left:auto;padding-left:8px;flex:none}
-.mtext{font-size:14px;margin-top:4px;line-height:1.6}
+.mtext{font-size:calc(14px * var(--ui-scale));margin-top:4px;line-height:1.6}
 .paces{margin-bottom:10px}
-.pacedesc b{display:block;font-weight:500;font-size:14px;margin-bottom:2px}
+.pacedesc b{display:block;font-weight:500;font-size:calc(14px * var(--ui-scale));margin-bottom:2px}
 .sched{margin-bottom:10px}
-.schedhd{font-size:12px;color:var(--dim);margin-bottom:6px}
+.schedhd{font-size:calc(12px * var(--ui-scale));color:var(--dim);margin-bottom:6px}
 .schedrow{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.schedrow span{width:34px;font-size:13px;color:var(--dim)}
-.schedrow select{flex:1;padding:7px 9px;font-size:13.5px}
+.schedrow span{width:34px;font-size:calc(13px * var(--ui-scale));color:var(--dim)}
+.schedrow select{flex:1;padding:7px 9px;font-size:calc(13.5px * var(--ui-scale))}
 
 /* 聊天 */
 #chat{position:absolute;inset:0;background:var(--bg);z-index:25;display:flex;flex-direction:column;
@@ -217,18 +217,18 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 #chat.on{transform:none}
 #chatHd{flex:none;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;border-bottom:1px solid var(--line);background:var(--bar)}
 #chatHd>div{flex:1}
-#chatBack{font-size:24px;color:var(--dim);line-height:1;padding:0 6px}
-#chatDone{font-size:12.5px;color:var(--gold);border:1px solid var(--goldLine);border-radius:14px;padding:5px 10px}
-#chatName{font-size:15px;cursor:pointer}
-.tapcard{font-style:normal;font-size:10.5px;color:var(--dim2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle}
-#chatSub{font-size:11px;color:var(--dim2);margin-top:2px}
+#chatBack{font-size:calc(24px * var(--ui-scale));color:var(--dim);line-height:1;padding:0 6px}
+#chatDone{font-size:calc(12.5px * var(--ui-scale));color:var(--gold);border:1px solid var(--goldLine);border-radius:14px;padding:5px 10px}
+#chatName{font-size:calc(15px * var(--ui-scale));cursor:pointer}
+.tapcard{font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+#chatSub{font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:2px}
 #chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px;overscroll-behavior:contain}
 .bub{max-width:76%;padding:9px 12px;border-radius:13px;margin-bottom:10px;font-size:calc(var(--fs,16.5px) - 1.5px);line-height:1.65;position:relative;white-space:pre-wrap}
 .bub.ta{background:var(--ta);border:1px solid var(--line);border-top-left-radius:4px}
 .bub.me{background:var(--me);border:1px solid var(--goldLine);margin-left:auto;border-top-right-radius:4px}
 .bub.typing{color:var(--dim2)}
-.bub i{display:block;font-style:normal;font-size:11px;color:var(--dim2);margin-top:4px}
-.sysline{text-align:center;font-size:11.5px;color:var(--dim2);margin:8px 0 14px;font-variant-numeric:tabular-nums}
+.bub i{display:block;font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:4px}
+.sysline{text-align:center;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin:8px 0 14px;font-variant-numeric:tabular-nums}
 #chatFoot{flex:none;display:flex;gap:7px;padding:9px 12px;border-top:1px solid var(--line);background:var(--bar);
   padding-bottom:max(9px,calc(env(safe-area-inset-bottom) - 6px))}
 #chatFoot input{flex:1;min-width:0}
@@ -236,8 +236,8 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .phoneseg .seg{flex:1;text-align:center;padding:7px 0}
 .phoneseg .dot{margin-left:5px;vertical-align:1px}
 .face{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
-  font-size:15px;color:#fff;background:hsl(var(--h),32%,42%)}
-.face.sm{width:30px;height:30px;font-size:14px;border-radius:8px}
+  font-size:calc(15px * var(--ui-scale));color:#fff;background:hsl(var(--h),32%,42%)}
+.face.sm{width:30px;height:30px;font-size:calc(14px * var(--ui-scale));border-radius:8px}
 .thread{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:flex-start}
 .thbody{flex:1;min-width:0}
 .mompost{display:flex;gap:7px;margin-bottom:12px}
@@ -245,14 +245,14 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 .mom{display:flex;gap:10px;padding:11px 0;border-bottom:1px dashed var(--dash)}
 .mom:last-child{border:none}
 .mombody{flex:1;min-width:0}
-.momwho{font-size:13.5px;color:var(--gold)}
-.momwho em{font-style:normal;font-size:10.5px;color:var(--dim2);border:1px solid var(--line);border-radius:8px;padding:0 5px;margin-left:6px}
-.momtext{font-size:14px;line-height:1.65;margin:4px 0 6px}
-.momfoot{display:flex;align-items:center;gap:10px;font-size:11.5px;color:var(--dim2)}
+.momwho{font-size:calc(13.5px * var(--ui-scale));color:var(--gold)}
+.momwho em{font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);border:1px solid var(--line);border-radius:8px;padding:0 5px;margin-left:6px}
+.momtext{font-size:calc(14px * var(--ui-scale));line-height:1.65;margin:4px 0 6px}
+.momfoot{display:flex;align-items:center;gap:10px;font-size:calc(12px * var(--ui-scale));color:var(--dim2)}
 .momfoot span{flex:1}
-.momfoot button{font-size:11.5px;color:var(--dim);border:1px solid var(--line);border-radius:12px;padding:2px 9px}
+.momfoot button{font-size:calc(12px * var(--ui-scale));color:var(--dim);border:1px solid var(--line);border-radius:12px;padding:2px 9px}
 .momfoot button.on{color:var(--gold);border-color:var(--goldLine)}
-.momcs{margin-top:7px;background:var(--card2);border-radius:8px;padding:7px 9px;font-size:12.5px;line-height:1.75}
+.momcs{margin-top:7px;background:var(--card2);border-radius:8px;padding:7px 9px;font-size:calc(12.5px * var(--ui-scale));line-height:1.75}
 .momcs b{font-weight:400;color:var(--gold)}
 .thread:active{background:var(--ta)}
 .mfrom em{font-style:normal;color:var(--dim2);margin-left:6px}
@@ -265,39 +265,39 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   transform:translateY(100%);transition:transform .25s ease}
 #key.on{transform:none}
 #keyHd{flex:none;padding:calc(12px + env(safe-area-inset-top)) 14px 10px;border-bottom:1px solid var(--line);background:var(--bar)}
-#keyTitle{font-size:16px;color:var(--gold)}
-#keySub{font-size:12px;color:var(--dim2);margin-top:3px;line-height:1.5}
+#keyTitle{font-size:calc(16px * var(--ui-scale));color:var(--gold)}
+#keySub{font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:3px;line-height:1.5}
 #keyBars{flex:none;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--bar)}
 .kbar{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .kbar:last-child{margin-bottom:0}
-.kbar span{width:52px;font-size:11.5px;color:var(--dim)}
-.kbar em{width:22px;text-align:right;font-style:normal;font-size:11px;color:var(--dim2);font-variant-numeric:tabular-nums}
-#keyLog{flex:1;overflow-y:auto;padding:12px 14px;overscroll-behavior:contain}
+.kbar span{width:52px;font-size:calc(12px * var(--ui-scale));color:var(--dim)}
+.kbar em{width:22px;text-align:right;font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);font-variant-numeric:tabular-nums}
+#keyLog{flex:1;min-height:36px;overflow-y:auto;padding:12px 14px;overscroll-behavior:contain}
 .krd{border-left:2px solid var(--line);padding:2px 0 8px 10px;margin-bottom:10px}
-.krd b{font-size:13.5px;font-weight:600}
-.krd span{font-size:11.5px;margin-left:8px}
+.krd b{font-size:calc(13.5px * var(--ui-scale));font-weight:600}
+.krd span{font-size:calc(12px * var(--ui-scale));margin-left:8px}
 .krd span.good{color:var(--good)} .krd span.bad{color:var(--bad)}
-.krd i{font-style:normal;font-size:11.5px;color:var(--gold);margin-left:8px}
-#keyMoves{flex:none;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:9px 13px;border-top:1px solid var(--line);background:var(--bar);
+.krd i{font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--gold);margin-left:8px}
+#keyMoves{flex:0 1 auto;min-height:0;max-height:55%;overflow-y:auto;overscroll-behavior:contain;grid-auto-rows:max-content;display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:9px 13px;border-top:1px solid var(--line);background:var(--bar);
   padding-bottom:max(9px,calc(env(safe-area-inset-bottom) - 6px))}
 .kmove{text-align:left;padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--btn)}
 .kmove:active{background:var(--sel)}
 .kmove.dead{opacity:.35}
-.kmove b{display:block;font-size:13.5px}
-.kmove i{display:block;font-style:normal;font-size:10.5px;color:var(--dim2);margin-top:2px;line-height:1.35}
-.kmove u{display:block;text-decoration:none;font-size:10px;color:var(--dim2);margin-top:3px}
-#keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:14px}
+.kmove b{display:block;font-size:calc(13.5px * var(--ui-scale))}
+.kmove i{display:block;font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:2px;line-height:1.35}
+.kmove u{display:block;text-decoration:none;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:3px}
+#keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:calc(14px * var(--ui-scale))}
 .endblock{margin-top:16px;padding:14px;border:1px solid var(--goldLine);border-radius:12px;background:var(--card2)}
-.endblock h4{margin:0 0 12px;color:var(--gold);font-size:15px;text-align:center;letter-spacing:2px}
+.endblock h4{margin:0 0 12px;color:var(--gold);font-size:calc(15px * var(--ui-scale));text-align:center;letter-spacing:2px}
 .endblock .kbar{margin-bottom:7px}
 .mile{padding:9px 0;border-bottom:1px dashed var(--dash)}
 .mile:last-child{border:none}
 .mile.done .mtitle{color:var(--dim2)}
 .mile.cur{background:var(--card2);margin:0 -8px;padding:10px 8px;border-radius:8px;border:none}
-.mtitle{font-size:14px;display:flex;justify-content:space-between}
-.mtitle span{font-size:11px;color:var(--dim2)}
+.mtitle{font-size:calc(14px * var(--ui-scale));display:flex;justify-content:space-between}
+.mtitle span{font-size:calc(12px * var(--ui-scale));color:var(--dim2)}
 .tip.dim{opacity:.7}
-.primary.sm{width:100%;padding:9px;border-radius:8px;font-size:13.5px}
+.primary.sm{width:100%;padding:9px;border-radius:8px;font-size:calc(13.5px * var(--ui-scale))}
 
 /* 弹层 */
 .mask{position:absolute;inset:0;background:var(--maskbg);backdrop-filter:blur(3px);z-index:40;
@@ -305,42 +305,42 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
   padding:calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom))}
 .mask.on{display:flex}
 .box{width:100%;max-height:88%;overflow-y:auto;background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:18px;overscroll-behavior:contain}
-.box h2{margin:0 0 16px;font-size:18px;font-weight:600}
+.box h2{margin:0 0 16px;font-size:calc(18px * var(--ui-scale));font-weight:600}
 .frow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .frow.col{flex-direction:column;align-items:stretch;gap:6px}
-.frow label{width:58px;font-size:13px;color:var(--dim);flex:none}
+.frow label{width:58px;font-size:calc(13px * var(--ui-scale));color:var(--dim);flex:none}
 .frow.col label{width:auto}
 .frow label.chk{width:auto;flex:1;min-width:0;line-height:1.5}
 .frow input,.frow select{flex:1;min-width:0}
 .segs{display:flex;gap:6px;flex:1;flex-wrap:wrap}
 .segs.wrap{gap:5px}
-.seg{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;color:var(--dim);background:var(--btn2)}
+.seg{padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:calc(13px * var(--ui-scale));color:var(--dim);background:var(--btn2)}
 .seg.on{border-color:var(--gold);color:var(--gold);background:var(--me)}
-.hint{font-size:12px;color:var(--dim2);line-height:1.7;margin:-2px 0 14px}
+.hint{font-size:calc(12px * var(--ui-scale));color:var(--dim2);line-height:1.7;margin:-2px 0 14px}
 .btns{display:flex;gap:8px;margin-top:16px}
-.btns button{flex:1;padding:10px;border-radius:9px;font-size:14px}
+.btns button{flex:1;padding:10px;border-radius:9px;font-size:calc(14px * var(--ui-scale))}
 .primary{background:var(--gold);color:var(--onGold);font-weight:600}
 #busy{position:absolute;left:0;right:0;bottom:0;top:0;display:none;align-items:flex-end;justify-content:center;
   pointer-events:none;z-index:30;padding-bottom:calc(40vh + 20px)}
 #busy.on{display:flex}
-#busyTxt{background:var(--chip);border:1px solid var(--line);color:var(--dim);font-size:12.5px;padding:7px 14px;border-radius:20px}
+#busyTxt{background:var(--chip);border:1px solid var(--line);color:var(--dim);font-size:calc(12.5px * var(--ui-scale));padding:7px 14px;border-radius:20px}
 #newver{position:absolute;left:12px;right:12px;bottom:calc(52px + max(2px,calc(env(safe-area-inset-bottom) - 12px)));z-index:55;
   display:none;align-items:center;gap:8px;background:var(--toast);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
 #newver.on{display:flex}
-#newver span{flex:1;font-size:13px}
-#newver button{font-size:12.5px;padding:6px 11px;border-radius:8px;border:1px solid var(--line)}
+#newver span{flex:1;font-size:calc(13px * var(--ui-scale))}
+#newver button{font-size:calc(12.5px * var(--ui-scale));padding:6px 11px;border-radius:8px;border:1px solid var(--line)}
 #newverGo{background:var(--gold);color:var(--onGold);font-weight:600;border-color:transparent}
 #toast{position:absolute;left:50%;top:calc(70px + env(safe-area-inset-top));transform:translate(-50%,-14px);background:var(--toast);border:1px solid var(--line);
-  color:var(--ink);font-size:13px;padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
+  color:var(--ink);font-size:calc(13px * var(--ui-scale));padding:8px 16px;border-radius:22px;opacity:0;transition:.25s;z-index:60;pointer-events:none}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .range{width:100%;accent-color:var(--gold)}
-.chk{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);width:auto}
+.chk{display:flex;align-items:center;gap:7px;font-size:calc(13px * var(--ui-scale));color:var(--dim);width:auto}
 .chk input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--gold)}
-.fcdays{flex:none;min-width:48px;text-align:right;font-size:14px;color:var(--ink);white-space:nowrap}
+.fcdays{flex:none;min-width:48px;text-align:right;font-size:calc(14px * var(--ui-scale));color:var(--ink);white-space:nowrap}
 .lirow{display:flex;align-items:center;gap:8px;margin-top:4px}
 .lirow>span:first-child{flex:1;min-width:0}
 .lirow .liact{display:flex;gap:6px;flex:none}
-.li .lirow .ghost.sm{padding:5px 11px;font-size:12.5px}
+.li .lirow .ghost.sm{padding:5px 11px;font-size:calc(12.5px * var(--ui-scale))}
 
 /* ---- 美术：图标与图片 ---- */
 .ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.15em;flex:none}
@@ -357,9 +357,9 @@ h4{margin:18px 0 8px;font-size:13px;font-weight:600;color:var(--dim)}
 @media (max-width:330px),(max-height:430px){.art.ban{display:none}}
 /* 头像 */
 img.face{object-fit:cover;background:var(--bg2);border:1px solid var(--line)}
-.face.md{width:48px;height:48px;border-radius:11px;font-size:19px}
-.face.me{width:64px;height:64px;border-radius:14px;font-size:24px}
-.face.lg{width:80px;height:80px;border-radius:16px;font-size:30px}
+.face.md{width:48px;height:48px;border-radius:11px;font-size:calc(19px * var(--ui-scale))}
+.face.me{width:64px;height:64px;border-radius:14px;font-size:calc(24px * var(--ui-scale))}
+.face.lg{width:80px;height:80px;border-radius:16px;font-size:calc(30px * var(--ui-scale))}
 .cardhead{display:flex;gap:12px;align-items:center;min-width:0}
 .cardhead>div:not(.face){min-width:0;flex:1}
 .cardhead h2{margin:0}
@@ -380,36 +380,36 @@ html,body{max-width:100%;overflow-x:hidden}
 #tabs{position:relative;z-index:22}
 #panel{bottom:var(--tabsH,56px)}
 /* 聊天里的钱 */
-#chatPlus{flex:none;width:36px;border:1px solid var(--line);border-radius:9px;font-size:20px;color:var(--dim);line-height:1}
+#chatPlus{flex:none;width:36px;border:1px solid var(--line);border-radius:9px;font-size:calc(20px * var(--ui-scale));color:var(--dim);line-height:1}
 #plusMenu{display:none;gap:8px;padding:8px 12px 0;background:var(--bar);border-top:1px solid var(--line)}
 #plusMenu.on{display:flex}
-#plusMenu button{flex:1;padding:9px 0;border-radius:9px;background:var(--btn);border:1px solid var(--line);font-size:13.5px}
+#plusMenu button{flex:1;padding:9px 0;border-radius:9px;background:var(--btn);border:1px solid var(--line);font-size:calc(13.5px * var(--ui-scale))}
 .paywrap{display:flex;flex-direction:column;align-items:flex-start;margin-bottom:10px}
 .paywrap.me{align-items:flex-end}
 .paycard{width:210px;max-width:76%;border-radius:11px;padding:10px 12px;color:#fff;display:flex;flex-direction:column;gap:3px}
 .paycard.hb{background:#c8553d}
 .paycard.zz{background:#d08a2f}
 .paycard.done{opacity:.62}
-.paycard b{font-size:15px;font-weight:600}
-.paycard span{font-size:12.5px}
-.paycard em{font-style:normal;font-size:11px;opacity:.85;border-top:1px solid rgba(255,255,255,.3);padding-top:4px;margin-top:3px}
-.paysplit{font-size:11px;opacity:.9;line-height:1.6}
+.paycard b{font-size:calc(15px * var(--ui-scale));font-weight:600}
+.paycard span{font-size:calc(12.5px * var(--ui-scale))}
+.paycard em{font-style:normal;font-size:calc(12px * var(--ui-scale));opacity:.85;border-top:1px solid rgba(255,255,255,.3);padding-top:4px;margin-top:3px}
+.paysplit{font-size:calc(12px * var(--ui-scale));opacity:.9;line-height:1.6}
 .paybtns{display:flex;gap:6px;margin-top:6px}
-.paybtns button{flex:1;padding:6px 0;border-radius:7px;background:#fff;color:#a2462f;font-size:12.5px}
+.paybtns button{flex:1;padding:6px 0;border-radius:7px;background:#fff;color:#a2462f;font-size:calc(12.5px * var(--ui-scale))}
 .paybtns button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6)}
-.bfrom{display:block;text-decoration:none;font-size:11px;color:var(--gold);margin-bottom:2px}
+.bfrom{display:block;text-decoration:none;font-size:calc(12px * var(--ui-scale));color:var(--gold);margin-bottom:2px}
 .gmake{width:100%;margin:0 0 10px}
 .gli{display:flex;align-items:center;gap:9px;cursor:pointer}
 .gli b{flex:1;font-weight:500}
 .gli input{width:18px;height:18px;flex:none;accent-color:var(--gold)}
 .promise{border:1px solid var(--goldLine);background:var(--me);border-radius:12px;padding:12px 13px;margin:2px 0 6px}
-.prhd{font-size:12px;color:var(--gold)}
-.prtx{font-size:15px;margin:5px 0 10px;line-height:1.55}
+.prhd{font-size:calc(12px * var(--ui-scale));color:var(--gold)}
+.prtx{font-size:calc(15px * var(--ui-scale));margin:5px 0 10px;line-height:1.55}
 .prbtns{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:7px}
-.prbtns button{padding:8px 0;border-radius:9px;font-size:13.5px}
-.momsoc{margin-top:7px;background:var(--card2);border-radius:8px;padding:6px 9px;font-size:12.5px;line-height:1.75}
+.prbtns button{padding:8px 0;border-radius:9px;font-size:calc(13.5px * var(--ui-scale))}
+.momsoc{margin-top:7px;background:var(--card2);border-radius:8px;padding:6px 9px;font-size:calc(12.5px * var(--ui-scale));line-height:1.75}
 .momsoc .momcs{margin:0;padding:0;background:none;border-radius:0}
-.momlike{color:var(--gold);font-size:12px;padding-bottom:3px}
+.momlike{color:var(--gold);font-size:calc(12px * var(--ui-scale));padding-bottom:3px}
 .momlike+.momcs{border-top:1px solid var(--line);padding-top:4px}
 .momcs .mc i{font-style:normal;color:var(--dim2);margin:0 2px}
 .momcs .mc.tap{cursor:pointer}
@@ -520,7 +520,7 @@ html,body{max-width:100%;overflow-x:hidden}
     </div></div>
     <div class="frow"><label>称呼</label><div class="segs" id="setPerson">
       <button class="seg" data-v="you">你</button>
-      <button class="seg" data-v="ta">他</button>
+      <button class="seg" data-v="ta">第三人称</button>
     </div></div>
     <div class="frow"><label>字号</label><div class="segs" id="setFont">
       <button class="seg" data-v="s">小</button>
@@ -540,11 +540,11 @@ html,body{max-width:100%;overflow-x:hidden}
     <div class="btns"><button class="ghost" id="setClose">关掉</button><button class="primary" id="setSave">存下</button></div>
     <div class="btns"><button class="ghost" id="setExport">导出存档</button><button class="ghost" id="setImport">导入存档</button></div>
     <div class="hint">存档是一个文件，带着它换设备接着玩（章节全本也在里面）。导入会盖掉这台设备上现在这局。</div>
-    <div class="frow" style="margin-top:6px"><label>反馈</label><span style="flex:1;font-size:13px">微信 <b id="wxNo">lynchrrr</b></span><button class="ghost sm" id="wxCopy">复制</button></div>
+    <div class="frow" style="margin-top:6px"><label>反馈</label><span style="flex:1;font-size:calc(13px * var(--ui-scale))">微信 <b id="wxNo">lynchrrr</b></span><button class="ghost sm" id="wxCopy">复制</button></div>
     <div class="hint">遇到 bug、有想法、想聊聊，都可以加我。备注一句"生活模拟器"就行。</div>
     <input type="file" id="setFile" style="display:none"/>
     <div class="btns"><button class="ghost" id="instOpen">装到桌面</button><button class="ghost" id="setRestart">重开一局</button></div>
-    <div class="tip" id="setDiag" style="margin-top:10px;font-size:11px;word-break:break-all;opacity:.7"></div>
+    <div class="tip" id="setDiag" style="margin-top:10px;font-size:calc(12px * var(--ui-scale));word-break:break-all;opacity:.7"></div>
   </div></div>
 
   <div class="mask" id="instMask"><div class="box">
@@ -579,15 +579,31 @@ const SAVE_VERSION = 1;
 /* ---------- 基础 ---------- */
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const r2 = v => Math.round(v * 100) / 100;
+const finiteNumber = v => Number.isNaN(v) ? 0 : v === Infinity ? Number.MAX_VALUE : v === -Infinity ? -Number.MAX_VALUE : v;
+const r2 = v => Math.abs(v) > Number.MAX_VALUE / 100 ? finiteNumber(v) : Math.round(v * 100) / 100;
+function cashAdd(S, delta) { S.player.money = finiteNumber(S.player.money + delta); return S.player.money; }
+function finiteState(value) {
+  if (!value || typeof value !== 'object') return value;
+  for (const k of Object.keys(value)) {
+    if (typeof value[k] === 'number') value[k] = finiteNumber(value[k]);
+    else if (value[k] && typeof value[k] === 'object') finiteState(value[k]);
+  }
+  return value;
+}
 // 仅用于言出法随的数值存储边界，不再用收入、关系或城市行情截断行动金额。
 const FIAT_AMOUNT = Number.MAX_VALUE;
+function personAge(S, n, year = S.date.y) {
+  if (n === S.player) return S.player.age - (S.date.y-year);
+  if (n.age!==undefined && n.age!==null && n.age!=='' && Number.isFinite(Number(n.age)) && (Number(n.age)!==0 || fdm(S).fiat)) return Number(n.age)+(year-(n.ageY ?? S.date.y));
+  if (/同学|室友|对象|同事|同期|朋友|爱人/.test(String(n.tie||''))) return S.player.age-(S.date.y-year);
+  return 44;
+}
 function fundAction(S, amount, note) {
   if (!Number.isFinite(amount) || amount < 0) return false;
   if (S.player.money >= amount) return true;
   if (!fdm(S).fiat || amount > FIAT_AMOUNT) return false;
   const got = amount - S.player.money;
-  S.player.money += got;
+  cashAdd(S, got);
   acct(S, '言出法随·资金到位', got, note || '行动所需资金');
   return true;
 }
@@ -1105,7 +1121,7 @@ function moneyTick(S, rng) {
     const out = L.rent + loan + L.living + L.remit + kid;
     const m0 = p.money;
     if (S.flags.rentAdj) { acctNote(S, '房租调整', `${S.flags.rentAdj.from}→${S.flags.rentAdj.to}，按行情`); S.flags.rentAdj = null; }
-    p.money -= out;
+    cashAdd(S, -(out));
     if (L.rent) acct(S, '房租', -L.rent, '', m0);
     if (loan) acct(S, '房贷月供', -loan, '', m0);
     acct(S, '吃穿用度', -L.living, '', m0);
@@ -1123,7 +1139,7 @@ function moneyTick(S, rng) {
     const sal = S.job.vary ? Math.round(L.salary * clamp(0.7 + (attrVal(S, '表达') - 25) / 90 + rng() * 0.35, 0.55, 1.6) / 10) * 10 : L.salary;
     const inc = sal + L.subsidy;
     const m0 = p.money;
-    p.money += inc;
+    cashAdd(S, inc);
     acct(S, S.job.vary ? '工资（含提成）' : '工资', sal, S.job.employer || '', m0);
     if (L.subsidy) acct(S, '家里给的', L.subsidy, '', m0);
     S.flags.monthNet += inc;
@@ -1131,7 +1147,7 @@ function moneyTick(S, rng) {
     if (!S.flags.firstPay) { S.flags.firstPay = true; stop = { kind: '钱', detail: '第一笔自己挣的工资到账' }; }
   }
   if (d.d === L.salaryDay && S.job.out) {
-    if (L.subsidy) { p.money += L.subsidy; acct(S, '家里给的', L.subsidy); S.flags.monthNet += L.subsidy; ev.push({ t: '钱', s: `没有工资，家里打来${L.subsidy}` }); }
+    if (L.subsidy) { cashAdd(S, L.subsidy); acct(S, '家里给的', L.subsidy); S.flags.monthNet += L.subsidy; ev.push({ t: '钱', s: `没有工资，家里打来${L.subsidy}` }); }
     else ev.push({ t: '钱', s: '这个月没有工资' });
   }
   if (d.d === 28) {   // 月末看账
@@ -1559,7 +1575,7 @@ function runSteps(S, plan, rng) {
         if (!hit) {
           // 没有欠条，那就是还人情钱：照花钱算
           const amt = Math.round(num(st.amount));
-          if (amt > 0 && fundAction(S, amt, '还人情')) { p.money -= amt; acct(S, '还人情', -amt, st.who || ''); r.ok = true; r.note = `给了${st.who || '对方'}${amt}元，账上剩${p.money}`; }
+          if (amt > 0 && fundAction(S, amt, '还人情')) { cashAdd(S, -(amt)); acct(S, '还人情', -amt, st.who || ''); r.ok = true; r.note = `给了${st.who || '对方'}${amt}元，账上剩${p.money}`; }
           else r.note = amt > 0 ? `要${amt}元，手头只有${p.money}` : '账上查不到欠谁的钱';
           break;
         }
@@ -1590,7 +1606,7 @@ function runSteps(S, plan, rng) {
         const amt = Math.round(num(st.amount));
         if (amt <= 0) { r.ok = true; r.note = '花了点小钱'; break; }
         if (!fundAction(S, amt, st.text)) { r.note = `要${amt}元，手头只有${p.money}`; break; }
-        p.money -= amt; acct(S, '花销', -amt, st.text || '');
+        cashAdd(S, -(amt)); acct(S, '花销', -amt, st.text || '');
         r.ok = true; r.note = `花了${amt}元，账上剩${p.money}`;
         break;
       }
@@ -1603,7 +1619,7 @@ function runSteps(S, plan, rng) {
         if (n && st.borrow) ceil = Math.min(ceil, lendCap(S, n));
         const got = Math.min(want, ceil);
         if (st.borrow) addDebt(S, n ? n.name : (st.who || '某人'), got, num(st.days) || 60);
-        else { p.money += got; acct(S, '进账', got, st.text || ''); }
+        else { cashAdd(S, got); acct(S, '进账', got, st.text || ''); }
         r.ok = true;
         r.note = `${st.borrow ? '借到' : '拿到'}${got}元${got < want ? `（要的是${want}，引擎只认${got}）` : ''}${st.borrow ? `，${num(st.days) || 60}天内要还` : ''}；账上${p.money}`;
         break;
@@ -1711,7 +1727,7 @@ function payOut(S, name, amount, kind, note) {
   if (amount <= 0) return { ok: false, why: '金额不对' };
   if (kind === '红包' && amount > 20000 && !fdm(S).fiat) return { ok: false, why: '红包一次最多两万' };
   if (!fundAction(S, amount, kind)) return { ok: false, why: `账上只有${S.player.money}` };
-  S.player.money -= amount;
+  cashAdd(S, -(amount));
   let debt = '';
   let toDebt = 0;
   if (kind === '转账') {
@@ -1737,7 +1753,7 @@ function payBack(S, id) {
   if (!p || p.from !== '我' || p.state !== '已付') return null;
   const back = p.amount - num(p.toDebt);
   if (back <= 0) return null;
-  S.player.money += back;
+  cashAdd(S, back);
   acct(S, `${p.to}退回`, back, p.kind);
   const n = npcByName(S, p.to);
   if (n && p.gain) n.rel = clamp(r2(n.rel - p.gain), 0, 100);
@@ -1775,7 +1791,7 @@ function claimPay(S, id, take) {
     return p;
   }
   if (take) {
-    S.player.money += p.amount;
+    cashAdd(S, p.amount);
     acct(S, `收到${p.from}的${p.kind}`, p.amount, p.note);
     p.state = '已收';
     if (n) npcMem(S, n, `给主角${p.kind === '红包' ? '发了红包' : '转了'}${p.amount}元，主角收了`);
@@ -1832,7 +1848,7 @@ function groupPacket(S, g, amount, note, rng) {
   if (amount > 20000 && !fdm(S).fiat) return { ok: false, why: '红包一次最多两万' };
   if (!fundAction(S, amount, '群红包')) return { ok: false, why: `账上只有${S.player.money}` };
   const parts = splitPacket(amount, g.members.length, rng);
-  S.player.money -= amount;
+  cashAdd(S, -(amount));
   acct(S, `在「${g.name}」发红包`, -amount, String(note || '').slice(0, 20));
   const got = g.members.map((m, i) => {
     const n = npcByName(S, m);
@@ -2120,7 +2136,7 @@ function applyTurn(S, d) {
     p.attrs[k] = Math.round(p.attrF[k]);
   }
   if (num(pc.energy)) p.energy = clamp(p.energy + cap('精力', pc.energy, 35), 0, energyCap(S));
-  if (num(pc.money)) { const mv = cap('零碎进出的钱', pc.money, Math.round(capMoney(S) * 0.3)); p.money += mv; acct(S, mv > 0 ? '额外进账' : '额外花销', mv, d.summary || ''); }   // 大钱走行动结算，叙事里只认零碎
+  if (num(pc.money)) { const mv = cap('零碎进出的钱', pc.money, Math.round(capMoney(S) * 0.3)); cashAdd(S, mv); acct(S, mv > 0 ? '额外进账' : '额外花销', mv, d.summary || ''); }   // 大钱走行动结算，叙事里只认零碎
   if (num(pc.信誉)) p.信誉 = clamp(p.信誉 + cap('行业口碑', pc.信誉, 8), 0, 100);
   if (num(pc.人品)) p.人品 = clamp(p.人品 + cap('做人', pc.人品, 8), 0, 100);
   if (num(pc.idealProgress)) S.ideal.progress = r2(S.ideal.progress + cap('理想的功夫', pc.idealProgress, 35));
@@ -2329,7 +2345,7 @@ function buyHouse(S, rng) {
   const ck = rollCheck(S, '谋划', 48, rng || Math.random);
   const cut = ck.success ? Math.round(b.price * 0.03) : 0;    // 砍下来一点
   fundAction(S, b.down - cut, '买房首付');
-  S.player.money -= (b.down - cut);
+  cashAdd(S, -((b.down - cut)));
   acct(S, '买房首付', -(b.down - cut));
   S.home = {
     kind: '买', since: shortDate(S.date), price: b.price - cut,
@@ -2395,7 +2411,7 @@ function marry(S, cost) {
   if (fdm(S).fiat) fundAction(S, num(cost), '办婚事');
   P.stage = '结婚';
   P.marriedAt = shortDate(S.date);
-  S.player.money -= num(cost);
+  cashAdd(S, -(num(cost)));
   acct(S, '办婚事', -num(cost));
   const n = S.npcs.find(x => x.name === P.name);
   if (n) { n.tie = '爱人'; n.rel = clamp(n.rel + 10, 0, 100); }
@@ -2412,7 +2428,7 @@ function breakUp(S, why) {
   if (wasMarried) {
     // 分一半家当
     const half = Math.round(S.player.money * 0.42);
-    S.player.money -= Math.max(0, half);
+    cashAdd(S, -(Math.max(0, half)));
     acct(S, '离婚分家当', -Math.max(0, half));
     S.family.partner = null;
     return { wasMarried, half };
@@ -2562,7 +2578,7 @@ function openBiz(S, o, rng) {
   if (!fundAction(S, need, '开业本钱')) return { ok: false, why: `启动得要 ${need} 元，你手头只有 ${S.player.money}` };
   const ck = rollCheck(S, K.attr, 46 + (kind === '小公司' ? 12 : kind === '小店' ? 4 : 0), rng);
   const city = CITIES[S.city] || CITIES['新一线'];
-  S.player.money -= need;
+  cashAdd(S, -(need));
   acct(S, '开店本钱', -need, o.name || '');
   S.biz = {
     name: String(o.name || '没名字的店').slice(0, 14), kind,
@@ -2601,7 +2617,7 @@ function fireBiz(S, i) {
   const s = B && B.staff[i];
   if (!s) return null;
   const pay = s.pay;          // 遣散
-  S.player.money -= pay;
+  cashAdd(S, -(pay));
   acct(S, '遣散', -pay, s.name);
   B.staff.splice(i, 1);
   B.rep = clamp(B.rep - 3, 0, 100);
@@ -2635,7 +2651,7 @@ function bizMonth(S, rng) {
   const cost = B.rent + pay;
   const net = rev - cost;
   const m0 = S.player.money;
-  S.player.money += net;
+  cashAdd(S, net);
   acct(S, '店里营业额', rev, B.name, m0);
   if (B.rent) acct(S, '店面租金', -B.rent, B.name, m0);
   if (pay) acct(S, '店员工资', -pay, B.staff.map(s => s.name).join('、'), m0);
@@ -2671,7 +2687,7 @@ function closeBiz(S) {
   const back = Math.round(B.setup * 0.3);
   const sever = B.staff.reduce((a, s) => a + s.pay, 0);
   const m0 = S.player.money;
-  S.player.money += back - sever;
+  cashAdd(S, back - sever);
   acct(S, '关店回收', back, B.name, m0);
   if (sever) acct(S, '遣散', -sever, B.name, m0);
   const out = { name: B.name, months: B.months, total: B.total, back, sever, staff: B.staff.map(s => s.name) };
@@ -3004,7 +3020,7 @@ function addDebt(S, who, amount, days) {
   S.debts = S.debts || [];
   const due = addDays(S.date, Math.max(15, num(days) || 60));
   S.debts.push({ who: String(who || '某人').slice(0, 12), amount: Math.round(num(amount)), left: Math.round(num(amount)), due, late: false });
-  S.player.money += Math.round(num(amount));
+  cashAdd(S, Math.round(num(amount)));
   acct(S, '借进来', Math.round(num(amount)), String(who || ''));
 }
 function debtTick(S) {
@@ -3033,7 +3049,7 @@ function payDebt(S, i, amount) {
   const pay = Math.min(Math.round(num(amount)), d.left, S.player.money);
   if (pay <= 0) return null;
   d.left -= pay;
-  S.player.money -= pay;
+  cashAdd(S, -(pay));
   acct(S, '还债', -pay, d.who);
   if (d.left <= 0) {
     const n = S.npcs.find(x => x.name === d.who);
@@ -3341,7 +3357,7 @@ function settleKey(S) {
   }
   if (K.cost > 0) {
     const money = Math.round(K.cost * 800 * f.cost);
-    S.player.money -= money;
+    cashAdd(S, -(money));
     acct(S, '谈判让出去的', -money, K.scene || '');
     out.price.push(`让出去的折成钱约${money}`);
   }
@@ -3476,7 +3492,7 @@ function moveHome(S, tier) {
   const cost = moveCost(S, tier);
   if (!fundAction(S, cost, '搬家')) return { ok: false, why: `中介费加搬家要${cost}，账上只有${S.player.money}` };
   const from = homeTier(S), r0 = S.ledger.rent;
-  S.player.money -= cost;
+  cashAdd(S, -(cost));
   acct(S, '搬家', -cost, `${from}→${tier}`);
   S.home.tier = tier; S.home.since = shortDate(S.date); S.home.place = '';
   S.ledger.rent = rentFor(S, tier);
@@ -3630,7 +3646,7 @@ function dropGig(S, name) {
   const i = S.gigs.findIndex(x => x.name === name);
   if (i < 0) return null;
   const g = S.gigs.splice(i, 1)[0];
-  if (g.owed) { S.player.money += g.owed; acct(S, `兼职·${g.name}`, g.owed, '结清'); }
+  if (g.owed) { cashAdd(S, g.owed); acct(S, `兼职·${g.name}`, g.owed, '结清'); }
   return g;
 }
 // 今天哪份兼职占了哪个时段
@@ -3708,7 +3724,7 @@ function buyItem(S, id, viaFriend) {
   if (fr) price = Math.round(price * fr.off / 10) * 10;
   if (it.keep && hasItem(S, id)) return { ok: false, why: `已经有${it.name}了` };
   if (!fundAction(S, price, `买${it.name}`)) return { ok: false, why: `要${price}，账上只有${S.player.money}` };
-  S.player.money -= price;
+  cashAdd(S, -(price));
   acct(S, `买${it.name}`, -price, fr ? `${fr.name}那儿拿的，${Math.round(fr.off * 10)}折` : '');
   S.bagId = num(S.bagId) + 1;
   const b = { uid: S.bagId, id, name: it.name, cat: it.cat, keep: !!it.keep, gift: !!it.gift, tags: it.tags.slice(), price, day: S.stats.days, date: shortDate(S.date), uses: it.uses || 1 };
@@ -3830,7 +3846,7 @@ function doFun(S, id, withNames, treat, rng) {
   const cost = funCost(S, f, came.length, treat);
   if (!fundAction(S, cost, f.name)) return { ok: false, why: `要${cost}，账上只有${p.money}` };
   const out = [];
-  if (cost) { p.money -= cost; acct(S, f.name, -cost, came.length ? `${treat ? '请' : '跟'}${came.map(n => n.name).join('、')}` : ''); out.push(`花了${cost}`); }
+  if (cost) { cashAdd(S, -(cost)); acct(S, f.name, -cost, came.length ? `${treat ? '请' : '跟'}${came.map(n => n.name).join('、')}` : ''); out.push(`花了${cost}`); }
   if (f.card && !(S.gym && S.gym.until > S.stats.days)) { S.gym = { until: S.stats.days + 30, cap: num(S.gym && S.gym.cap) }; out.push('办了一张健身月卡'); }
   // 同一样天天去，效果减半
   S.funLog = (S.funLog || []).filter(x => S.stats.days - x.day <= 7);
@@ -3999,7 +4015,7 @@ function giveLiJin(S, name, amount, what) {
   if (!n) return { ok: false, why: '没有这个人' };
   if (amount < 0 || !fundAction(S, amount, '随礼')) return { ok: false, why: `账上只有${S.player.money}` };
   const city = CITIES[S.city] || CITIES['新一线'];
-  if (amount) { S.player.money -= amount; acct(S, '随礼', -amount, `${n.name}${what || ''}`); }
+  if (amount) { cashAdd(S, -(amount)); acct(S, '随礼', -amount, `${n.name}${what || ''}`); }
   const g = amount ? r2(clamp(1.5 + amount / city.pay * 12, 1.5, 9) * TIER_GIFT[relTier(n.rel)]) : 0.5;
   n.rel = clamp(r2(n.rel + g), 0, 100); n.lastSeen = S.stats.days;
   npcMem(S, n, `${what || '办事'}那天主角来了${amount ? `，随了${amount}` : '，没随礼'}`);
@@ -4021,7 +4037,7 @@ function lifeTick(S, rng) {
     for (const g of (S.gigs || [])) {
       if (!g.owed) continue;
       const m0 = S.player.money;
-      S.player.money += g.owed;
+      cashAdd(S, g.owed);
       acct(S, `兼职·${g.name}`, g.owed, '这一周', m0);
       S.flags.monthNet += g.owed;
       g.total = num(g.total) + g.owed;
@@ -4120,23 +4136,36 @@ function takeLoan(S, kind, amount, months) {
   B.id++;
   const ln = { id: B.id, kind, amount, left: amount, rate: q.rate, months, paid: 0, monthly: mPay(amount, q.rate, months), owe: 0, late: 0, date: shortDate(S.date) + `（${S.date.y}年）` };
   B.loans.push(ln);
-  S.player.money += amount;
+  cashAdd(S, amount);
   acct(S, `${kind}到账`, amount, `${months}个月，年利率${(q.rate * 100).toFixed(1)}%`);
   return { ok: true, loan: ln, cut, note: `${kind}批下来${amount}元${cut ? '（额度只有这么多）' : ''}，${months}个月，年利率${(q.rate * 100).toFixed(1)}%，每月还${ln.monthly}，账上${S.player.money}` };
 }
+// 旧贷款的 owe 包括未还本金和利息；提前还款不得把本金再收一遍。
+function loanArrears(ln) {
+  if (ln.arrearsPrincipal !== undefined && ln.arrearsCharges !== undefined) return;
+  let balance = num(ln.left), principal = 0;
+  const periods = Math.min(360, Math.max(0, Math.round(num(ln.late))));
+  for (let i=0;i<periods;i++) { const p=Math.min(balance,Math.max(0,num(ln.monthly)-Math.round(balance*num(ln.rate)/12))); principal+=p; balance-=p; }
+  ln.arrearsPrincipal = Math.min(num(ln.owe), num(ln.left), principal);
+  ln.arrearsCharges = Math.max(0, num(ln.owe)-ln.arrearsPrincipal);
+}
 function prepay(S, id, amount) {
-  const B = bankOf(S), ln = B.loans.find(x => x.id === id && x.left > 0);
+  const B = bankOf(S), ln = B.loans.find(x => x.id === id && (x.left > 0 || x.owe > 0));
   if (!ln) return { ok: false, why: '没有这笔贷款' };
+  loanArrears(ln);
   amount = Math.min(Math.round(num(amount)), ln.left);
   const fee = Math.round(amount * (LOANS[ln.kind] ? LOANS[ln.kind].fee : 0));
-  if (amount <= 0) return { ok: false, why: '金额不对' };
-  if (!fundAction(S, amount + fee, '提前还贷')) return { ok: false, why: `要${amount + fee}（含违约金${fee}），账上只有${S.player.money}` };
-  S.player.money -= amount + fee;
-  acct(S, `提前还${ln.kind}`, -(amount + fee), fee ? `含违约金${fee}` : '');
+  if (amount < 0 || (!amount && !ln.owe)) return { ok: false, why: '金额不对' };
+  const charges = ln.arrearsCharges, total = finiteNumber(amount + fee + charges);
+  if (!fundAction(S, total, '提前还贷')) return { ok: false, why: `要${total}（含违约金${fee}、欠息及罚息${charges}），账上只有${S.player.money}` };
+  cashAdd(S, -total);
+  acct(S, `提前还${ln.kind}`, -total, `违约金${fee}，欠息及罚息${charges}`);
   ln.left -= amount;
+  ln.arrearsPrincipal = Math.max(0, ln.arrearsPrincipal-amount); ln.arrearsCharges=0; ln.owe=ln.arrearsPrincipal;
+  if (!ln.owe) ln.late=0;
   const rest = ln.months - ln.paid;
   ln.monthly = ln.left > 0 ? mPay(ln.left, ln.rate, Math.max(1, rest)) : 0;
-  return { ok: true, fee, left: ln.left, note: `提前还了${ln.kind}${amount}${fee ? `，违约金${fee}` : ''}，${ln.left ? `还欠${ln.left}，每月${ln.monthly}` : '还清了'}` };
+  return { ok: true, fee, charges, left: ln.left, note: `提前还了${ln.kind}${amount}${fee ? `，违约金${fee}` : ''}${charges ? `，补欠息及罚息${charges}` : ''}，${ln.left || ln.owe ? `本金还欠${ln.left}，逾期未补${ln.owe}，每月${ln.monthly}` : '还清了'}` };
 }
 // 定期
 function deposit(S, amount, term) {
@@ -4148,7 +4177,7 @@ function deposit(S, amount, term) {
   B.id++;
   const due = addDays(S.date, Math.round(term * 30.4));
   B.fixed.push({ id: B.id, amount, term, rate: DEPO[term], day: S.stats.days, dueDay: S.stats.days + Math.round(term * 30.4), due: shortDate(due) + `（${due.y}年）` });
-  S.player.money -= amount;
+  cashAdd(S, -(amount));
   acct(S, `存定期${term === 36 ? '三年' : term === 12 ? '一年' : '三个月'}`, -amount);
   return { ok: true, note: `存了${amount}定期，${term}个月，年利率${(DEPO[term] * 100).toFixed(1)}%，${shortDate(due)}到期` };
 }
@@ -4159,7 +4188,7 @@ function withdrawFixed(S, id) {
   const early = S.stats.days < f.dueDay;
   const days = Math.max(0, S.stats.days - f.day);
   const int = Math.round(f.amount * (early ? CUR_RATE : f.rate) * (early ? days / 365 : f.term / 12));
-  S.player.money += f.amount + int;
+  cashAdd(S, f.amount + int);
   acct(S, early ? '定期提前取出' : '定期到期', f.amount + int, `利息${int}`);
   return { ok: true, early, int, note: `${early ? '提前取出' : '到期取出'}定期${f.amount}，利息${int}${early ? '（提前取只算活期）' : ''}` };
 }
@@ -4171,7 +4200,7 @@ function invest(S, kind, amount, rng) {
   if (amount < 100) return { ok: false, why: '最少一百' };
   if (!fundAction(S, amount, '行动支出')) return { ok: false, why: `账上只有${S.player.money}` };
   const B = bankOf(S);
-  S.player.money -= amount;
+  cashAdd(S, -(amount));
   if (kind === '货币基金') { B.mmf = r2(B.mmf + amount); acct(S, '买货币基金', -amount); return { ok: true, note: `${amount}放进了货币基金，年化1.5%上下，随取随用` }; }
   if (kind === '银行理财') {
     B.id++;
@@ -4188,7 +4217,7 @@ function invest(S, kind, amount, rng) {
     acct(S, '买股票基金', -amount, `净值${B.nav.toFixed(3)}`);
     return { ok: true, note: `买了${amount}股票基金，净值${B.nav.toFixed(3)}${edge ? '，挑的点位不错' : ''}` };
   }
-  S.player.money += amount;
+  cashAdd(S, amount);
   return { ok: false, why: '没有这种理财' };
 }
 function fundValue(S) { const B = bankOf(S); return Math.round(B.fund.units * B.nav); }
@@ -4201,7 +4230,7 @@ function redeem(S, kind, amount) {
   if (kind === '货币基金') {
     amount = Math.min(Math.round(num(amount)) || Math.floor(B.mmf), Math.floor(B.mmf));
     if (amount <= 0) return { ok: false, why: '货币基金里没钱' };
-    B.mmf = r2(B.mmf - amount); S.player.money += amount; acct(S, '取货币基金', amount);
+    B.mmf = r2(B.mmf - amount); cashAdd(S, amount); acct(S, '取货币基金', amount);
     return { ok: true, note: `从货币基金取了${amount}` };
   }
   if (kind === '股票基金') {
@@ -4214,7 +4243,7 @@ function redeem(S, kind, amount) {
     B.fund.units = r2(B.fund.units * (1 - part)); B.fund.cost -= cost;
     if (B.fund.units < 0.01) { B.fund = { units: 0, cost: 0, mark: 0 }; }
     else B.fund.mark = B.fund.cost;
-    S.player.money += want - fee;
+    cashAdd(S, want - fee);
     acct(S, '卖股票基金', want - fee, `${want - cost >= 0 ? '赚' : '亏'}${Math.abs(want - cost)}，手续费${fee}`);
     return { ok: true, gain: want - cost, note: `卖了${want}股票基金，${want - cost >= 0 ? '赚了' : '亏了'}${Math.abs(want - cost)}，手续费${fee}` };
   }
@@ -4229,14 +4258,14 @@ function bankTick(S, rng) {
   // 季度末结活期息
   if ([3, 6, 9, 12].includes(S.date.m) && S.date.d === 21 && B.curAcc >= 1) {
     const int = Math.round(B.curAcc); B.curAcc = 0;
-    p.money += int; acct(S, '活期利息', int);
+    cashAdd(S, int); acct(S, '活期利息', int);
   }
   for (const f of B.fixed.slice()) if (S.stats.days >= f.dueDay) { const r = withdrawFixed(S, f.id); ev.push({ t: '钱', s: r.note.replace('到期取出', '到期了，转回账上：') }); }
   for (const w of B.wm.slice()) if (S.stats.days >= w.dueDay) {
     const lose = rng() < 0.03;
     const back = Math.round(w.amount * (1 + (lose ? -rng() * 0.005 : w.rate * 90 / 365)));
     B.wm = B.wm.filter(x => x.id !== w.id);
-    p.money += back; acct(S, '银行理财到期', back, `本金${w.amount}`);
+    cashAdd(S, back); acct(S, '银行理财到期', back, `本金${w.amount}`);
     ev.push({ t: '钱', s: `银行理财到期，${w.amount}变成${back}${lose ? '，没达到业绩基准' : ''}` });
   }
   // 股票基金：每周走一步，跟风向挂钩
@@ -4261,31 +4290,32 @@ function loanTick(S) {
   const B = bankOf(S), p = S.player, ev = [];
   let stop = null;
   for (const ln of B.loans) {
-    if (ln.left <= 0) continue;
-    const due = ln.monthly + ln.owe;
+    if (ln.left <= 0 && !ln.owe) continue;
+    loanArrears(ln);
+    const interest = Math.round(ln.left * ln.rate / 12);
+    const principal = Math.min(Math.max(0,ln.left-ln.arrearsPrincipal), ln.paid+ln.late+1 >= ln.months ? ln.left : Math.max(0,ln.monthly-interest));
+    const due = finiteNumber(principal + interest + ln.owe);
     if (p.money >= due) {
-      p.money -= due;
+      cashAdd(S, -(due));
       acct(S, `${ln.kind}月供`, -due, ln.owe ? '含之前欠的' : '');
-      for (let k = 0; k < 1 + (ln.owe ? Math.round(ln.owe / ln.monthly) : 0); k++) {
-        const int = Math.round(ln.left * ln.rate / 12);
-        ln.left = Math.max(0, ln.left - Math.max(0, ln.monthly - int));
-        ln.paid++;
-      }
-      if (ln.paid >= ln.months) ln.left = 0;
+      ln.left = Math.max(0, ln.left-principal-ln.arrearsPrincipal);
+      ln.paid += 1 + ln.late;
       ln.owe = 0; ln.late = 0;
+      ln.arrearsPrincipal=0; ln.arrearsCharges=0;
       B.credit = clamp(r2(B.credit + 0.4), 0, 95);
       if (!ln.left) ev.push({ t: '钱', s: `${ln.kind}还清了` });
     } else {
       ln.late++;
-      ln.owe += ln.monthly;
-      if (ln.late >= 2) ln.owe += Math.round(ln.monthly * 0.05);     // 罚息
+      ln.arrearsPrincipal = finiteNumber(ln.arrearsPrincipal+principal);
+      ln.arrearsCharges = finiteNumber(ln.arrearsCharges+interest+(ln.late >= 2 ? Math.round(ln.monthly * 0.05) : 0));
+      ln.owe = finiteNumber(ln.arrearsPrincipal+ln.arrearsCharges);
       B.credit = clamp(B.credit - (ln.late >= 3 ? 12 : 6), 0, 95);
       if (ln.late === 1) ev.push({ t: '钱', s: `${ln.kind}这个月的月供${ln.monthly}没扣出来，银行发了短信` });
       else if (ln.late === 2) ev.push({ t: '钱', s: `${ln.kind}连着两个月没还上，开始算罚息` });
       else stop = { kind: '钱', detail: `${ln.kind}连着${ln.late}个月没还，银行打电话来催收，欠着${ln.owe}` };
     }
   }
-  B.loans = B.loans.filter(x => x.left > 0 || S.stats.days - num(x.endDay || S.stats.days) < 60).map(x => { if (!x.left && !x.endDay) x.endDay = S.stats.days; return x; });
+  B.loans = B.loans.filter(x => x.left > 0 || x.owe > 0 || S.stats.days - num(x.endDay ?? S.stats.days) < 60).map(x => { if (!x.left && !x.owe && x.endDay === undefined) x.endDay = S.stats.days; return x; });
   return { ev, stop };
 }
 function bankLine(S) {
@@ -4296,8 +4326,8 @@ function bankLine(S) {
   const wm = B.wm.reduce((s, w) => s + w.amount, 0);
   if (wm) a.push(`银行理财${wm}（锁着）`);
   if (B.fund.units > 0) { const v = fundValue(S); a.push(`股票基金眼下值${v}（本金${B.fund.cost}，${v >= B.fund.cost ? '赚' : '亏'}${Math.abs(v - B.fund.cost)}）`); }
-  const L = B.loans.filter(x => x.left > 0);
-  for (const l of L) a.push(`${l.kind}还欠${l.left}，每月还${l.monthly}${l.late ? `，已经逾期${l.late}个月` : ''}`);
+  const L = B.loans.filter(x => x.left > 0 || x.owe > 0);
+  for (const l of L) a.push(`${l.kind}本金还欠${l.left}，每月还${l.monthly}${l.owe ? `，逾期未补${l.owe}` : ''}${l.late ? `，已经逾期${l.late}个月` : ''}`);
   a.push(`征信${creditWord(B.credit)}`);
   return a.join('；');
 }
@@ -4332,7 +4362,9 @@ function migrate(S) {
     if (Array.isArray(tpl[k]) && !Array.isArray(S[k])) S[k] = tpl[k];
   }
   if (!hadRent2) delete S.flags.rent2;
+  finiteState(S);
   const p = S.player;
+  if (p.wealthLabel === '无限' || p.wealthLabel === '无穷') p.money = Number.MAX_VALUE;
   if (!TRACKS[p.track]) p.track = '职场';
   for (const a of ATTRS) { p.attrs[a] = fdm(S).fiat && p.attrs[a] !== undefined ? num(p.attrs[a]) : num(p.attrs[a]) || 20; if (p.attrF[a] === undefined) p.attrF[a] = p.attrs[a]; }
   for (const k of ['money', 'energy', '信誉', '人品', 'age']) p[k] = num(p[k]);
@@ -4371,6 +4403,7 @@ function migrate(S) {
   S.player.job = jobLabel(S);
   fixPace(S);
   fixWho(S);
+  if (API.normalizeFiatState) API.normalizeFiatState(S);
   return S;
 }
 
@@ -4401,7 +4434,7 @@ function originTick(S, rng) {
   const r = O.risk;
   if (r.cut) { S.ledger.subsidy = 0; }
   if (r.rep) S.player.信誉 = clamp(S.player.信誉 + r.rep, 0, 100);
-  if (r.money) { S.player.money -= r.money; acct(S, '家里的事', -r.money, r.text.slice(0, 20)); }
+  if (r.money) { cashAdd(S, -(r.money)); acct(S, '家里的事', -r.money, r.text.slice(0, 20)); }
   return { kind: '家里', detail: r.text };
 }
 function originEase(S, kind) {
@@ -4575,7 +4608,7 @@ function setNpcPos(S, n, x, fresh) {
 
 /* ---------- 导出 ---------- */
 const API = {
-  SAVE_VERSION, FIAT_AMOUNT, fundAction, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
+  SAVE_VERSION, FIAT_AMOUNT, fundAction, finiteNumber, finiteState, cashAdd, personAge, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
   npcMem, markIntimate, lovers, whoIs, fixWho, guessGender, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
@@ -4624,7 +4657,7 @@ const safeAdd = (a, b) => { const v = finite(a) + finite(b); return Number.isFin
 // 仅过滤无法保存的值和原型键，不对指令、条目数量、金额或文字长度设玩法上限。
 function clean(v) {
   if (v === null || typeof v === 'string' || typeof v === 'boolean') return v;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'number') return E.finiteNumber(v);
   if (Array.isArray(v)) return v.map(clean).filter(x => x !== undefined);
   if (!obj(v)) return undefined;
   const out = {};
@@ -4639,6 +4672,45 @@ function worldOf(S) {
   const W=obj(S.fiatWorld)?S.fiatWorld:(S.fiatWorld={});
   for(const k of ['facts','rules','assets','businesses','homes','commands']) if(!Array.isArray(W[k])) W[k]=[];
   return W;
+}
+function normalizeState(S) {
+  const numbers = (x, defaults) => { for (const [k,v] of Object.entries(defaults)) x[k]=finite(x[k],v); };
+  const strings = (x, keys) => { for (const k of keys) if (x[k] !== undefined) x[k]=String(x[k] ?? ''); };
+  if (obj(S.fiatWorld)) {
+    for(const k of ['facts','rules','assets','businesses','homes']) S.fiatWorld[k]=(Array.isArray(S.fiatWorld[k])?S.fiatWorld[k]:[])
+      .map(x=>typeof x==='string'?{name:x,detail:''}:x).filter(x=>obj(x)&&(x.name||x.title||x.what)).map(x=>({...x,name:String(x.name||x.title||x.what)}));
+    S.fiatWorld.commands=(Array.isArray(S.fiatWorld.commands)?S.fiatWorld.commands:[]).filter(obj);
+  }
+  const business = b => {
+    strings(b,['name','kind','since','detail']);
+    numbers(b,{months:0,rent:0,rep:100,tend:0,rev:0,cost:0,net:0,lossMonths:0,best:0,total:0,setup:0});
+    b.staff=(Array.isArray(b.staff)?b.staff:[]).filter(obj).map(st=>{
+      const n=Object.assign({name:'员工',role:'员工'},st); strings(n,['name','role']);
+      numbers(n,{skill:50,pay:0,loyal:60,months:0}); return n;
+    });
+  };
+  if (obj(S.biz)) business(S.biz);
+  if (obj(S.fiatWorld)) for (const b of (S.fiatWorld.businesses||[]).filter(obj)) business(b);
+  if (obj(S.family)) {
+    if (S.family.partner !== null && !obj(S.family.partner)) S.family.partner=null;
+    if (S.family.partner) { strings(S.family.partner,['name','stage','since','marriedAt']); numbers(S.family.partner,{warm:100,sinceDay:S.stats.days}); }
+    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{strings(k,['name','born']);numbers(k,{age:0,bornY:S.date.y,dueDay:S.stats.days});return k;});
+  }
+  for (const key of ['status','chronic']) S[key]=(Array.isArray(S[key])?S[key]:[]).filter(obj).map(x=>{strings(x,['name','desc']);numbers(x,{days:1,eased:0});return x;});
+  const B=E.bankOf(S);
+  numbers(B,{mmf:0,mmfGain:0,nav:1,credit:60,curAcc:0,id:0});
+  B.nav=Math.max(Number.MIN_VALUE,B.nav);
+  B.fund=obj(B.fund)?B.fund:{};numbers(B.fund,{units:0,cost:0,mark:0});
+  for (const key of ['fixed','wm','loans']) B[key]=(Array.isArray(B[key])?B[key]:[]).filter(obj).map(x=>{
+    if (!Number.isFinite(Number(x.id))) x.id=++B.id;
+    else { x.id=Number(x.id); B.id=Math.max(B.id,x.id); }
+    numbers(x,{amount:0,rate:0,day:S.stats.days,dueDay:S.stats.days+365});
+    if (key==='loans') { strings(x,['kind','date']); if(!x.kind)x.kind='信用贷'; numbers(x,{left:x.amount,monthly:0,months:12,paid:0,owe:0,late:0}); }
+    else { strings(x,['due']); if(!x.due)x.due=E.shortDate(S.date); if(key==='fixed')numbers(x,{term:12}); }
+    return x;
+  });
+  if (obj(S.home.loan)) numbers(S.home.loan,{left:0,monthly:0,months:360,paid:0});
+  return E.finiteState(S);
 }
 function renamePerson(S, before, after) {
   const fields=(list,keys)=>{for(const x of list||[])if(obj(x))for(const k of keys)if(x[k]===before)x[k]=after;};
@@ -4689,6 +4761,7 @@ function setTime(S, date, days, explicitAge) {
 function applyChanges(S, input) {
   if (!E.fdm(S).fiat || !obj(input)) return false;
   const c = clean(input), W = worldOf(S), p = S.player;
+  normalizeState(S);
   const beforeMoney = finite(p.money);
   const P = obj(c.player) ? c.player : {};
   if (P.money === '无限' || P.money === '无穷') {
@@ -4783,6 +4856,7 @@ function applyChanges(S, input) {
     if (n.intimate===false) delete n.intimate;
   }
   if (obj(c.family)) {
+    if (own(c.family,'partner') && c.family.partner!==null && !obj(c.family.partner)) throw Error('伴侣资料需要是一个对象或空值');
     if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, S.family.partner||{}, c.family.partner);
     if (Array.isArray(c.family.kids)) S.family.kids = c.family.kids.filter(x => obj(x) && x.name).map(x => Object.assign({ age: 0, unborn: false, born: E.shortDate(S.date), bornY: S.date.y }, x));
   }
@@ -4816,6 +4890,7 @@ function applyChanges(S, input) {
   if (c.clearEvents === true) { S.promiseAsk = null; S.stopQueue = []; S.key = null; S.focus = null; S.interview = null; S.appts = []; S.pledges = []; S.stopWhen = []; }
   if (own(c, 'over')) { S.over = c.over === true; S.ending = S.over ? String(c.ending || '按你的意思收尾') : null; }
   p.job = E.jobLabel(S); S.broke = false; S.capNote = null; S.claimNote = null;
+  normalizeState(S);
   const money = p.money - beforeMoney;
   if (Number.isFinite(money) && money) E.acct(S, '言出法随·世界改写', money, S.lastAction || '', beforeMoney);
   return true;
@@ -4824,7 +4899,7 @@ function applyChanges(S, input) {
 function context(S) {
   const {name,gender,ideal,skillName,bg,track,...mutable}=S.player;
   const {commands=[],...world}=S.fiatWorld || {};
-  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands,
+  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands:commands.slice(-12),
     player:mutable, place:S.place, job:S.job, ledger:S.ledger, home:S.home, biz:S.biz, bank:S.bank, debts:S.debts,
     health:{status:S.status,chronic:S.chronic}, family:S.family, npcs:S.npcs, ideal:S.ideal, unresolved:S.unresolved,
     recent:S.history.slice(-12), events:{promise:S.promiseAsk,key:S.key,focus:S.focus,queue:S.stopQueue}, over:S.over, date:S.date }, null, 0);
@@ -4865,6 +4940,7 @@ function settle(S, raw, action) {
   if (!own(d.fiatChanges,'over')) { next.over=false; next.ending=null; }
   const W = worldOf(next);
   W.commands.push({ seg:S.seg, date:E.dateStr(next.date), command:String(action), result:String(d.summary || d.narrative) });
+  rememberDirectives(W, action);
   next.history.push({ seg:S.seg, date:E.shortDate(next.date), summary:String(d.summary || d.narrative), act:String(action) });
   next.recent.push({ seg:S.seg, action:String(action), narrative:d.narrative });
   next.unresolved = Array.isArray(d.unresolved) ? d.unresolved.map(String) : next.unresolved;
@@ -4888,8 +4964,23 @@ function applyAtomic(S, changes) {
   Object.assign(S,next);
   return true;
 }
-Object.assign(E, { cleanFiat:clean, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
-  cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
+// 明示的持续要求保留原句。完整历史另行归档，当前世界事实始终完整发送。
+function rememberDirectives(W, action) {
+  if (!/(永远|一直|每次|每逢|今后|以后|从此|持续|始终|不要|不许|不得|不能|禁止|never|always|every time|from now on|do not|don't)/i.test(String(action))) return;
+  if(!Array.isArray(W.directives)) W.directives=[];
+  if(!W.directives.includes(String(action))) W.directives.push(String(action));
+}
+function archivePlan(S) {
+  const W=S.fiatWorld;
+  if (!obj(W)) return [];
+  for (const r of W.commands||[]) rememberDirectives(W,r.command);
+  return [['commands',W,'commands',24],['history',S,'history',120],['recent',S,'recent',12]].flatMap(([kind,owner,key,keep])=>{
+    const list=owner[key];
+    return Array.isArray(list)&&list.length>keep ? [{kind,owner,key,count:list.length-keep,values:list.slice(0,-keep)}] : [];
+  });
+}
+Object.assign(E, { cleanFiat:clean, normalizeFiatState:normalizeState, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
+  fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
 });
 
 </script>
@@ -4999,12 +5090,7 @@ function nameHash(name) { let h = 0; for (let i = 0; i < name.length; i++) h = (
 function ageBand(age) { return age >= 55 ? 'old' : age >= 35 ? 'mid' : 'young'; }
 // 某人在某一年的美术年龄；年龄不详按称呼推
 function personAge(S, n, year) {
-  const y = year ?? S.date.y;
-  if (n === S.player) return S.player.age - (S.date.y - y);
-  if (n.age !== undefined && n.age !== null && n.age !== '' && Number.isFinite(Number(n.age)) && (Number(n.age)!==0 || ENGINE.fdm(S).fiat)) return Number(n.age) + (y - (n.ageY ?? S.date.y));
-  const t = String(n.tie || '');
-  if (/同学|室友|对象|同事|同期|朋友|爱人/.test(t)) return S.player.age - (S.date.y - y);
-  return 44;
+  return ENGINE.personAge(S, n, year);
 }
 // 分配身份族：同性别里当前通讯录用得最少的，并列按名字哈希
 function assignFace(S, n) {
@@ -5046,7 +5132,7 @@ function faceHtml(S, name, size, year) {
   if (had !== face && typeof saveGame === 'function') saveGame();
   const src = avatarSrc(face, ageBand(personAge(S, p, year)));
   if (!src) return block;
-  return `<img class="${cls}" src="${src}" alt="" loading="lazy" decoding="async" data-ch="${ch}" data-h="${hue}" onerror="faceFail(this)"/>`;
+  return `<img class="${cls}" src="${src}" alt="" loading="lazy" decoding="async" data-ch="${ch.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}" data-h="${hue}" onerror="faceFail(this)"/>`;
 }
 function faceFail(img) {
   img.onerror = null;
@@ -5061,6 +5147,21 @@ function faceFail(img) {
 const E = ENGINE;
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function actionAttrs(action, args, close) {
+  return `data-ui-action="${action}" data-ui-args="${esc(JSON.stringify(args))}"${close ? ' data-ui-close="yes"' : ''}`;
+}
+function dispatchAction(event) {
+  const el = event.target.closest('[data-ui-action]');
+  if (!el) return;
+  const actions = { openThread, openCard, giveFromCard, openConvo, askLove, doGive, openShop, doComment, showNpc, doBuy, doDropGig, doTakeGig };
+  const fn = Object.prototype.hasOwnProperty.call(actions, el.dataset.uiAction) && actions[el.dataset.uiAction];
+  if (!fn) return;
+  let args; try { args = JSON.parse(el.dataset.uiArgs); } catch (_) { return; }
+  if (!Array.isArray(args)) return;
+  event.stopPropagation();
+  if (el.dataset.uiClose === 'yes') mask('npcMask', false);
+  fn(...args);
+}
 const LS_CFG = 'mls_cfg', LS_SAVE = 'mls_save';
 const IDB_NAME = 'mls_book', IDB_STORE = 'chapters';
 const API_PRESETS = {
@@ -5106,6 +5207,7 @@ function setSkin(k, v) {
   cfg[k] = v;
   try { localStorage.setItem(LS_CFG, JSON.stringify(cfg)); } catch (_) { }
   applySkin();
+  fitTabs();
 }
 
 /* ================= 提示与开关 ================= */
@@ -5156,16 +5258,72 @@ function ask(o) {
 
 /* ================= 全本存 IndexedDB ================= */
 let idbP = null;
+// 存档中的章节是外部输入：只恢复排版，不恢复脚本、事件或外链。
+function safeChapter(html) {
+  const raw = String(html || ''), tpl = document.createElement('template');
+  if (!tpl.content) return esc(raw); // 不支持 inert template 的环境只显示文本。
+  tpl.innerHTML = raw;
+  const tags = new Set(['DIV','ARTICLE','SECTION','HEADER','H4','SPAN','P','Q','B','STRONG','I','EM','U','S','BR','FIGURE','IMG']);
+  const drop = new Set(['SCRIPT','STYLE','TEMPLATE','IFRAME','OBJECT','EMBED','SVG','MATH','LINK','META','BASE']);
+  const classes = new Set('chapter chaphead chapmark chaptime action-echo ntext say typing dicebar die good bad great fate fdie ftxt landed art cover ban ending capnote ended endblock kbar bar bar-in tip'.split(' '));
+  const walk = parent => {
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType === 3) continue;
+      if (node.nodeType !== 1 || drop.has(node.tagName)) { node.remove(); continue; }
+      walk(node);
+      if (!tags.has(node.tagName)) { node.replaceWith(...node.childNodes); continue; }
+      const cls = (node.getAttribute('class') || '').split(/\s+/).filter(c => classes.has(c)).join(' ');
+      const src = node.getAttribute('src') || '', alt = node.getAttribute('alt') || '';
+      const width = (node.getAttribute('style') || '').match(/(?:^|;)\s*width:\s*(\d+(?:\.\d+)?)%\s*(?:;|$)/i);
+      const seq = node.getAttribute('data-chapter-seq');
+      for (const a of Array.from(node.attributes)) node.removeAttribute(a.name);
+      if (cls) node.setAttribute('class', cls);
+      if (cls.split(' ').includes('bar-in') && width) node.style.width=Math.min(100,Number(width[1]))+'%';
+      if (seq !== null && /^\d+$/.test(seq)) node.setAttribute('data-chapter-seq', seq);
+      if (node.tagName === 'IMG') {
+        if (!/^(?:\.\/)?assets\/art\/(?:scenes|avatars)\/[a-z0-9_]+\.webp$/.test(src)) { node.remove(); continue; }
+        node.setAttribute('src', src); node.setAttribute('alt', alt);
+        node.setAttribute('loading', 'lazy'); node.setAttribute('decoding', 'async');
+      }
+    }
+  };
+  walk(tpl.content);
+  return tpl.innerHTML;
+}
+function safeSaveChapters(state) {
+  state.chapters = (state.chapters || []).map(safeChapter);
+  state.unfiledChapters = (state.unfiledChapters || []).filter(r => r && Number.isInteger(r.seq) && typeof r.html === 'string').map(r => ({ seq:r.seq, html:safeChapter(r.html) }));
+  return state;
+}
+// 用序号和正文合并两处章节；旧档没有序号时保留尚未归档的正文。
+function mergeBook(state, rows) {
+  const bySeq = new Map();
+  for (const r of rows || []) if (r && Number.isInteger(r.seq) && typeof r.html === 'string') bySeq.set(r.seq, { seq:r.seq, html:safeChapter(r.html) });
+  const recent = (state.chapters || []).map((html, i) => {
+    const m = html.match(/data-chapter-seq=["'](\d+)["']/);
+    return { seq:m ? Number(m[1]) : Math.max(0, state.seg - state.chapters.length + 1 + i), html:safeChapter(html), explicit:!!m };
+  }).concat((state.unfiledChapters || []).map(r => ({ ...r, html:safeChapter(r.html), explicit:true })));
+  for (const r of recent) {
+    if (Array.from(bySeq.values()).some(x => x.html === r.html)) continue;
+    if (!r.explicit && bySeq.has(r.seq)) r.seq = Math.max(-1, ...bySeq.keys()) + 1;
+    bySeq.set(r.seq, { seq:r.seq, html:r.html });
+  }
+  return Array.from(bySeq.values()).sort((a,b) => a.seq-b.seq).map(r => ({ ...r, run:state.runId, id:state.runId+'-'+r.seq }));
+}
 function idb() {
   if (idbP) return idbP;
   idbP = new Promise((res, rej) => {
     if (typeof indexedDB === 'undefined') return rej(new Error('no idb'));
-    const rq = indexedDB.open(IDB_NAME, 1);
+    const rq = indexedDB.open(IDB_NAME, 2);
     rq.onupgradeneeded = () => {
       const db = rq.result;
       if (!db.objectStoreNames.contains(IDB_STORE)) {
         const st = db.createObjectStore(IDB_STORE, { keyPath: 'id' });
         st.createIndex('run', 'run', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('archive')) {
+        const st = db.createObjectStore('archive', { keyPath:'id' });
+        st.createIndex('run', 'run', { unique:false });
       }
     };
     rq.onsuccess = () => res(rq.result);
@@ -5174,11 +5332,14 @@ function idb() {
   return idbP;
 }
 async function bookPut(rec) {
+  return bookPutMany([rec]);
+}
+async function bookPutMany(records) {
   const db = await idb();
   return new Promise((res, rej) => {
     const tx = db.transaction(IDB_STORE, 'readwrite');
-    tx.objectStore(IDB_STORE).put(rec);
-    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    for (const rec of records) tx.objectStore(IDB_STORE).put({ ...rec, html:safeChapter(rec.html) });
+    tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error || new Error('章节写入中断'));
   });
 }
 async function bookAll(run) {
@@ -5191,13 +5352,68 @@ async function bookAll(run) {
   });
 }
 async function bookClear(run) {
-  const db = await idb(), rows = await bookAll(run);
+  const db = await idb(), rows = await bookAll(run), archive = await archiveAll(run);
   return new Promise((res, rej) => {
-    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const tx = db.transaction([IDB_STORE,'archive'], 'readwrite');
     const st = tx.objectStore(IDB_STORE);
     for (const r of rows) st.delete(r.id);
-    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+    for (const r of archive) tx.objectStore('archive').delete(r.id);
+    tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => rej(tx.error);
   });
+}
+async function archiveAll(run) {
+  const db=await idb();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction('archive','readonly'), rq=tx.objectStore('archive').index('run').getAll(run);
+    rq.onsuccess=()=>res((rq.result||[]).sort((a,b)=>a.order-b.order));rq.onerror=()=>rej(rq.error);
+  });
+}
+async function archivePut(records) {
+  if (!records.length) return;
+  const db=await idb();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction('archive','readwrite'),st=tx.objectStore('archive');
+    for(const r of records)st.put(r);
+    tx.oncomplete=()=>res();tx.onerror=tx.onabort=()=>rej(tx.error||new Error('历史归档中断'));
+  });
+}
+const archiving = new WeakSet(), archiveTasks = new WeakMap();
+async function recallHistory(state, action) {
+  if (!state.archiveOrder || !/(回顾|以前|当年|之前|上次|曾经|历史|原先|最早|那件|earlier|previous|recall|before)/i.test(String(action))) return '';
+  const tokens=new Set();
+  for(const part of String(action).match(/[a-z0-9]{2,}|[\u4e00-\u9fff]{2,}/gi)||[]) {
+    if (/^[a-z0-9]+$/i.test(part)) tokens.add(part.toLowerCase());
+    else for(let i=0;i<part.length-1;i++)tokens.add(part.slice(i,i+2));
+  }
+  for(const n of state.npcs||[])if(String(action).includes(n.name))tokens.add(n.name.toLowerCase());
+  const rows=await archiveAll(state.runId), seen=new Set();
+  const hits=rows.map(r=>{const text=JSON.stringify(r.value).toLowerCase();return {r,score:Array.from(tokens).reduce((n,t)=>n+(text.includes(t)?1:0),0)};})
+    .filter(x=>x.score>0).sort((a,b)=>b.score-a.score||b.r.order-a.r.order).filter(x=>{
+      const key=x.r.kind+':'+x.r.value.seg;if(seen.has(key))return false;seen.add(key);return true;
+    }).slice(0,6).map(x=>({id:x.r.id,kind:x.r.kind,record:x.r.value}));
+  return '\n【从本局完整历史检索的原文；以最新世界改写为准】\n'+JSON.stringify(hits);
+}
+function queueArchive(state) {
+  if (archiving.has(state) || !state.runId) return archiveTasks.get(state);
+  const plan=E.fiatArchivePlan(state);
+  if (!plan.length) return Promise.resolve();
+  archiving.add(state);
+  const order=state.archiveOrder||0, records=[];
+  for (const p of plan) for (const value of p.values) {
+    const n=order+records.length+1;records.push({id:state.runId+'-archive-'+n,run:state.runId,order:n,kind:p.kind,value});
+  }
+  const task=archivePut(records).then(()=>{
+    // 只有写入成功才裁活动窗口。等待期间追加的记录保留。
+    for (const p of plan) p.owner[p.key].splice(0,p.count);
+    state.archiveOrder=order+records.length;
+    state.archiveCounts=state.archiveCounts||{};
+    for(const p of plan)state.archiveCounts[p.kind]=(state.archiveCounts[p.kind]||0)+p.count;
+    if (S===state) saveGame();
+  }).catch(e=>{
+    console.warn('历史仍保留在主档中',e);
+    if (!queueArchive.warned) {queueArchive.warned=true;toast('历史暂未归档，原文仍保留。请导出备份，稍后会再尝试。');}
+  }).finally(()=>{archiving.delete(state);archiveTasks.delete(state);});
+  archiveTasks.set(state,task);return task;
 }
 
 /* ================= 接口 ================= */
@@ -5418,7 +5634,7 @@ const FREE_NOTE = {
 
 /* ================= 口径 ================= */
 const PERSON = () => cfg.person === 'ta'
-  ? `【人称】通篇用第三人称写主角，主语用他的名字或者"他"。`
+  ? `【人称】通篇用第三人称写主角，主语用主角的名字或者"${S && S.player.gender === '女' ? '她' : '他'}"。`
   : `【人称】通篇用第二人称写主角：主语是"你"，不许用他的名字当主语，也不许用"他""主角"指代主角。别人说话时可以直接叫他的名字。`;
 
 const SAY_RULE = `【必须有人说话】这是最要紧的一条。
@@ -5690,7 +5906,7 @@ function rosterBlock() {
   if (!S.npcs.length) return '【人物名册】（还没认识什么人）';
   return `【人物名册（主角认识的所有人，按认识先后；身份、性别、年龄、关系以这里为准，不许改，不许把两个人当成一个，不许让已经认识的人重新认识主角）】
 ${S.npcs.slice(0, 80).map(n => {
-    const age = n.age ? `${n.age + (S.date.y - (n.ageY || S.date.y))}岁` : '年龄未定';
+    const age = (n.age || E.fdm(S).fiat) ? `${E.personAge(S,n)}岁` : '年龄未定';
     const bits = [n.gender || '性别未定', age, callName(n) || n.tie || '关系未定', n.job || '干什么的未定'].join('｜');
     const g = E.npcGap(S, n);
     return `- ${n.name}：${bits}${n.note ? '｜' + n.note : ''}${n.pos ? `｜位置：${n.pos}${g != null ? `（${E.gapWord(g)}）` : ''}` : ''}${(n.facts || []).length ? `｜要一直记着：${n.facts.join('；')}` : ''}`;
@@ -6092,15 +6308,28 @@ function updateChapterNarrative(t) {
 function scrollDown() { const s = $('story'); s.scrollTop = s.scrollHeight; }
 async function finishChapter() {
   if (!curChapter) return;
-  S.chapters.push(curChapter.outerHTML);
+  curChapter.setAttribute('data-chapter-seq', String(S.seg));
+  const snapshot=curChapter.cloneNode(true);
+  snapshot.querySelectorAll('.fdie').forEach(fd=>{
+    if (/^\d+$/.test(fd.dataset.v || '')) { fd.textContent=fd.dataset.v;fd.classList.remove('rolling'); }
+  });
+  const rec = { seq:S.seg, html:safeChapter(snapshot.outerHTML) };
+  S.chapters.push(rec.html);
   S.chapters = S.chapters.slice(-40);
+  S.unfiledChapters = (S.unfiledChapters || []).filter(r => r.seq !== rec.seq).concat([rec]);
+  saveGame();
   if (S.runId) {
-    try { await bookPut({ id: S.runId + '-' + S.seg, run: S.runId, seq: S.seg, html: curChapter.outerHTML }); } catch (_) { }
+    const state = S, pending = state.unfiledChapters.slice();
+    try {
+      await bookPutMany(pending.map(r => ({ ...r, run:state.runId, id:state.runId+'-'+r.seq })));
+      state.unfiledChapters = state.unfiledChapters.filter(r => !pending.includes(r));
+    } catch (_) { toast('章节暂存在进度里，全文库恢复后会补存'); }
   }
   curChapter = null;
+  saveGame();
 }
 
-function cashText(v) { const n=Number(v); return Math.abs(n)>=1e18 ? n.toExponential(4) : n.toLocaleString('zh-CN'); }
+function cashText(v) { const n=Number(v); if(!Number.isFinite(n))return '超大数额'; return Math.abs(n)>=1e18 ? n.toExponential(4) : n.toLocaleString('zh-CN'); }
 function rebuildTop() {
   if (!S) return;
   const p = S.player;
@@ -6221,9 +6450,16 @@ function fiatPrompt(action, settledNote) { return `【眼下的世界与已有�
 function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
 async function doFiatAction(action, typed, settledNote) {
   if (busy || !S || !String(action || '').trim()) return;
+  const state=S;
+  setBusy(true, '正在保存已有进度……');
+  let recalled='';
+  try { await queueArchive(state); recalled=await recallHistory(state,action); }
+  catch(e) {toast('历史暂时读不出来，原进度仍保留，请稍后再试');return;}
+  finally {setBusy(false);}
+  if (S!==state) return;
   S.lastAction = String(action); S.actTyped = !!typed; S.plan = null;
   S.seg++; S.stats.segs++;
-  S.pending = { fiat:true, prompt:fiatPrompt(action, settledNote), system:fiatSystem(), action:String(action), head:E.shortDate(S.date), sub:'言出法随', busyText:'正在兑现你的指令……' };
+  S.pending = { fiat:true, prompt:fiatPrompt(action, settledNote)+recalled, system:fiatSystem(), action:String(action), head:E.shortDate(S.date), sub:'言出法随', busyText:'正在兑现你的指令……' };
   closePanel(); $('key').classList.remove('on');
   saveGame(); beginChapter(S.pending.head, S.pending.sub, action, null); renderOptions([]);
   await writePending();
@@ -6233,6 +6469,7 @@ async function writeFiatPending(P) {
   let settled;
   try {
     const raw = await llmJSON(P.prompt, text => { const n=extractPartialField(text,'narrative'); if(n) updateChapterNarrative(n); }, { system:P.system || fiatSystem() });
+    await queueArchive(S);
     settled = E.settleFiatTurn(S, raw, P.action);
   } catch(e) {
     updateChapterNarrative('（这次回复尚未收完整，没有结算财富、时间或改写世界。可重试，也可以输入新指令。）');
@@ -6243,8 +6480,10 @@ async function writeFiatPending(P) {
   if (curChapter) { const mark=curChapter.querySelector('.chapmark'); if(mark) mark.textContent=E.shortDate(S.date); }
   updateChapterNarrative(settled.narrative); saveGame();
   try { await finishChapter(); } catch(e) { console.error('保存章节：',e); }
-  rebuildTop(); renderPanel(); renderOptions(S.lastOptions);
-  setBusy(false);
+  await queueArchive(S);
+  try { rebuildTop(); renderPanel(); renderOptions(S.lastOptions); }
+  catch(e) { console.error(e); closePanel(); renderOptions(S.lastOptions); toast('进度已保存，面板暂未展开，可以继续行动'); }
+  finally { setBusy(false); }
 }
 function returnToFiatInput() { if(busy)return; $('key').classList.remove('on'); closePanel(); renderOptions(S.lastOptions); $('freeAct').focus(); }
 function fiatWorldCard() {
@@ -6252,7 +6491,7 @@ function fiatWorldCard() {
   if(!W) return '';
   const groups=[['世界规则',W.rules],['已兑现的事实与能力',W.facts],['资产',W.assets],['持有的事业',W.businesses],['住处与房产',W.homes]];
   const description=x=>[typeof x.detail==='string'?x.detail:'',x.place,x.kind,x.price!==undefined?'价值'+cashText(x.price)+'元':'',x.quantity!==undefined?'数量'+x.quantity:'',Array.isArray(x.staff)?'团队'+x.staff.length+'人':''].filter(Boolean).join(' · ') || '已兑现';
-  return `<h4>言出法随 · 我的世界</h4><div class="card">${groups.map(([name,list])=>!list || !list.length ? '' : `<h4>${name}</h4>${list.map(x=>`<div class="li"><b>${esc(x.name)}</b><div class="tip">${esc(description(x))}</div></div>`).join('')}`).join('')}<div class="tip">已兑现 ${(W.commands||[]).length} 条指令；这些设定会随存档保留，并带入后续剧情。</div></div>`;
+  return `<h4>言出法随 · 我的世界</h4><div class="card">${groups.map(([name,list])=>!list || !list.length ? '' : `<h4>${name}</h4>${list.map(x=>`<div class="li"><b>${esc(x.name)}</b><div class="tip">${esc(description(x))}</div></div>`).join('')}`).join('')}<div class="tip">已兑现 ${(S.archiveCounts && S.archiveCounts.commands || 0)+(W.commands||[]).length} 条指令；这些设定会随存档保留，并带入后续剧情。</div></div>`;
 }
 // 玩家亲手写的一句话，先拆成引擎能执行的步骤（不写故事）
 const PARSE_SYSTEM = `你是文字生活模拟游戏的指令解析器。你只把玩家的话拆成结构化步骤，不写故事，不评价，只输出一个合法 JSON。
@@ -6677,8 +6916,8 @@ function renderPanel() {
     }).join('');
     box.innerHTML = head + `<button class="ghost sm gmake" onclick="openMakeGroup()">＋ 发起群聊</button><div class="msgs">${groups}${rows.map(r => {
         const gap = r.npc ? S.stats.days - (r.npc.lastSeen || 0) : 0;
-        return `<div class="thread" onclick="openThread('${esc(r.name)}')">
-          <span class="facetap" onclick="event.stopPropagation();openCard('${esc(r.name)}')">${faceHtml(S, r.name, 'sm')}</span>
+        return `<div class="thread" ${actionAttrs('openThread',[r.name])}>
+          <span class="facetap" ${actionAttrs('openCard',[r.name])}>${faceHtml(S, r.name, 'sm')}</span>
           <div class="thbody">
             <div class="mfrom">${esc(r.name)}${(() => { const w = r.npc ? callName(r.npc) : ((S.peers || []).some(p => p.name === r.name) ? '同学' : ''); return w && !w.includes(r.name) && !r.name.includes(w) ? `<em>${esc(w)}</em>` : ''; })()}
               <span>${r.last ? esc(r.last.date) : ''}${r.unread ? ' <i class="dot"></i>' : ''}</span></div>
@@ -6694,10 +6933,10 @@ function renderPanel() {
   } else if (curTab === 'book') {
     const loan = E.homePayment(S), kid = E.kidCost(S);
     const bizNet = S.biz && !S.biz.dead ? E.num(S.biz.net) : 0;
-    const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 ? x.monthly : 0), 0);
+    const bankPay = E.bankOf(S).loans.reduce((a, x) => a + (x.left > 0 || x.owe > 0 ? x.monthly : 0), 0);
     const inc = L.salary + L.subsidy, out = L.rent + loan + L.living + kid + L.remit + bankPay;
     const net = (S.job.out ? L.subsidy : inc) - out + bizNet;
-    const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${Math.abs(v).toLocaleString('zh-CN')}</span></div>`;
+    const row = (lab, v, sign) => `<div><b>${lab}</b><span class="${sign < 0 ? 'bad' : ''}">${sign < 0 ? '−' : ''}${cashText(Math.abs(v))}</span></div>`;
     box.innerHTML = `<h3>账本</h3>
     <div class="card"><div class="big${p.money < 0 ? ' bad' : ''}">${p.wealthLabel ? esc(p.wealthLabel) : '¥'+cashText(p.money)}</div><div class="tip">存款</div></div>
     <h4>每个月固定的</h4>
@@ -6711,7 +6950,7 @@ function renderPanel() {
       ${row('吃穿用度', L.living, -1)}
       ${kid ? row('养孩子', kid, -1) : ''}
       ${L.remit ? row('寄回家', L.remit, -1) : ''}
-      <div class="sum"><b>一个月剩</b><span class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '−' : ''}${Math.abs(net).toLocaleString('zh-CN')}</span></div>
+      <div class="sum"><b>一个月剩</b><span class="${net < 0 ? 'bad' : 'good'}">${net < 0 ? '−' : ''}${cashText(Math.abs(net))}</span></div>
     </div>
     <div class="tip" style="margin-top:6px">${S.broke ? '账上已经是负的了，做什么都差一口气。'
       : net >= 0 ? `照这样过，一个月能剩 ${net}${bizNet ? '（生意按上个月算）' : ''}。剧情里额外的进出不算在内，看下面的明细。`
@@ -6728,7 +6967,7 @@ function renderPanel() {
       <div class="btns"><button class="ghost" onclick="openBorrow()">找人借钱</button></div></div>`;
   } else if (curTab === 'me') {
     box.innerHTML = `<h3>我</h3>
-    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${p.gender}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
+    <div class="card"><div class="cardhead">${faceHtml(S, p.name, 'me')}<div><div class="big">${esc(p.name)}</div><div class="tip">${esc(p.gender)}｜${p.age}岁｜${esc(S.city)}｜${esc(E.jobLabel(S))}</div></div></div>${p.bg ? `<div class="tip">${esc([p.bg.school + (p.bg.school === '名校' || p.bg.school === '重点' ? '' : '学校'), p.bg.major, p.bg.edu, p.bg.persona, p.bg.looks ? '长相' + p.bg.looks : ''].filter(Boolean).join('｜'))}</div>` : ''}</div>
     ${fiatWorldCard()}
     <div class="card"><div class="lines">${E.ATTRS.map(a => `<div><b>${a}${a === '专业' ? `（${esc(p.skillName)}）` : ''}</b><span>${p.attrs[a]}</span></div>`).join('')}
       <div><b>精力</b><span>${p.energy}${E.energyCap(S) < 100 ? ` / 上限${E.energyCap(S)}` : ''}</span></div>
@@ -6793,23 +7032,23 @@ function renderAcct() {
   const isCur = acctMonth === cur || i === ks.length - 1 && acctMonth > cur;
   const close = i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
   const rows = M.rows.slice();
-  const sum = rows.reduce((a, r) => a + r.amt, 0);
+  const sum = rows.reduce((a, r) => E.finiteNumber(a + r.amt), 0);
   const odd = Math.round(close - M.open - sum);
-  const fmt = v => (v < 0 ? '−' : '+') + Math.abs(v).toLocaleString('zh-CN');
+  const fmt = v => (v < 0 ? '−' : '+') + cashText(Math.abs(v));
   const [y, m] = acctMonth.split('-').map(Number);
   const tabs = ks.slice(-6).map(k => { const [yy, mo] = k.split('-').map(Number); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
-  const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => a + r.amt, 0) + Math.max(0, odd);
-  const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => a + r.amt, 0) + Math.min(0, odd);
+  const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.max(0, odd);
+  const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.min(0, odd);
   return `<div class="segs wrap acctTabs">${tabs}</div>
     <div class="acct">
-      <div class="acctrow open"><span></span><span>${m}月初存款</span><span>${M.open.toLocaleString('zh-CN')}</span></div>
+      <div class="acctrow open"><span></span><span>${m}月初存款</span><span>${cashText(M.open)}</span></div>
       ${rows.map(r => `<div class="acctrow"><span>${r.d}日</span><span>${esc(r.item)}${r.note ? `<i>${esc(r.note)}</i>` : ''}</span><span class="${r.amt < 0 ? 'bad' : 'good'}">${fmt(r.amt)}</span></div>`).join('')}
       ${odd ? `<div class="acctrow"><span></span><span>零碎<i>没单独记的小进出</i></span><span class="${odd < 0 ? 'bad' : 'good'}">${fmt(odd)}</span></div>` : ''}
     </div>
     <div class="lines acctsum">
-      <div><b>这个月进</b><span class="good">+${inSum.toLocaleString('zh-CN')}</span></div>
-      <div><b>这个月出</b><span class="bad">−${Math.abs(outSum).toLocaleString('zh-CN')}</span></div>
-      <div class="sum"><b>${isCur ? '到今天' : `${m}月底`}存款</b><span class="${close < 0 ? 'bad' : ''}">${close.toLocaleString('zh-CN')}</span></div>
+      <div><b>这个月进</b><span class="good">+${cashText(inSum)}</span></div>
+      <div><b>这个月出</b><span class="bad">−${cashText(Math.abs(outSum))}</span></div>
+      <div class="sum"><b>${isCur ? '到今天' : `${m}月底`}存款</b><span class="${close < 0 ? 'bad' : ''}">${cashText(close)}</span></div>
     </div>`;
 }
 function paceCard() {
@@ -6837,7 +7076,7 @@ function renderLadder() {
   box.push(`<h3>理想</h3>
     <div class="card"><div class="big">${esc(S.player.ideal)}</div>
       <div class="tip">${esc(S.player.track)}｜${esc(S.player.skillName)} ${S.player.attrs['专业']}｜在这件事上攒的功夫 ${Math.round(S.ideal.progress)}</div></div>`);
-  if (!S.ideal.stages.length) { box.push('<div class="card tip">这一局没立下阶梯（老存档），下一局开局时会生成。</div>'); return box.join(''); }
+  if (!S.ideal.stages.length) box.push('<div class="card"><div class="tip">还没有设定理想阶梯，未了的事和约定照常记录。你可以继续行动、实现自己的目标。</div><button class="ghost" style="margin-top:8px" onclick="repairLadder()">补上理想阶梯</button></div>');
 
   S.ideal.stages.forEach((st, i) => {
     box.push(`<h4>第${i + 1}段　${esc(st.name)}</h4><div class="card">`);
@@ -6864,6 +7103,19 @@ function renderLadder() {
     : '<div class="tip">没有</div>'}</div>`);
   if (S.stats.keys) box.push(`<div class="card tip">关键局打过 ${S.stats.keys} 场，谈成 ${S.stats.keyWins || 0} 场。</div>`);
   return box.join('');
+}
+async function repairLadder() {
+  if (!canAct() || S.ideal.stages.length) return;
+  const state=S;
+  setBusy(true,'正在整理理想阶梯……');
+  try {
+    const d=await llmJSON(`${stateBlocks()}\n只为主角现有理想补建今后的阶梯，不推进时间、不改财富、不重写已完成的经历。按当前能力与资历拆成三段，每段三个可行动的里程碑，不设置认识多少人的门槛。metric只能是${Object.keys(E.METRICS).join('/')}；scene只能是${E.SCENES.join('/')}。只返回JSON：{"ladder":[{"name":"阶段","milestones":[{"title":"具体成果","desc":"说明","metric":"投入","need":60,"scene":"提案","gate":"达成时需要谈的事情"}]}]}`,null,{maxTokens:2400});
+    const ladder=E.normLadder(d.ladder);
+    if(!ladder.length) throw Error('没有收到完整阶梯，请稍后再试');
+    if(S!==state || S.ideal.stages.length) return;
+    S.ideal.stages=ladder;saveGame();renderPanel();toast('阶梯已补上，已有进度和约定都保留');
+  } catch(e) {toast(e.message||'阶梯还没整理好，可以重试');}
+  finally {setBusy(false);}
 }
 
 /* ================= 关键局 ================= */
@@ -7055,7 +7307,7 @@ function showNpc(name) {
   if (!n) return;
   const gap = S.stats.days - (n.lastSeen || 0);
   $('npcBox').innerHTML = `<div class="cardhead">${faceHtml(S, n.name, 'lg')}<div><h2>${esc(n.name)}</h2>
-    <div class="tip">${n.age ? n.age + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div></div></div>
+    <div class="tip">${n.age || E.fdm(S).fiat ? E.personAge(S,n) + '岁　' : ''}${esc(n.job || '')}${callName(n) ? '　' + esc(callName(n)) : ''}</div></div></div>
     <div class="card" style="margin-top:14px"><div class="lines">
       <div><b>关系</b><span class="${n.rel < 12 ? 'bad' : ''}">${relWord(n.rel, n.tie)}</span></div>
       ${n.intimate ? `<div><b>你们之间</b><span>${esc(n.intimate.first)}起有过关系${n.intimate.times > 1 ? `，${n.intimate.times}回` : ''}</span></div>` : ''}
@@ -7065,17 +7317,17 @@ function showNpc(name) {
       ${n.pos ? `<div><b>位置</b><span>${esc(n.pos)}${E.npcGap(S, n) != null ? `｜${E.npcGap(S, n) > 0 ? '比你高' + E.npcGap(S, n) + '级' : E.npcGap(S, n) === 0 ? '跟你平级' : '比你低' + (-E.npcGap(S, n)) + '级'}` : ''}</span></div>` : ''}
     </div>${n.note ? `<div class="tip">${esc(n.note)}</div>` : ''}</div>
     ${(n.mem || []).length ? `<h4 style="margin-top:8px">你们之间</h4><div class="card">${n.mem.slice(-8).reverse().map(m => `<div class="li">${esc(m)}</div>`).join('')}</div>` : ''}
-    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="ghost" onclick="giveFromCard('${esc(n.name)}')">送东西</button><button class="primary" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')">找他聊聊</button></div>
+    <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">关掉</button><button class="ghost" ${actionAttrs('giveFromCard',[n.name])}>送东西</button><button class="primary" ${actionAttrs('openConvo',[n.name],true)}>找他聊聊</button></div>
     ${!E.partnerOf(S) && (n.rel >= 55 || n.intimate) && !/爱人|前任|前妻|前夫/.test(n.tie || '') && !isKin(n.tie)
-      ? `<div class="btns"><button class="ghost" onclick="mask('npcMask',false);askLove('${esc(n.name)}')">把话挑明</button></div>`
+      ? `<div class="btns"><button class="ghost" ${actionAttrs('askLove',[n.name],true)}>把话挑明</button></div>`
       : ''}`;
   mask('npcMask', true);
 }
 function giveFromCard(name) {
   const B = E.bag(S);
   sheet(`<h2>给${esc(name)}送点什么</h2><div class="tip" style="margin-top:-10px">见面送过去。</div>
-    <div class="card" style="margin-top:14px">${B.map(b => `<div class="li tap" onclick="doGive('${esc(name)}',${b.uid})"><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
-    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" onclick="openShop('礼物','${esc(name)}')">现买一样</button></div>`);
+    <div class="card" style="margin-top:14px">${B.map(b => `<div class="li tap" ${actionAttrs('doGive',[name,b.uid])}><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" ${actionAttrs('openShop',['礼物',name])}>现买一样</button></div>`);
 }
 // 点头像看名片：只在消息里出现过、还没进通讯录的人，先补进来
 function openCard(name) {
@@ -7113,7 +7365,7 @@ function convoHead(n) {
   return `${worldRules(true)}
 
 你现在扮演的是【${n.name}】。
-【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}，属于「${E.TIERS[E.relTier(n.rel)]}」这一档）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
+【${n.name}是谁】${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，在主角手机里存的是「${callName(n) || '认识的人'}」${n.met ? `，${n.met}认识的` : ''}${(n.facts || []).length ? `，要一直记着：${n.facts.join('；')}` : ''}，眼下关系：${relWord(n.rel, n.tie)}（内部数值${Math.round(n.rel)}，属于「${E.TIERS[E.relTier(n.rel)]}」这一档）${n.care ? `，他在意的是${n.care}` : ''}。${n.note || ''}
 【他的说话习惯（一直照这个来）】${n.talk || E.talkOf(n)}
 ${n.pos ? `【他的位置】${n.pos}${E.npcGap(S, n) != null ? `，${E.gapWord(E.npcGap(S, n))}：说话的分寸照这个来，跟关系好坏叠在一起` : ''}\n` : ''}【主角的位置】${E.posOf(S).job.out ? '眼下没工作' : E.posOf(S).job.title}${E.posOf(S).field ? '，圈子里' + E.posOf(S).field.title : ''}，在世人眼里：${E.BANDS[E.standing(S)]}
 【他最近在忙】${(n.busy && n.busy.t) || '老样子'}
@@ -7300,8 +7552,8 @@ async function convoTurn(say, judge) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeConvo(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + convoPrompt(n, say, judge), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
-    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
+    const d = E.sanitizeConvo(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n'+await recallHistory(S,say) : '') + convoPrompt(n, say, judge), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1200, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(false) : CONVO_SYSTEM }), S);
+    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -7380,7 +7632,7 @@ const GROUP_RULES = `怎么写：
 function groupPrompt(g, say) {
   const c = S.convo;
   const who = g.members.map(m => S.npcs.find(n => n.name === m)).filter(Boolean);
-  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
+  const mem = who.map(n => `- ${n.name}：${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}。${n.note || ''}${(n.facts || []).length ? `要一直记着：${n.facts.join('；')}。` : ''}${(n.mem || []).length ? `\n  他记得：${n.mem.slice(-4).join('；')}` : ''}`).join('\n');
   const L = c.lines.filter(l => l.who !== 'sys');
   const keep = L.slice(-30);
   const log = (L.length > keep.length ? `（更早的略，要点是：${c.gist || '闲聊'}）\n` : '') + (keep.map(l => `${l.who === 'me' ? S.player.name : l.from}：${lineText(l)}`).join('\n') || '（刚开口）');
@@ -7413,8 +7665,8 @@ async function groupTurn(say) {
   $('chatBody').insertAdjacentHTML('beforeend', '<div class="bub ta typing">……</div>');
   $('chatBody').scrollTop = $('chatBody').scrollHeight;
   try {
-    const d = E.sanitizeGroup(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n' : '') + groupPrompt(g, say), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
-    if (d.fiatChanges) { E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
+    const d = E.sanitizeGroup(await llmJSON((E.fdm(S).fiat ? '【可改写的世界】'+E.fiatContext(S)+'\n'+await recallHistory(S,say) : '') + groupPrompt(g, say), null, { maxTokens: E.fdm(S).fiat ? 8000 : 1400, temperature: 1.05, system: E.fdm(S).fiat ? fiatChatSystem(true) : CHAT_SYSTEM }), g.members, S);
+    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
     for (const r of d.replies) c.lines.push({ who: 'ta', from: E.whoIs(S,r.who), text: r.text });
@@ -7552,7 +7804,7 @@ function momCs(m) {
   if (!m.cs.length) return '';
   return `<div class="momcs">${m.cs.map((c, i) => {
     const mine = c.who === S.player.name;
-    return `<div class="mc${mine ? '' : ' tap'}"${mine ? '' : ` onclick="doComment('${m.id}','${esc(c.who)}')"`}><b>${esc(c.who)}</b>${c.to ? `<i>回复</i><b>${esc(c.to)}</b>` : ''}：${esc(c.text)}</div>`;
+    return `<div class="mc${mine ? '' : ' tap'}"${mine ? '' : ` ${actionAttrs('doComment',[m.id,c.who])}`}><b>${esc(c.who)}</b>${c.to ? `<i>回复</i><b>${esc(c.to)}</b>` : ''}：${esc(c.text)}</div>`;
   }).join('')}</div>`;
 }
 function renderMoments() {
@@ -7589,7 +7841,7 @@ function doLike(id) {
 // 朋友圈里的人：身份、跟主角的关系、记得什么
 function momPeople(names) {
   return names.map(w => S.npcs.find(n => n.name === w)).filter(Boolean).map(n =>
-    `- ${n.name}：${n.gender ? n.gender + '，' : ''}${n.age ? (n.age + (S.date.y - (n.ageY || S.date.y))) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.facts || []).length ? `；要一直记着：${n.facts.join('；')}` : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
+    `- ${n.name}：${n.gender ? n.gender + '，' : ''}${(n.age || E.fdm(S).fiat) ? (E.personAge(S,n)) + '岁，' : ''}${n.job || '不详'}，主角存的是「${callName(n) || '认识的人'}」，跟主角${relWord(n.rel, n.tie)}${n.care ? '，在意' + n.care : ''}${(n.facts || []).length ? `；要一直记着：${n.facts.join('；')}` : ''}${(n.mem || []).length ? `；他记得：${n.mem.slice(-3).join('；')}` : ''}`).join('\n');
 }
 // 留言串：标清楚哪条是主角、哪条是发帖人自己
 function momThread(m) {
@@ -7760,7 +8012,7 @@ function renderHome() {
       <div class="tip">重心放在「顾家」才顾得上；一直不着家，热乎气一周一周往下掉。</div>
       <div class="btns">
         ${P.stage !== '结婚' ? `<button class="primary" onclick="askMarry()">求婚</button>` : ''}
-        <button class="ghost" onclick="openConvo('${esc(P.name)}')">说说话</button>
+        <button class="ghost" ${actionAttrs('openConvo',[P.name])}>说说话</button>
         <button class="ghost" onclick="doBreak()">分了</button>
       </div>`);
   } else {
@@ -7774,7 +8026,7 @@ function renderHome() {
   if (lv.length) {
     out.push(`<h4>有过关系的人</h4><div class="card">${lv.map(n => {
       const st = P && P.name === n.name ? P.stage : /前任|前妻|前夫/.test(n.tie || '') ? n.tie : '没名分';
-      return `<div class="li" onclick="showNpc('${esc(n.name)}')"><b>${esc(n.name)}</b><span class="rel">${esc(st)}</span>
+      return `<div class="li" ${actionAttrs('showNpc',[n.name])}><b>${esc(n.name)}</b><span class="rel">${esc(st)}</span>
         <div class="tip">${esc([callName(n), `${n.intimate.first}头一回`, n.intimate.times > 1 ? `${n.intimate.times}回` : '', `最近${n.intimate.last}`, `关系${relWord(n.rel, n.tie)}`].filter(Boolean).join('｜'))}</div></div>`;
     }).join('')}
       ${!P ? '<div class="tip">想给谁一个名分，点开他的名片「把话挑明」。</div>' : ''}</div>`);
@@ -8099,7 +8351,7 @@ function openBorrow() {
   if (!cand.length) { toast('眼下没有能开口的人'); return; }
   $('npcBox').innerHTML = `<h2>找谁开口</h2><div class="tip" style="margin-top:-10px">开口是要还的，还不上关系就完了。</div>
     <div class="card" style="margin-top:14px">${cand.sort((a, b) => b.rel - a.rel).map(n =>
-      `<div class="li" onclick="mask('npcMask',false);openConvo('${esc(n.name)}')"><b>${esc(n.name)}</b>
+      `<div class="li" ${actionAttrs('openConvo',[n.name],true)}><b>${esc(n.name)}</b>
         <span class="rel">${relWord(n.rel, n.tie)}</span><div class="tip">${esc(callName(n))}${callName(n) && n.job ? '｜' : ''}${esc(n.job || '')}</div></div>`).join('')}</div>
     <div class="tip">进了聊天之后直接开口，对方答不答应由引擎掷骰。</div>
     <div class="btns"><button class="ghost" onclick="mask('npcMask',false)">算了</button></div>`;
@@ -8229,7 +8481,7 @@ function openShop(cat, forWho) {
       const own = it.keep && E.hasItem(S, it.id);
       return `<div class="li"><div class="lirow"><b>${esc(it.name)}</b><span class="rel">${fr ? `<s>${pr}</s> ${off}` : pr}元</span></div>
         <div class="tip">${esc(itemDesc(it))}${it.tags.length ? `｜送人：${it.tags.join('、')}` : ''}${it.note ? '｜' + esc(it.note) : ''}</div>
-        <div class="lirow">${own ? '<span class="tip">已经有了</span>' : `${shopFor ? '' : `<button class="ghost sm" onclick="doBuy('${it.id}',false)">买</button>`}${fr ? `<button class="ghost sm" onclick="doBuy('${it.id}',true)">找${esc(fr.name)}买</button>` : ''}${shopFor || !it.keep ? `<button class="ghost sm" onclick="doBuy('${it.id}',${fr ? 'true' : 'false'},'${esc(shopFor) || '?'}')">${shopFor ? `买了送${esc(shopFor)}` : '买了送人'}</button>` : ''}`}</div></div>`;
+        <div class="lirow">${own ? '<span class="tip">已经有了</span>' : `${shopFor ? '' : `<button class="ghost sm" onclick="doBuy('${it.id}',false)">买</button>`}${fr ? `<button class="ghost sm" onclick="doBuy('${it.id}',true)">找${esc(fr.name)}买</button>` : ''}${shopFor || !it.keep ? `<button class="ghost sm" ${actionAttrs('doBuy',[it.id,!!fr,shopFor || '?'])}>${shopFor ? `买了送${esc(shopFor)}` : '买了送人'}</button>` : ''}`}</div></div>`;
     }).join('')}</div>
     <div class="tip">账上 ${S.player.money} 元。${E.bag(S).length ? `包里有 ${E.bag(S).length} 样东西，在「我」里看。` : ''}</div>
     <div class="btns"><button class="ghost" onclick="shopFor='';sheetOff()">走了</button></div>`);
@@ -8268,7 +8520,7 @@ function pickGiveTarget(uid) {
   if (S.convo && !S.convo.group) { doGive(S.convo.name, uid); return; }
   const cand = S.npcs.slice().sort((a, b2) => b2.rel - a.rel).slice(0, 30);
   sheet(`<h2>把${esc(b.name)}送给谁</h2><div class="tip" style="margin-top:-10px">见面送过去。太贵的东西，关系不到的人可能不收。</div>
-    <div class="card" style="margin-top:14px">${cand.map(n => `<div class="li tap" onclick="doGive('${esc(n.name)}',${uid})"><b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span>
+    <div class="card" style="margin-top:14px">${cand.map(n => `<div class="li tap" ${actionAttrs('doGive',[n.name,uid])}><b>${esc(n.name)}</b><span class="rel">${relWord(n.rel, n.tie)}</span>
       <div class="tip">${esc(callName(n))}${n.care ? '｜在意' + esc(n.care) : ''}</div></div>`).join('') || '<div class="tip">还不认识什么人</div>'}</div>
     <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button></div>`);
 }
@@ -8300,8 +8552,8 @@ function chatGift() {
   if (!c || c.group) return;
   const B = E.bag(S);
   sheet(`<h2>送${esc(c.name)}点东西</h2>
-    <div class="card">${B.map(b => `<div class="li tap" onclick="doGive('${esc(c.name)}',${b.uid})"><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
-    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" onclick="openShop('礼物','${esc(c.name)}')">现买一样</button></div>`);
+    <div class="card">${B.map(b => `<div class="li tap" ${actionAttrs('doGive',[c.name,b.uid])}><b>${esc(b.name)}</b><span class="rel">${b.price}元</span><div class="tip">${b.tags.join('、')}</div></div>`).join('') || '<div class="tip">包里没东西可送</div>'}</div>
+    <div class="btns"><button class="ghost" onclick="sheetOff()">算了</button><button class="primary" ${actionAttrs('openShop',['礼物',c.name])}>现买一样</button></div>`);
 }
 
 /* ---- 找点乐子 ---- */
@@ -8375,8 +8627,8 @@ function gigCard() {
   const off = S.gigOffer && S.stats.days - S.gigOffer.day <= 14 && !G.some(x => x.name === S.gigOffer.gig) ? S.gigOffer : null;
   return `${G.map(g => `<div class="li"><div class="lirow"><b>${esc(g.name)}</b><span class="rel">${E.gigWhen(g.name)}</span></div>
       <div class="tip">一次大概${E.gigPay(S, g.name)}，耗精力${E.GIGS[g.name].en}｜${esc(g.since)}起做了${g.times}次，一共挣了${E.num(g.total) + E.num(g.owed)}${g.owed ? `（这周的${g.owed}周日结）` : ''}</div>
-      <div class="lirow"><button class="ghost sm" onclick="doDropGig('${esc(g.name)}')">不干了</button></div></div>`).join('') || '<div class="tip">没在做兼职</div>'}
-    ${off ? `<div class="li"><b>${esc(off.who)}介绍的${esc(off.gig)}</b><div class="tip">${E.gigWhen(off.gig)}，一次大概${E.gigPay(S, off.gig)}</div><div class="lirow"><button class="ghost sm" onclick="doTakeGig('${esc(off.gig)}',true)">接</button></div></div>` : ''}
+      <div class="lirow"><button class="ghost sm" ${actionAttrs('doDropGig',[g.name])}>不干了</button></div></div>`).join('') || '<div class="tip">没在做兼职</div>'}
+    ${off ? `<div class="li"><b>${esc(off.who)}介绍的${esc(off.gig)}</b><div class="tip">${E.gigWhen(off.gig)}，一次大概${E.gigPay(S, off.gig)}</div><div class="lirow"><button class="ghost sm" ${actionAttrs('doTakeGig',[off.gig,true])}>接</button></div></div>` : ''}
     <div class="btns"><button class="ghost" onclick="openGigs()">找份兼职</button></div>
     <div class="tip">${E.fdm(S).fiat ? '言出法随：兼职数量和时间冲突不设门槛。' : '最多两份。做兼职那个时段就干不了别的，日程照它排。'}</div>`;
 }
@@ -8405,18 +8657,18 @@ async function doDropGig(k) {
 
 
 /* ---- 银行：手机银行办，不占时间 ---- */
-const yuan = v => Math.round(v).toLocaleString('zh-CN');
+const yuan = v => cashText(Math.round(v));
 function bankCard() {
   const B = E.bankOf(S);
   const fv = E.fundValue(S);
-  const L = B.loans.filter(x => x.left > 0);
+  const L = B.loans.filter(x => x.left > 0 || x.owe > 0);
   const li = (title, right, tip, btns) => `<div class="li"><div class="lirow"><b>${title}</b><span class="rel">${right}</span></div>${tip ? `<div class="tip">${tip}</div>` : ''}${btns ? `<div class="lirow">${btns}</div>` : ''}</div>`;
   const rows = [];
   for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，到期自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
   if (B.mmf >= 1) rows.push(li('货币基金', yuan(Math.floor(B.mmf)), `年化1.5%上下，累计收益${yuan(B.mmfGain)}`, `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>`));
   for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜${esc(w.due)}到期，之前取不出来`));
   if (B.fund.units > 0) rows.push(li('股票基金', yuan(fv), `本金${yuan(B.fund.cost)}，<span class="${fv >= B.fund.cost ? 'good' : 'bad'}">${fv >= B.fund.cost ? '赚' : '亏'}${yuan(Math.abs(fv - B.fund.cost))}</span>｜净值${B.nav.toFixed(3)}`, `<button class="ghost sm" onclick="bankDo('fundOut')">卖掉</button>`));
-  for (const l of L) rows.push(li(l.kind, `还欠${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.late ? `｜<u>逾期${l.late}个月，欠着${yuan(l.owe)}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">提前还</button>`));
+  for (const l of L) rows.push(li(esc(l.kind), `本金${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.owe ? `｜<u>逾期未补${yuan(l.owe)}${l.late ? '，'+l.late+'个月' : ''}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">${l.left ? '提前还' : '补欠款'}</button>`));
   return `<h4>银行</h4><div class="card">
     <div class="lines"><div><b>征信</b><span class="${B.credit < 45 ? 'bad' : B.credit >= 65 ? 'good' : ''}">${E.creditWord(B.credit)}</span></div>
     <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
@@ -8451,7 +8703,7 @@ async function bankDo(what, id) {
   }
   if (what === 'prepay') {
     const l = E.bankOf(S).loans.find(x => x.id === id);
-    const v = await actionAsk({ title: `提前还${l.kind}`, text: `还欠 ${l.left}，账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
+    const v = await actionAsk({ title: `提前还${l.kind}`, text: `本金还欠 ${l.left}，逾期未补 ${l.owe || 0}；欠息和罚息会一并结清。账上有 ${S.player.money}。${l.kind === '经营贷' ? '' : '提前还收1%违约金。'}`, input: { value: String(Math.min(l.left, Math.max(0, S.player.money))), number: true }, ok: '还' });
     if (v === null) return;
     return bankAfter(E.prepay(S, id, Number(v)));
   }
@@ -8625,37 +8877,47 @@ function saveCfg() {
 // （同一个网址下几个游戏共用这点空间，满了存档就悄悄写不进去，刷新后日子会倒回去）
 function saveGame() {
   if (!S) return;
+  E.finiteState(S);
   if (S.chapters && S.chapters.length > 12) S.chapters = S.chapters.slice(-12);
   const j = JSON.stringify(S);
-  let ok = true;
-  try { localStorage.setItem(LS_SAVE, j); }
-  catch (_) {
-    try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.setItem(LS_SAVE, j); }
-    catch (e2) { ok = false; }
-  }
-  if (ok) { try { localStorage.setItem(LS_SAVE + '_bak', j); } catch (_) { try { localStorage.removeItem(LS_SAVE + '_bak'); } catch (__) { } } }
+  let ok = true, old = null;
+  try { old = localStorage.getItem(LS_SAVE); localStorage.setItem(LS_SAVE, j); }
+  catch (_) { ok = false; } // setItem 失败保留原值，绝不能先删原档腾空间。
+  if (ok) { try { localStorage.setItem(LS_SAVE + '_bak', validSave(old) ? old : j); } catch (_) { } }
   if (!ok && !saveGame.warned) { saveGame.warned = true; toast('存档写不进去了：浏览器空间满了，去设置里导出存档'); }
+  queueArchive(S);
+}
+function validSave(raw) {
+  if (!raw) return null;
+  try { let d = JSON.parse(raw); if (d && d.save) d = d.save; return E.migrate(d); } catch (_) { return null; }
 }
 function loadGame() {
-  let raw = localStorage.getItem(LS_SAVE);
-  if (!raw) { raw = localStorage.getItem(LS_SAVE + '_bak'); if (raw) { try { localStorage.setItem(LS_SAVE, raw); } catch (_) { } console.warn('主存档不见了，从备份接上'); } }
-  if (!raw) return false;
-  let data = null;
-  try { data = JSON.parse(raw); } catch (_) { data = null; }
-  if (data && data.save && data.save.player) data = data.save;     // 整个导出包被塞进来的
-  try { S = data ? E.migrate(data) : null; } catch (e) { console.error('存档补齐出错', e); S = null; }
+  const raw = localStorage.getItem(LS_SAVE), backup = localStorage.getItem(LS_SAVE + '_bak');
+  S = validSave(raw);
+  if (!S) {
+    if (raw) { try { localStorage.setItem(LS_SAVE + '_broken', raw); } catch (_) { } }
+    S = validSave(backup);
+    if (S) { try { localStorage.setItem(LS_SAVE, backup); } catch (_) { } console.warn('主存档不可用，从有效备份接上'); }
+  }
+  if (!raw && !backup) return false;
   if (!S) {
     // 读不出来：先把原样留一份，别让新开的一局把它盖掉
     try { localStorage.setItem(LS_SAVE + '_broken', raw); } catch (_) { }
     loadErr = '上次的存档读不出来，原样另存了一份，没有被盖掉';
     return false;
   }
+  safeSaveChapters(S);
   try { ensureFaces(S); } catch (e) { console.error(e); }
   try { $('story').innerHTML = S.chapters.join(''); } catch (_) { $('story').innerHTML = ''; }
-  if (S.runId) bookAll(S.runId).then(rows => {
-    if (!rows || rows.length <= S.chapters.length) return;
-    $('story').innerHTML = rows.map(r => r.html).join('');
+  const state = S, seq = S.seg;
+  if (S.runId) bookAll(S.runId).then(async rows => {
+    const merged = mergeBook(state, rows);
+    if (S !== state || S.seg !== seq) return;
+    $('story').innerHTML = merged.map(r => r.html).join('');
     scrollDown();
+    await bookPutMany(merged);
+    state.unfiledChapters = [];
+    saveGame();
   }).catch(() => { });
   try {
     rebuildTop();
@@ -8685,20 +8947,26 @@ async function restart() {
 }
 async function exportSave() {
   if (!S) return;
-  let rows = [];
-  try { rows = await bookAll(S.runId); } catch (_) { }
+  const state = S;
+  await queueArchive(state);
+  let rows = [], archive = [], fullBook = true;
+  try { rows = await bookAll(state.runId); archive = await archiveAll(state.runId); }
+  catch (_) {
+    if (state.archiveOrder) { toast('历史库暂时读不出来，请稍后重试导出，完整原文仍在本机'); return; }
+    fullBook=false;
+  }
   const pack = {
     what: '现代生活模拟器·存档', v: 1, at: new Date().toISOString(),
-    who: `${S.player.name} ${S.player.age}岁 ${E.dateStr(S.date)}`,
-    save: S, book: rows.map(r => ({ id: r.id, run: r.run, seq: r.seq, html: r.html }))
+    who: `${state.player.name} ${state.player.age}岁 ${E.dateStr(state.date)}`,
+    save: state, book: mergeBook(state, rows), archive, fullBook
   };
   const blob = new Blob([JSON.stringify(pack)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${S.player.name}-${S.date.y}年${S.date.m}月.mls.json`;
+  a.download = `${state.player.name}-${state.date.y}年${state.date.m}月.mls.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  toast('存档拿走了，另一台设备上导入就行');
+  toast(fullBook ? '存档拿走了，章节和归档历史都在里面' : '已导出当前进度；全文库暂不可读，文件仅含近期章节');
 }
 function importSave(file) {
   if (busy) { toast('先等这一段写完'); return; }
@@ -8713,26 +8981,30 @@ function importSave(file) {
     if (pack && pack.player && !pack.save) pack = { save: pack, book: [], who: `${pack.player.name || ''}` };   // 直接存的状态，不是导出包
     if (!pack || !pack.save || !pack.save.player) { toast('这不是这个游戏的存档'); return; }
     let fixed = null;
-    try { fixed = E.migrate(JSON.parse(JSON.stringify(pack.save))); } catch (e) { console.error(e); }
+    try { fixed = safeSaveChapters(E.migrate(JSON.parse(JSON.stringify(pack.save)))); } catch (e) { console.error(e); }
     if (!fixed) { toast('这个存档缺的东西太多，接不上'); return; }
     if (S && !await ask({ title: `导入「${pack.who || '别处的存档'}」？`, text: '这台设备上现在这局会被盖掉。', ok: '导入', danger: true })) return;
     if (busy || S !== state) { toast('当前状态变了，请重新导入'); return; }
+    if (pack.book !== undefined && !Array.isArray(pack.book)) { toast('存档的章节目录格式不正确，当前进度已保留'); return; }
+    if (pack.archive !== undefined && !Array.isArray(pack.archive)) { toast('存档的历史目录格式不正确，当前进度已保留'); return; }
+    const archive = (pack.archive || []).filter(r => r && ['commands','history','recent'].includes(r.kind) && Number.isInteger(r.order) && r.value && typeof r.value==='object');
+    if (archive.length !== (pack.archive||[]).length || archive.length < (fixed.archiveOrder||0)) { toast('存档的归档历史不完整，当前进度已保留'); return; }
+    // 用新命名空间准备全文，写入完成才切换主档；原章节和原存档始终可用。
+    fixed.runId = 'import-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    setBusy(true, '正在校验并保存导入的进度……');
     try {
-      // 先腾地方：旧的主存档和备份都占着空间，新存档大一点就写不进去
+      const rows = mergeBook(fixed, pack.book || []);
+      await bookPutMany(rows);
+      await archivePut(archive.map(r=>({ ...r, run:fixed.runId, id:fixed.runId+'-archive-'+r.order })));
       const j = JSON.stringify(fixed);
-      try { localStorage.removeItem(LS_SAVE + '_bak'); localStorage.removeItem(LS_SAVE + '_broken'); } catch (_) { }
-      try { localStorage.setItem(LS_SAVE, j); }
-      catch (_) {
-        localStorage.removeItem(LS_SAVE);
-        if (fixed.chapters && fixed.chapters.length > 4) fixed.chapters = fixed.chapters.slice(-4);   // 全本在 IndexedDB 里，这里只留最近几章
-        localStorage.setItem(LS_SAVE, JSON.stringify(fixed));
-      }
-      for (const r of (pack.book || [])) { try { if (r && r.id && r.html) await bookPut(r); } catch (_) { } }
-      // 关页面时会自动存一次当前这局：先把它摘掉，不然刚导入的存档又被盖回去
-      S = null;
+      const previous = localStorage.getItem(LS_SAVE);
+      localStorage.setItem(LS_SAVE, j);
+      if (previous) { try { localStorage.setItem(LS_SAVE + '_bak', previous); } catch (_) { } }
+      S = fixed;
       toast('导入了，正在重开页面');
       setTimeout(() => location.reload(), 700);
-    } catch (e) { toast('写不进去：' + (e.message || e)); }
+    } catch (e) { bookClear(fixed.runId).catch(() => {}); toast('导入没有完成，原进度已保留：' + (e.message || e)); }
+    finally { setBusy(false); }
   };
   fr.readAsText(file);
 }
@@ -8741,7 +9013,7 @@ async function exportBook() {
   if (!S) return;
   let rows = [];
   try { rows = await bookAll(S.runId); } catch (_) { }
-  const html = rows.length ? rows.map(r => r.html).join('') : S.chapters.join('');
+  const html = mergeBook(S, rows).map(r => r.html).join('');
   const div = document.createElement('div'); div.innerHTML = html;
   const done = [];
   for (const st of S.ideal.stages) for (const m of st.milestones) if (m.done) done.push(`${m.doneDate || ''} ${m.title}`);
@@ -8811,10 +9083,7 @@ function boot() {
   applySkin();
   fitTabs();
   window.addEventListener('resize', fitTabs);
-  // iOS 上 user-scalable 会被忽略，这里再挡一道
-  document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
-  document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
-  document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+  document.addEventListener('click', dispatchAction);
   document.querySelectorAll('.tab').forEach(t => t.onclick = () => gotoTab(t.dataset.t));
   $('panelClose').onclick = closePanel;
   $('setSave').onclick = saveCfg;
@@ -8898,11 +9167,11 @@ boot();
     if (auto && (standalone || localStorage.getItem(KEY) === 'installed')) return;
     const body = $('instBody');
     if (deferred) {
-      body.innerHTML = `<div class="hint">装到桌面之后，它就像个单独的应用：全屏、没有地址栏，断网也能接着玩。存档还是存在这台设备上。</div>`;
+      body.innerHTML = `<div class="hint">装到桌面之后，它就像个单独的应用：全屏、没有地址栏，离线可查看已缓存的页面和已有进度；生成新剧情需要联网。存档存在这台设备上。</div>`;
       $('instGo').style.display = '';
       $('instGo').textContent = '装上';
     } else if (isIOS) {
-      body.innerHTML = `<div class="hint">iPhone 上要手动加一下：<br>1　点底部工具栏中间的<b>分享</b>按钮<br>2　往下翻，找到<b>「添加到主屏幕」</b><br>3　右上角<b>添加</b><br><br>装完从主屏幕点进来就是全屏的，断网也能玩。</div>`;
+      body.innerHTML = `<div class="hint">iPhone 上要手动加一下：<br>1　点底部工具栏中间的<b>分享</b>按钮<br>2　往下翻，找到<b>「添加到主屏幕」</b><br>3　右上角<b>添加</b><br><br>装完从主屏幕点进来就是全屏的。离线可查看已缓存的页面和已有进度；生成新剧情需要联网。</div>`;
       $('instGo').style.display = 'none';
     } else if (isSafari) {
       body.innerHTML = `<div class="hint">Mac 上的 Safari：菜单栏 <b>文件</b> → <b>添加到程序坞</b>。<br>装完从程序坞点进来就是一个单独的窗口。</div>`;
@@ -8932,7 +9201,7 @@ boot();
   });
   window.openInstall = openInstall;
 
-  /* service worker：断网也能玩 */
+  /* service worker：缓存页面与已有进度，生成剧情仍需联网 */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js').then(reg => {

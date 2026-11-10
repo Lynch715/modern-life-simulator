@@ -103,12 +103,7 @@ function nameHash(name) { let h = 0; for (let i = 0; i < name.length; i++) h = (
 function ageBand(age) { return age >= 55 ? 'old' : age >= 35 ? 'mid' : 'young'; }
 // 某人在某一年的美术年龄；年龄不详按称呼推
 function personAge(S, n, year) {
-  const y = year ?? S.date.y;
-  if (n === S.player) return S.player.age - (S.date.y - y);
-  if (n.age !== undefined && n.age !== null && n.age !== '' && Number.isFinite(Number(n.age)) && (Number(n.age)!==0 || ENGINE.fdm(S).fiat)) return Number(n.age) + (y - (n.ageY ?? S.date.y));
-  const t = String(n.tie || '');
-  if (/同学|室友|对象|同事|同期|朋友|爱人/.test(t)) return S.player.age - (S.date.y - y);
-  return 44;
+  return ENGINE.personAge(S, n, year);
 }
 // 分配身份族：同性别里当前通讯录用得最少的，并列按名字哈希
 function assignFace(S, n) {
@@ -150,7 +145,7 @@ function faceHtml(S, name, size, year) {
   if (had !== face && typeof saveGame === 'function') saveGame();
   const src = avatarSrc(face, ageBand(personAge(S, p, year)));
   if (!src) return block;
-  return `<img class="${cls}" src="${src}" alt="" loading="lazy" decoding="async" data-ch="${ch}" data-h="${hue}" onerror="faceFail(this)"/>`;
+  return `<img class="${cls}" src="${src}" alt="" loading="lazy" decoding="async" data-ch="${ch.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}" data-h="${hue}" onerror="faceFail(this)"/>`;
 }
 function faceFail(img) {
   img.onerror = null;
