@@ -31,18 +31,44 @@ ok(changedSystem.includes('通篇用第三人称') && changedSystem.includes('�
 for (const token of ['【世界观】', '【铁律】', '【日子里的规矩', '【主角在世人眼里是哪一档】', '【规矩打架时的先后', '【每一段都要做到的】', '"npcUpdates"', '"newNpcs"', '"pledges"'])
   ok(changedSystem.includes(token), '完整保留规则和返回字段：' + token);
 
-// 摘要更新不再截断增长中的群聊记录；消息内容、当前摘要及最近 30 句窗口仍保留。
+// 短对话保留可缓存的原话，长对话只带最近几句及当前话题相关的记录。
 run(`S.convo={hist:[],gist:'第一轮摘要',lines:[{who:'me',text:'周末一起吃饭吗'},{who:'ta',from:'陈晓',text:'周六可以'}]};
   var testGroup={name:'老朋友',members:['陈晓','周青']};`);
 const firstGroup = run("groupPrompt(testGroup,'周末一起吃饭吗')");
 run("S.convo.gist='第二轮摘要';S.convo.lines.push({who:'me',text:'那就周六中午'});");
 const secondGroup = run("groupPrompt(testGroup,'那就周六中午')");
 ok(common(firstGroup, secondGroup) >= firstGroup.indexOf('陈晓：周六可以') + '陈晓：周六可以'.length, '群聊前缀包含此前完整原话，不被摘要打断');
-ok(secondGroup.includes('第二轮摘要') && secondGroup.includes('主角刚在群里发的') && secondGroup.includes('那就周六中午'), '当前摘要与最后发言仍在请求中');
+ok(!secondGroup.includes('第二轮摘要') && secondGroup.includes('主角刚在群里发的') && secondGroup.includes('那就周六中午'), '最后发言仍在请求中，滚动摘要不反复发送');
 run("S.convo.lines=Array.from({length:40},(_,i)=>({who:'me',text:'消息'+i}));");
-const longGroup = run("groupPrompt(testGroup,'消息39')");
-ok(!longGroup.includes('林远：消息0\n') && longGroup.includes('林远：消息10\n') && longGroup.includes('林远：消息39'), '长群聊窗口保持最近 30 句，未扩大或缩短');
-ok(longGroup.includes('更早的略，要点是：第二轮摘要'), '超出窗口仍保留摘要');
+const longGroup = run("groupPrompt(testGroup,'周六见')");
+ok(!longGroup.includes('林远：消息0\n') && !longGroup.includes('林远：消息33\n') && longGroup.includes('林远：消息34\n') && longGroup.includes('林远：消息39'), '长群聊保留近六句，省掉无关旧话题');
+ok(run('S.convo.lines.length') === 40, '缩短请求上下文不删除原消息');
+
+// 同一件旧小事已进入多个记忆来源，玩家换到私下相处后它们都不该充当话题。
+ctx.oldLine = '蓝色杯盖已经送回门卫室了。';
+run(`S.npcs[0].mem=['7月1日 '+oldLine];S.npcs[0].facts=['两人是高中同学'];
+  S.lastAction='和陈晓安静抱一会儿';S.recent=[{narrative:'陈晓说：'+oldLine}];
+  S.history=[{summary:'陈晓确认：'+oldLine}];S.unresolved=['蓝色杯盖交接','合同周五到期'];
+  S.storyProgress={resolved:[oldLine],beats:[{focus:'蓝色杯盖',change:oldLine}]};
+  S.convo={name:'陈晓',hist:[{text:oldLine}],gist:oldLine,lines:[{who:'ta',from:'陈晓',text:oldLine},{who:'me',text:'抱一会儿吧'}]};`);
+for (const [label, prompt] of [
+  ['私聊',run("convoPrompt(S.npcs[0],'抱一会儿吧')")],
+  ['群聊',run("groupPrompt(testGroup,'换个话题，周六去看展吗')")],
+  ['场景',run('stateBlocks()+finalCheck()')],
+  ['沙盒',run("fiatPrompt(S.lastAction)")],
+]) {
+  ok(!prompt.includes('蓝色杯盖'), label+'切换场景后不投喂旧话题');
+  ok(prompt.includes(ctx.fixture.npcs[0].talk), label+'沿用人物口吻');
+}
+ok(run("convoPrompt(S.npcs[0],'上次蓝色杯盖送到哪里了？')").includes(ctx.oldLine), '玩家主动追问时仍能读到相关旧记录');
+ok(run("convoPrompt(S.npcs[0],'抱一会儿吧')").includes('两人是高中同学'), '稳定的人物事实继续保留');
+ok(run("trimRepeatedReply('过来，靠会儿。'+oldLine,'抱一会儿吧',[oldLine])") === '过来，靠会儿。', '已见的无关长句被拦下，新回应保留');
+ok(run("trimRepeatedReply(oldLine,'蓝色杯盖送到哪里了？',[oldLine,oldLine])") === ctx.oldLine, '玩家继续问同一件事时不拦答复');
+ok(run("trimRepeatedReply('好。','抱一会儿吧',['好。','好。'])") === '好。', '自然的短口语不按复读拦截');
+ok(run("S.unresolved.includes('合同周五到期') && S.recent[0].narrative.includes(oldLine) && S.npcs[0].mem[0].includes(oldLine)"), '未决事项和旧档原文仍在');
+run("S.convo={name:'陈晓',hist:[{text:'周五能帮我搬家吗？'}],lines:[{who:'me',text:'好的。'}]};");
+ok(run("convoPrompt(S.npcs[0],'好的。')").includes('周五能帮我搬家吗'), '首轮短答仍能接上联系人最后的来信');
+run("S.lastAction=null");
 run("S.freedom='心想事成'");
 const fiatNarrator=run('fiatSystem()'),fiatChat=run('fiatChatSystem(false)');
 ok(common(fiatNarrator,fiatChat)>=run('fiatBase().length'),'沙盒剧情与聊天共享完整的固定世界改写规则前缀');

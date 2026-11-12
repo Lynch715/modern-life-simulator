@@ -1475,7 +1475,7 @@ function sanitizeTurn(d, S) {
     pos: x.pos ? T.str(x.pos, 16) : null, lv: x.lv === undefined || x.lv === null || x.lv === '' ? null : T.num(x.lv, 0, 12), circle: x.circle === 'work' || x.circle === 'field' ? x.circle : null }));
   o.newNpcs = T.arr(d.newNpcs, 6).map(T.obj).filter(x => x && x.name).map(x => ({
     name: T.str(x.name, 12), age: T.num(x.age, 0, 100), gender: T.str(x.gender, 2), job: T.str(x.job, 20), intimate: T.bool(x.intimate),
-    tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), rel: T.num(x.rel, 0, 100), close: T.bool(x.close),
+    tie: T.str(x.tie, 12), care: T.str(x.care, 30), note: T.str(x.note, 50), talk: T.str(x.talk, 120), rel: T.num(x.rel, 0, 100), close: T.bool(x.close),
     pos: x.pos ? T.str(x.pos, 16) : '', lv: x.lv === undefined || x.lv === null || x.lv === '' ? null : T.num(x.lv, 0, 12), circle: x.circle === 'work' || x.circle === 'field' ? x.circle : '' }));
   o.messages = T.arr(d.messages, 4).map(T.obj).filter(x => x && x.text).map(x => ({ from: T.str(x.from, 12), text: T.str(x.text, 120), pay: sanitizePay(x.pay, S) }));
   o.moments = T.arr(d.moments, 2).map(T.obj).filter(x => x && x.who && x.text).map(x => ({ who: T.str(x.who, 12), text: T.str(x.text, 80),
@@ -1547,7 +1547,7 @@ function capMoney(S) {
   const inc = num(S.ledger.salary) + (S.biz && !S.biz.dead ? Math.max(0, num(S.biz.rev)) : 0);
   return Math.max(12000, Math.round(inc * 2.5 + Math.abs(S.player.money) * 0.35));
 }
-function applyTurn(S, d) {
+function applyTurn(S, d, storyAction) {
   d = sanitizeTurn(d, S);
   const p = S.player;
   const pc = d.playerChanges || {};
@@ -1662,7 +1662,7 @@ function applyTurn(S, d) {
 
   if (d.scene) {
     S.place = String(d.scene.location || S.place).slice(0, 24);
-    if (Array.isArray(d.scene.unresolved)) S.unresolved = d.scene.unresolved.map(x => String(x).slice(0, 40)).slice(0, 5);
+    if (Array.isArray(d.scene.unresolved)) S.unresolved = storyAction === undefined ? d.scene.unresolved : API.mergeStoryTopics(S, storyAction, d.scene.unresolved);
   }
   for (const r of (d.resolvedInfo || [])) S.unresolved = S.unresolved.filter(u => u !== r);
 
@@ -1735,7 +1735,7 @@ function npcMem(S, n, text) {
   const line = `${shortDate(S.date)} ${String(text).replace(/\s+/g, '').slice(0, 60)}`;
   n.mem = n.mem || [];
   const last = n.mem[n.mem.length - 1] || '';
-  if (last.slice(last.indexOf(' ') + 1) === line.slice(line.indexOf(' ') + 1)) return;
+  if (API.topicKey(last.slice(last.indexOf(' ') + 1)) === API.topicKey(line.slice(line.indexOf(' ') + 1))) return;
   n.mem = n.mem.concat([line]).slice(-16);
 }
 function applyConvo(S, name, res) {
@@ -2828,10 +2828,11 @@ function addNpcs(S, list, max) {
       job: String(n.job || '').slice(0, 20), rel: num(n.rel) || 20,
       tie: String(n.tie || '认识的人').slice(0, 12),
       care: String(n.care || '').slice(0, 30), note: String(n.note || '').slice(0, 50),
+      talk: S.npcs.some(x => x.talk && x.talk === n.talk) ? '' : T.str(n.talk, 120),
       close: !!n.close, mem: [], facts: [], lastSeen: S.stats.days, met: shortDate(S.date) + (S.date.y !== (S.startDate || S.date).y ? `（${S.date.y}年）` : ''),
       gender: guessGender(n.gender, n.tie, n.job, n.name), ageY: S.date.y
     });
-    S.npcs[S.npcs.length - 1].talk = talkOf(S.npcs[S.npcs.length - 1]);
+    fixNpcVoice(S.npcs[S.npcs.length - 1]);
     if (n.pos || n.circle || n.lv != null) setNpcPos(S, S.npcs[S.npcs.length - 1], n, true);
     if (n.intimate === true) markIntimate(S, S.npcs[S.npcs.length - 1]);
   }
@@ -3341,14 +3342,27 @@ const TALK_BASE = {
 };
 const TALK_EXTRA = ['爱用"哈哈哈"', '爱回"嗯嗯""好嘞"', '说话直，不绕弯子', '爱用反问', '爱带一两个方言词', '爱发省略号', '爱用表情代替说话（写成[捂脸][笑哭]这种）', '话少，能一个字就不两个字', '爱开玩笑损人', '说话慢条斯理，爱讲道理'];
 function hashStr(s) { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h; }
+const VOICE_RHYTHM = [
+  '先给结论，再补一句理由', '多用短句，说到重点就停', '想好了才开口，句子完整',
+  '从眼前一个具体细节说起', '语速快，偶尔说到一半改口', '惜字，感兴趣时才往细处问',
+  '语气轻，犹豫时会停一下再说', '措辞随意，郑重时反而说得很清楚'
+];
+const VOICE_ATTITUDE = [
+  '不同意会直说，愿意听对方解释', '先看看对方在不在意，再决定说多深', '习惯拿实际办法关心人',
+  '熟起来会开小玩笑，认真时就收住', '把自己的感受说得明白，不催别人表态', '难开口时会先说一件小而具体的事',
+  '遇到分歧先问清对方到底想要什么', '不抢话，开口时常点到别人没留意的地方'
+];
+const LEGACY_TALK = new Set(Object.values(TALK_BASE).flatMap(base => TALK_EXTRA.map(extra => `${base}；${extra}`)));
 function talkOf(n) {
-  const k = busyKind(n);
-  const tie = String(n.tie || '');
-  const base = /对象|爱人|老公|老婆|女朋友|男朋友|伴侣/.test(tie) ? '对象' : k === '长辈' ? '长辈' : /同事|上司|领导|老板|客户|房东|HR/.test(tie) ? '上班' : '平辈';
-  return `${TALK_BASE[base]}；${TALK_EXTRA[hashStr(n.name) % TALK_EXTRA.length]}`;
+  const saved = typeof n.talk === 'string' ? n.talk.trim() : '';
+  if (saved && !LEGACY_TALK.has(saved)) return saved;
+  const name = (n.aliases || [])[0] || n.name;
+  const h = hashStr(name);
+  return `${VOICE_RHYTHM[h % VOICE_RHYTHM.length]}；${VOICE_ATTITUDE[Math.floor(h / VOICE_RHYTHM.length) % VOICE_ATTITUDE.length]}`;
 }
+function fixNpcVoice(n) { n.talk = talkOf(n); }
 function fixNpcLife(S, n, rng) {
-  if (!n.talk) n.talk = talkOf(n);
+  fixNpcVoice(n);
   if (!n.busy || num(n.busy.until) <= S.stats.days) npcBusy(S, n, rng);
 }
 
@@ -3503,7 +3517,7 @@ function fixLife(S) {
     }
   }
   S.flags.rent2 = 1;
-  for (const n of S.npcs) if (!n.talk) n.talk = talkOf(n);
+  for (const n of S.npcs) fixNpcVoice(n);
   return S;
 }
 

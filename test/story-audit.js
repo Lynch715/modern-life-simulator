@@ -54,6 +54,24 @@ const turn=(s,raw,action='继续')=>E.settleFiatTurn(s,{narrative:'新的进展�
  const old=mk('都市传奇');E.migrate(old);ok(!old.storyProgress,'加载旧档不会凭空添加剧情或追溯结算');
 }
 {
+ const old=mk('都市传奇');
+ E.addNpcs(old,[{name:'陈晓',tie:'同事'},{name:'周青',tie:'同事'}],2);
+ old.npcs[0].talk='说话客气，带"哈""辛苦了""收到"，事说清楚就停；爱用"哈哈哈"';
+ old.npcs[1].talk=old.npcs[0].talk;
+ const loaded=E.migrate(clone(old)), [chen,zhou]=loaded.npcs, voice=chen.talk;
+ ok(chen.talk!==old.npcs[0].talk && chen.talk!==zhou.talk,'旧档同身份同模板的两位NPC获得不同口吻');
+ chen.tie='爱人';
+ ok(E.migrate(clone(loaded)).npcs[0].talk===voice,'亲疏变化和重新读档不更换人物口吻');
+ E.applyTurn(loaded,{newNpcs:[{name:'姜平',talk:'遇到分歧会问清细节，说完就等对方回应'}]});
+ ok(E.migrate(clone(loaded)).npcs.find(n=>n.name==='姜平').talk==='遇到分歧会问清细节，说完就等对方回应','新人物口吻经过剧情结算与读档保留');
+ loaded.unresolved=['合同周五到期','蓝色杯盖交接'];
+ E.applyTurn(loaded,{scene:{unresolved:[]},progress:{closed:['蓝色杯盖交接']}},'和陈晓抱一会儿');
+ ok(loaded.unresolved.join('')==='合同周五到期','普通剧情保留未提供给模型的待办，明确结案仍销掉');
+ const sandbox=mk();sandbox.unresolved=['合同周五到期'];
+ const next=turn(sandbox,{unresolved:[]},'坐下歇会儿');
+ ok(next.unresolved.includes('合同周五到期'),'沙盒剧情也保留本轮无关的待办');
+}
+{
  const s=mk();s.fiatWorld={facts:Array.from({length:30},(_,i)=>({name:'设定'+i,detail:'长期生效且不应丢弃的游戏世界信息'})),rules:[],assets:[],businesses:[],homes:[],commands:[{command:'此前完整的指令',result:'此前实际成果'}]};
  const common=(a,b)=>{let n=0;while(a[n]&&a[n]===b[n])n++;return n;};
  const before=E.fiatContext(s),oldBefore=JSON.stringify({date:s.date,player:s.player,world:s.fiatWorld});

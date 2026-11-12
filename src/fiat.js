@@ -205,7 +205,7 @@ function applyChanges(S, input) {
   for (const n of S.npcs) {
     if (!Array.isArray(n.facts)) n.facts = [];
     if (!Array.isArray(n.mem)) n.mem = [];
-    n.rel = finite(n.rel); n.age = finite(n.age);
+    n.rel = finite(n.rel); n.age = finite(n.age); n.talk = E.talkOf(n);
     if (n.intimate===true) { delete n.intimate; E.markIntimate(S,n); }
     if (n.intimate===false) delete n.intimate;
   }
@@ -249,17 +249,73 @@ function applyChanges(S, input) {
   if (Number.isFinite(money) && money) E.acct(S, '言出法随·世界改写', money, S.lastAction || '', beforeMoney);
   return true;
 }
-// 先放稳定设定与追加记录，再放余额、日期；完整状态照常发送，不缓存旧答案。
-function context(S) {
-  const {name,gender,ideal,skillName,bg,track,...mutable}=S.player;
-  const {commands=[],...world}=S.fiatWorld || {};
-  return JSON.stringify({ identity:{name,gender,ideal,skillName,bg,track}, origin:S.origin, city:S.city, world, commands:commands.slice(-12),
-    player:mutable, place:S.place, job:S.job, ledger:S.ledger, home:S.home, biz:S.biz, bank:S.bank, debts:S.debts,
-    health:{status:S.status,chronic:S.chronic}, family:S.family, npcs:S.npcs, ideal:S.ideal, unresolved:S.unresolved,
-    recent:S.history.slice(-12), events:{promise:S.promiseAsk,key:S.key,focus:S.focus,queue:S.stopQueue}, over:S.over, date:S.date }, null, 0);
+// 世界设定照常发送，旧命令和人物记忆只在本轮用得上时带入。
+function context(S, action, chat = false) {
+  const { name, gender, ideal, skillName, bg, track, ...mutable } = S.player;
+  const { commands = [], ...world } = S.fiatWorld || {};
+  const targeted = action !== undefined;
+  const npcs = targeted ? S.npcs.map(n => ({
+    ...n, talk: E.talkOf(n), mem: relevantHistory(n.mem, action, t => [t], 2)
+  })) : S.npcs;
+  let unresolved = S.unresolved;
+  if (targeted) unresolved = chat ? relevantHistory(S.unresolved, action, t => [t], 5) : storyTopics(S, action);
+  return JSON.stringify({
+    identity: { name, gender, ideal, skillName, bg, track }, origin: S.origin, city: S.city, world,
+    commands: targeted ? relevantHistory(commands, action, c => [c.command, c.result], 4) : commands.slice(-12),
+    player: mutable, place: S.place, job: S.job, ledger: S.ledger, home: S.home, biz: S.biz, bank: S.bank, debts: S.debts,
+    health: { status: S.status, chronic: S.chronic }, family: S.family, npcs, ideal: S.ideal, unresolved,
+    recent: targeted ? relevantHistory(S.history, action, h => [h.act, h.summary], 4) : S.history.slice(-12),
+    events: { promise: S.promiseAsk, key: S.key, focus: S.focus, queue: S.stopQueue }, over: S.over, date: S.date
+  });
 }
-const topicKey=s=>String(s||'').replace(/[\s，。！？、；：,.!?;:「」“”]/g,'');
+const topicKey=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/[\s，。！？、；：,.!?;:「」“”"'（）()…—-]/g,'');
 const sameTopic=(a,b)=>!!topicKey(a)&&topicKey(a)===topicKey(b);
+const recallCue=s=>/(回顾|还记得|记不记得|以前|当年|之前|上次|曾经|历史|原先|最早|那件事|刚才|前面说|earlier|previous|recall|before)/i.test(String(s||''));
+const quietScene=s=>/(亲热|亲昵|亲吻|接吻|亲了|吻了|亲一下|拥抱|抱抱|抱一会|抱着|依偎|靠在.{0,5}肩|靠着.{0,5}肩|独处|温存|说悄悄话|安静待|静静待)/.test(String(s||''));
+const topicPivot=s=>quietScene(s)||/(换个话题|不说这个|先不聊|聊点别的|别再提)/.test(String(s||''));
+const continueScene=s=>!topicKey(s)||/^(继续|下一段|接着|接下去|往下走|然后呢)[吧啊。！？!?]*$/.test(String(s).trim());
+function topicTerms(s) {
+  const cue = String(s || '').normalize('NFKC').toLowerCase()
+    .replace(/回顾|记不记得|还记得|以前|之前|上次|刚才|那个|这个|那件事|怎么样|怎么回事|跟我说|说一下|一下|今天|现在|咱们|我们|一起|给我|想要|可以|好不好|要不要|的/g, ' ');
+  const parts = cue.match(/[a-z0-9]{2,}|[\u3400-\u9fff]{2,}/g) || [];
+  const terms = new Set();
+  for (const part of parts) {
+    if (/^[a-z0-9]+$/.test(part)) terms.add(part);
+    else for (let i = 0; i < part.length - 1; i++) terms.add(part.slice(i, i + 2));
+  }
+  return terms;
+}
+function hasTopicTerm(terms, text) {
+  const hay = topicKey(text);
+  for (const term of terms) if (hay.includes(term)) return true;
+  return false;
+}
+function relatedTo(action, text) { return hasTopicTerm(topicTerms(action), text); }
+function relevantHistory(rows, action, fields, max) {
+  const list = (rows || []).slice(-120);
+  const terms = topicTerms(action);
+  const hits = list.filter(row => fields(row).some(text => hasTopicTerm(terms, text)));
+  const broadRecall = !hits.length && recallCue(action) && !topicPivot(action);
+  return (broadRecall ? list : hits).slice(-max);
+}
+function storyCue(S, action) {
+  let cue = String(action || '');
+  if (recallCue(cue) && !topicPivot(cue)) return cue;
+  for (const n of S.npcs) if (String(n.name || '').length >= 2) cue = cue.split(n.name).join(' ');
+  return cue.trim() || String(action || '');
+}
+function storyTopics(S, cue) {
+  const topics = S.unresolved || [];
+  if (/未了|未决|待办|所有事项|全部事情/.test(String(cue))) return topics;
+  if (continueScene(cue)) return topics.slice(-12);
+  return relevantHistory(topics, cue, t => [t], 5);
+}
+function mergeStoryTopics(S, action, next) {
+  const visible = new Set(storyTopics(S, storyCue(S, action)));
+  // 模型只能结掉它读到的待办，未送入本段的仍留在存档。
+  const hidden = (S.unresolved || []).filter(t => !visible.has(t));
+  return [...new Set(next.concat(hidden))];
+}
 function cleanProgress(p) {
   if(!obj(p))return undefined;
   return {focus:String(p.focus||''),change:String(p.change||''),closed:Array.isArray(p.closed)?p.closed.map(String).filter(Boolean):[]};
@@ -271,7 +327,7 @@ function recordProgress(S,d,action) {
   if(!Array.isArray(R.resolved))R.resolved=[];
   if(!Array.isArray(R.beats))R.beats=[];
   // 只过滤同名的已结事项，不凭相似度删除玩家的其他目标。玩家点名重提时可重新挂起。
-  const mentioned=t=>topicKey(action).includes(topicKey(t));
+  const mentioned=t=>!!topicKey(t)&&topicKey(action).includes(topicKey(t));
   R.resolved=R.resolved.filter(t=>!mentioned(t));
   for(const t of closed)if(!R.resolved.some(x=>sameTopic(x,t)))R.resolved.push(String(t));
   S.unresolved=(S.unresolved||[]).filter(t=>!R.resolved.some(x=>sameTopic(x,t)));
@@ -279,11 +335,17 @@ function recordProgress(S,d,action) {
   R.beats=R.beats.slice(-8);
 }
 function storyContext(S,action) {
-  const R=S.storyProgress||{}, beats=(R.beats||[]).slice(-3), recent=S.recent||[];
+  const R=S.storyProgress||{}, beats=(R.beats||[]).slice(-3);
   const focus=beats.at(-1)?.focus;
   const repeated=!!focus&&beats.length>=2&&beats.slice(-2).every(b=>sameTopic(b.focus,focus));
   const similarity=E.stuckLevel(S);
-  return `【剧情进度，记忆保留但不要把旧事重演】\n${JSON.stringify({已结案或放下:R.resolved||[],最近进展:beats,最近正文:recent.slice(-2).map(r=>String(r.narrative||'').slice(-700)),当前未决:S.unresolved||[]})}\n${repeated||similarity>=45?'连续聚焦同一件事或正文高度相似。这一段必须带来实际新信息或结果，不能换句话复述疑虑、确认、安慰、手续或等待。':'承接上一段的结果，直接写新的进展。'}玩家本次明确要求细写、追问、重提或继续某事时照办；同一场景也要有新回答。不得为了换话题代替玩家决策、强迫失败、添代价或擅自快进。`;
+  const relevant=relevantHistory(beats,action,b=>[b.focus,b.change],2);
+  const current = {
+    已结案或放下: relevantHistory(R.resolved, action, t => [t], 6),
+    相关进展: continueScene(action) && !repeated ? beats.slice(-1) : relevant,
+    当前相关未决: storyTopics(S, action)
+  };
+  return `【剧情进度，记忆保留但不要把旧事重演】\n${JSON.stringify(current)}\n${repeated||similarity>=45?'连续聚焦同一件事或正文高度相似。只有与本次行动有关才继续写它，并给出新信息或结果。':'写玩家此刻做的事，从当前状态往下接。'}玩家本次明确要求细写、追问、重提或继续某事时照办。同一场景可以只写一句新回应或一个新的动作。旧事已讲清就让它过去，无关小事不进正文、消息和选项。不得为了换话题代替玩家决策、强迫失败、添代价或擅自快进。`;
 }
 function settle(S, raw, action) {
   if (!E.fdm(S).fiat) throw Error('当前不是言出法随');
@@ -297,7 +359,7 @@ function settle(S, raw, action) {
   rememberDirectives(W, action);
   next.history.push({ seg:S.seg, date:E.shortDate(next.date), summary:String(d.summary || d.narrative), act:String(action) });
   next.recent.push({ seg:S.seg, action:String(action), narrative:d.narrative });
-  next.unresolved = Array.isArray(d.unresolved) ? d.unresolved.map(String) : next.unresolved;
+  if(Array.isArray(d.unresolved)) next.unresolved=mergeStoryTopics(S,action,d.unresolved.map(String));
   recordProgress(next,d,action);
   next.lastOptions = Array.isArray(d.options) ? d.options.map(String).filter(Boolean) : [];
   next.pending = null; next.plan = null; next.lastAction = null; next.actTyped = false;
@@ -334,5 +396,6 @@ function archivePlan(S) {
   });
 }
 Object.assign(E, { cleanFiat:clean, normalizeFiatState:normalizeState, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
-  fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext });
+  fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext,
+  topicKey, recallCue, topicPivot, continueScene, relatedTo, relevantHistory, storyCue, storyTopics, mergeStoryTopics });
 });

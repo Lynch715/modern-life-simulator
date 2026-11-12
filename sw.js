@@ -1,5 +1,5 @@
 /* 现代生活模拟器 · 离线 */
-const VER = 'mls-v44-audit-fixes-20261110';
+const VER = 'mls-v45-npc-dialogue-20261112';
 const SHELL = ['./', './index.html', './site.webmanifest', './favicon.ico',
   './icon/icon-192.png', './icon/icon-512.png', './icon/icon-180.png',
   './assets/art/scenes/cover_arrival.webp'];   // 其余美术访问过即缓存

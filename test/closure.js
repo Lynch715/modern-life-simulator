@@ -285,7 +285,7 @@ console.log('—— 生活 ——');
   const S = mk();
   E.addNpcs(S, [{ name: '王婶', tie: '邻居', age: 58 }, { name: '小陈', tie: '同事', age: 25, job: '运营' }], 2);
   const w = S.npcs.find(x => x.name === '王婶'), c = S.npcs.find(x => x.name === '小陈');
-  ok(/长句/.test(w.talk) && /客气/.test(c.talk), '长辈发长句、同事说话客气', `${w.talk}｜${c.talk}`);
+  ok(w.talk && c.talk && w.talk !== c.talk, '人物有各自的说话和处事习惯', `${w.talk}｜${c.talk}`);
   E.fixNpcLife(S, w, E.mkRng(2)); ok(w.busy && w.busy.t && w.busy.until > S.stats.days, '每个人有最近在忙的事', w.busy.t);
   let got = 0;
   for (let i = 0; i < 200 && !got; i++) { S.stats.days += 1; if (E.pingTick(S, E.mkRng(i))) got = 1; }
