@@ -1231,8 +1231,22 @@ function renderOptions(opts) {
     box.appendChild(b);
     const tip = document.createElement('div');
     tip.className = 'tip'; tip.style.marginTop = '8px';
-    tip.textContent = S.pending.fiat ? '世界尚未改写，重试不会重复结算；也可以直接输入新指令。' : '日子已经过了，判定也定了，只是故事没写出来。再写一次不会多花时间。';
+    const raise = S.pending.keyMeta?.kind === 'raise';
+    tip.textContent = raise ? '谈判结果已记账。可以跳过故事，直接继续。' : S.pending.fiat ? '世界尚未改写，重试不会重复结算；也可以直接输入新指令。' : '日子已经过了，判定也定了，只是故事没写出来。再写一次不会多花时间。';
     box.appendChild(tip);
+    if (raise) {
+      const record = document.createElement('button');
+      record.className = 'act-btn full'; record.textContent = '记下结果，继续';
+      record.onclick = () => retryPending(true);
+      box.appendChild(record);
+    }
+    if (!fiat || raise) return;
+  }
+  if (S.key && !S.pending) {
+    const b = document.createElement('button');
+    b.className = 'act-btn full'; b.textContent = keyResumeLabel(S.key);
+    b.onclick = () => { if (!busy) openKey(); };
+    box.appendChild(b);
     if (!fiat) return;
   }
   if (S.promiseAsk && !fiat) {
@@ -1291,7 +1305,7 @@ const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没�
 - clearDebts:true 清掉所有欠款和房贷；bank:{credit,mmf,fund:{units,cost,mark},fixed:[],wm:[],loans:[]}；借款只在玩家明确要求借款时生成，不擅自加贷款。
 - milestones:[现有阶梯的完整标题或自定义成果]：直接达成指定步骤，可以跳级，全部完成填["*"]。
 - facts:[{name,detail}] 保存任何不属于现有面板的成果、身份、能力和世界事实；rules:[{name,detail}] 保存今后持续生效的规则，同名更新，取消填remove:true。超出常理、超出现成系统的愿望也必须在这里有真实、持久的落点。
-- place、city、origin 可改地点和出身；clearEvents:true 表示玩家要求解除当前关键局、约定、投入和事件；over:true/false 与 ending 仅在玩家要求结束或继续时填写。
+- place、city、origin 可改地点和出身；closeKey:true 只用于玩家要求结束眼前这场谈判，或玩家直接指定该场谈判的结果且本轮已经兑现。clearEvents:true 仅用于要求一并解除关键局、约定、投入和事件；over:true/false 与 ending 仅在玩家要求结束或继续时填写。
 所有条目都按玩家意图填写；不要返回代码、HTML或存档内部控制字段。`;
 function fiatBase() {
   return `你是中文生活模拟游戏的“言出法随”沙盒世界引擎。玩家输入是游戏世界的设定和改写指令，你负责完整兑现并返回可保存的结果。
@@ -1315,6 +1329,7 @@ function fiatPrompt(action, settledNote) { return `【眼下的世界与已有�
 function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
 async function doFiatAction(action, typed, settledNote) {
   if (busy || !S || !String(action || '').trim()) return;
+  if (S.pending?.keyMeta?.kind === 'raise') { renderOptions([]); toast('先记下已经谈完的结果'); return; }
   const state=S;
   setBusy(true, '正在保存已有进度……');
   let recalled='';
@@ -1350,7 +1365,13 @@ async function writeFiatPending(P) {
   catch(e) { console.error(e); closePanel(); renderOptions(S.lastOptions); toast('进度已保存，面板暂未展开，可以继续行动'); }
   finally { setBusy(false); }
 }
-function returnToFiatInput() { if(busy)return; $('key').classList.remove('on'); closePanel(); renderOptions(S.lastOptions); $('freeAct').focus(); }
+function returnToFiatInput() {
+  if (busy || !S?.key || S.key.over || !E.fdm(S).fiat) return;
+  $('key').classList.remove('on');
+  closePanel();
+  renderOptions(S.lastOptions);
+  $('freeAct').focus();
+}
 function fiatWorldCard() {
   const W=S.fiatWorld;
   if(!W) return '';
@@ -1503,14 +1524,14 @@ async function runSegment(opt) {
   await writePending();
 }
 
-async function writePending() {
+async function writePending(recordRaise = false) {
   const P = S.pending;
   if (!P) return;
   if (P.fiat) return writeFiatPending(P);
   setBusy(true, P.busyText || '正在记下这几天……');
   let d;
   try {
-    const raw = await llmJSON(P.prompt, raw => {
+    const raw = recordRaise && P.keyMeta?.kind === 'raise' ? raiseSummary(P.keyResult) : await llmJSON(P.prompt, raw => {
       const t = extractPartialField(raw, 'narrative');
       if (t) updateChapterNarrative(t);
     }, E.fdm(S).fiat ? { system:legacyStyleSystem() } : undefined);
@@ -1565,12 +1586,12 @@ async function writePending() {
   setBusy(false);
 }
 // 上一段请求没成：日子已经过了、骰子已经掷了，只把那个请求再发一次
-async function retryPending() {
+async function retryPending(recordRaise = false) {
   const P = S.pending;
   if (!P || busy) return;
   if (!curChapter) beginChapter(P.head, P.sub, P.action, P.judge);
   else updateChapterNarrative('');
-  await writePending();
+  await writePending(recordRaise);
 }
 
 const guessAttr = E.guessAttr;
@@ -1861,7 +1882,7 @@ function renderPanel() {
         <div class="cardhd" style="margin-top:10px">这个季度的绩效</div>
         <div class="bar"><div class="bar-in${S.job.perf > 45 ? ' good' : S.job.perf < 15 ? ' bad' : ''}" style="width:${Math.min(100, Math.round(S.job.perf / 70 * 100))}%"></div></div>
         <div class="tip">${Math.round(S.job.perf)}　上班就在攒；重心放在「拼工作」攒得最快，代价是精力。${S.job.mood < 0 ? '　上次被约谈过，这个季度要难一些。' : ''}</div>
-        <div class="btns"><button class="ghost" onclick="askRaise()">谈加薪</button><button class="ghost" onclick="openBoard()">看看别的机会</button><button class="ghost" onclick="doQuit()">辞职</button></div>`}
+        <div class="btns"><button class="ghost" onclick="askRaise()">${S.key?.kind === 'raise' ? keyResumeLabel(S.key) : '谈加薪'}</button><button class="ghost" onclick="openBoard()">看看别的机会</button><button class="ghost" onclick="doQuit()">辞职</button></div>`}
     </div>
     <h4>兼职</h4><div class="card">${gigCard()}</div>
     <h4>东西</h4><div class="card">${bagHtml()}</div>
@@ -2030,6 +2051,7 @@ ${stateBlocks(meta.stake || meta.scene)}
 ${K}
 
 【最终结果（不可更改）】${res.result}${meta.why ? `——${meta.why}` : ''}${res.mile ? `。这一步「${res.mile}」就算迈过去了` : ''}${res.price.length ? `。代价：${res.price.join('、')}` : ''}
+${meta.kind === 'raise' ? `【加薪记账】${raiseSummary(res).narrative} 薪资已经结算，不另写收入或新职位。` : ''}
 
 写这一场，500-700 字：
 - 以对话为主。八个回合不必逐个写，挑三四个真正有转折的写，其余带过。
@@ -2091,9 +2113,16 @@ async function runKey(m) {
   setBusy(false);
 }
 
+function keyResumeLabel(K) {
+  const what = K.kind === 'raise' ? '加薪谈判' : K.scene;
+  return K.over ? `查看结果：${what}` : `继续${what}`;
+}
 function openKey() {
-  $('key').classList.add('on');
+  if (!S?.key?.opp || !Array.isArray(S.key.log) || S.pending || S.over) return;
+  closePanel();
+  mask('npcMask', false);
   renderKey();
+  $('key').classList.add('on');
 }
 function bandColor(v) { return v >= 66 ? 'good' : v >= 33 ? '' : 'bad'; }
 function renderKey() {
@@ -2102,8 +2131,9 @@ function renderKey() {
   const ban = $('keyBan');
   if (ban && ban.dataset.scene !== K.scene) { ban.dataset.scene = K.scene; ban.innerHTML = artImg(KEY_ART[K.scene], 'ban', ''); }
   $('keyOpp').innerHTML = S.npcs.some(n => n.name === K.opp.name) ? faceHtml(S, K.opp.name, 'md') : '';
-  $('keyTitle').textContent = `${K.scene}　${K.opp.name}`;
+  $('keyTitle').textContent = `${K.kind === 'raise' ? '加薪谈判' : K.scene}　${K.opp.name}`;
   $('keySub').textContent = `${K.opp.job ? K.opp.job + '　' : ''}${K.opp.note}`;
+  $('keyProgress').textContent = K.over ? `已谈完 · ${K.result}` : `已谈 ${Math.min(K.round, E.KEY_ROUND_LIMIT)} / ${E.KEY_ROUND_LIMIT} 回合`;
   $('keyBars').innerHTML = [
     ['对方耐心', K.patience, bandColor(K.patience)],
     ['对方戒心', K.guard, K.guard >= 60 ? 'bad' : K.guard >= 35 ? '' : 'good'],
@@ -2119,7 +2149,7 @@ function renderKey() {
   }).join('') || `<div class="tip">${esc(K.where || '')}　八个回合之内定输赢。同一招使第二遍就不灵了。</div>`;
   $('keyLog').scrollTop = $('keyLog').scrollHeight;
 
-  $('keyMoves').innerHTML = Object.keys(E.MOVES).map(k => {
+  $('keyMoves').innerHTML = Object.keys(E.MOVES).filter(k => k !== '改期').map(k => {
     const mv = E.MOVES[k];
     const dead = (k === '亮底牌' && K.usedCard);
     const seen = (K.used || {})[k] || 0;
@@ -2127,10 +2157,12 @@ function renderKey() {
       <b>${icon(MOVE_ICON[k])}${k}</b><i>${mv.tip}</i><u>${mv.attr}${S.player.attrs[mv.attr]}${seen ? `　用过${seen}次` : ''}</u></button>`;
   }).join('');
   $('keyMoves').querySelectorAll('.kmove').forEach(b => b.onclick = () => keyGo(b.dataset.m));
-  if (E.fdm(S).fiat) $('keyMoves').insertAdjacentHTML('beforeend','<button class="ghost" onclick="returnToFiatInput()">直接输入指令改写这一场</button>');
   $('keyMoves').style.display = K.over ? 'none' : '';
-  $('keyEnd').style.display = K.over ? '' : 'none';
-  if (K.over) $('keyEnd').textContent = `${K.result}　—　看看这一场怎么写`;
+  $('keyDelay').hidden = K.over;
+  $('keyInput').hidden = K.over || !E.fdm(S).fiat;
+  $('keyRecord').hidden = !K.over || K.kind !== 'raise';
+  $('keyEnd').hidden = !K.over;
+  if (K.over) $('keyEnd').textContent = K.kind === 'raise' ? '读谈判经过' : `${K.result}　—　看看这一场怎么写`;
 }
 function keyGo(move) {
   if (busy || !S || S.pending || S.over || !S.key) return;
@@ -2139,7 +2171,12 @@ function keyGo(move) {
   renderKey();
   saveGame();
 }
-async function keyFinish() {
+function raiseSummary(result) {
+  const summary = result.result === '谈成' ? `谈成了，月薪上调${result.raise || 0}元`
+    : result.result === '谈崩' ? '加薪没谈成，月薪照旧' : '这次加薪先谈到这里，月薪照旧';
+  return { narrative: summary + '。', summary };
+}
+async function keyFinish(recordRaise = false) {
   if (busy || !S || S.pending || S.over) return;
   const K = S.key;
   if (!K || !K.over) return;
@@ -2166,7 +2203,7 @@ async function keyFinish() {
   saveGame();
   beginChapter(S.pending.head, S.pending.sub, S.pending.action, S.pending.judge);
   renderOptions([]);
-  await writePending();
+  await writePending(recordRaise);
 }
 
 /* ================= 人与聊天 ================= */
@@ -3296,7 +3333,7 @@ function canAct(allowQueued = false) {
   if (busy || !S || S.over) return false;
   if (S.pending) { toast('上一段还没写完，先把它写出来'); return false; }
   if (S.promiseAsk) { toast('先把约好的事定下来'); return false; }
-  if (S.key) { toast('先把眼前这一场谈完'); return false; }
+  if (S.key) { openKey(); return false; }
   if (!allowQueued && (S.stopQueue || []).length) { toast('先看完今天已经发生的事'); return false; }
   return true;
 }
@@ -3827,7 +3864,7 @@ function loadGame() {
     scrollDown();
   } catch (e) { console.error('读档后画界面出错', e); S.lastOptions = ['接着过日子']; try { renderOptions(S.lastOptions); } catch (_) { } }
   try { if (S.convo) { $('chat').classList.add('on'); renderConvo(); } } catch (e) { S.convo = null; $('chat').classList.remove('on'); }
-  try { if (S.key) openKey(); } catch (e) { S.key = null; $('key').classList.remove('on'); }
+  try { if (S.key) openKey(); } catch (e) { console.error('恢复谈判界面', e); $('key').classList.remove('on'); }
   saveGame();
   return true;
 }
@@ -4004,7 +4041,10 @@ function boot() {
   $('fcClose').onclick = () => mask('focusMask', false);
   $('fcDays').oninput = () => $('fcDaysN').textContent = $('fcDays').value;
   $('topBtn').onclick = openSettings;
-  $('keyEnd').onclick = keyFinish;
+  $('keyDelay').onclick = () => keyGo('改期');
+  $('keyInput').onclick = returnToFiatInput;
+  $('keyRecord').onclick = () => keyFinish(true);
+  $('keyEnd').onclick = () => keyFinish();
   $('chatSend').onclick = convoSend;
   $('chatPlus').onclick = chatPlus;
   $('chatIn').addEventListener('keydown', e => { if (e.key === 'Enter') convoSend(); });

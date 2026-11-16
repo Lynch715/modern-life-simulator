@@ -286,7 +286,10 @@ h4{margin:18px 0 8px;font-size:calc(13px * var(--ui-scale));font-weight:600;colo
 .kmove b{display:block;font-size:calc(13.5px * var(--ui-scale))}
 .kmove i{display:block;font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:2px;line-height:1.35}
 .kmove u{display:block;text-decoration:none;font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:3px}
-#keyEnd{flex:none;margin:10px 13px calc(12px + env(safe-area-inset-bottom));padding:12px;border-radius:10px;font-size:calc(14px * var(--ui-scale))}
+#keyFoot{flex:none;display:flex;gap:8px;padding:8px 13px max(10px,env(safe-area-inset-bottom));background:var(--bar);border-top:1px solid var(--line)}
+#keyFoot button{flex:1;min-width:0;padding:9px 6px;border-radius:9px;font-size:calc(13px * var(--ui-scale))}
+#keyProgress{margin-top:4px;font-size:calc(12px * var(--ui-scale));color:var(--dim)}
+@media(max-height:430px){#keyLog{min-height:0}}
 .endblock{margin-top:16px;padding:14px;border:1px solid var(--goldLine);border-radius:12px;background:var(--card2)}
 .endblock h4{margin:0 0 12px;color:var(--gold);font-size:calc(15px * var(--ui-scale));text-align:center;letter-spacing:2px}
 .endblock .kbar{margin-bottom:7px}
@@ -463,11 +466,16 @@ html,body{max-width:100%;overflow-x:hidden}
   </section>
 
   <section id="key">
-    <div id="keyHd"><div id="keyBan"></div><div class="keyrow"><div id="keyOpp"></div><div><div id="keyTitle">—</div><div id="keySub"></div></div></div></div>
+    <div id="keyHd"><div id="keyBan"></div><div class="keyrow"><div id="keyOpp"></div><div><div id="keyTitle">—</div><div id="keySub"></div><div id="keyProgress"></div></div></div></div>
     <div id="keyBars"></div>
     <div id="keyLog"></div>
     <div id="keyMoves"></div>
-    <button id="keyEnd" class="primary" style="display:none"></button>
+    <div id="keyFoot">
+      <button id="keyDelay" class="ghost">先谈到这里</button>
+      <button id="keyInput" class="ghost" hidden>回正文输指令</button>
+      <button id="keyRecord" class="primary" hidden>记下结果，继续</button>
+      <button id="keyEnd" class="primary" hidden></button>
+    </div>
   </section>
 
   <div class="mask" id="npcMask"><div class="box" id="npcBox"></div></div>

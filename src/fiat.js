@@ -242,6 +242,7 @@ function applyChanges(S, input) {
     if (!hit) upsert(W.facts, [{ name: String(name), detail: '已达成' }], name => ({ name }));
   }
   if (c.clearEvents === true) { S.promiseAsk = null; S.stopQueue = []; S.key = null; S.focus = null; S.interview = null; S.appts = []; S.pledges = []; S.stopWhen = []; }
+  if (c.closeKey === true) S.key = null;
   if (own(c, 'over')) { S.over = c.over === true; S.ending = S.over ? String(c.ending || '按你的意思收尾') : null; }
   p.job = E.jobLabel(S); S.broke = false; S.capNote = null; S.claimNote = null;
   normalizeState(S);

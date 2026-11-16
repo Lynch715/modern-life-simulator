@@ -76,6 +76,27 @@ for(const move of ['摆事实','讲故事','共情','施压','让步','亮底牌
  const salary=s.ledger.salary;E.settleKey(s);ok(s.ledger.salary>salary && s.stats.keyWins===1,'谈成后实际兑现');
 }
 {const s=mk();E.startKey(s,{hard:95});E.keyRound(s,'稳一稳',()=>0);ok(!s.key.over,'稳一稳保留继续选择');E.keyRound(s,'改期',()=>0);ok(s.key.result==='留口子','玩家主动改期不强迫谈成');}
+{
+ let s=mk();
+ const salary=s.ledger.salary;
+ E.startKey(s,{kind:'raise',hard:95,type:'务实'});
+ for(let i=1;i<E.KEY_ROUND_LIMIT;i++)E.keyRound(s,'稳一稳',()=>0);
+ s=E.migrate(clone(s));
+ ok(s.key.round===7 && !s.key.over,'旧档可以从原回合续谈');
+ const end=E.keyRound(s,'稳一稳',()=>0);
+ ok(end.result==='留口子' && s.key.over && E.keyRound(s,'稳一稳',()=>0)===null,'一直稳一稳也能在八回合内结束');
+ E.settleKey(s);
+ ok(!s.key && s.ledger.salary===salary,'未谈成不发涨薪');
+}
+{
+ const s=mk();
+ E.startKey(s,{kind:'raise',type:'务实'});
+ E.addPledge(s,{who:'周青',what:'周日搬书',kind:'主角答应',inDays:3});
+ E.applyFiatChanges(s,{place:'回到家中'});
+ ok(s.key?.kind==='raise','无关沙盒行动保留暂时离开的谈判');
+ E.applyFiatChanges(s,{job:{salary:12000},closeKey:true});
+ ok(!s.key && s.ledger.salary===12000 && s.pledges.length===1,'指令可只关闭当前谈判，约定仍然有效');
+}
 
 // 两个普通模式继续使用原有资金、薪资、成长、疾病、贷款和里程碑规则。
 for(const mode of ['写实人生','都市传奇']) {

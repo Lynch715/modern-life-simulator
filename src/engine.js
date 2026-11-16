@@ -2596,6 +2596,7 @@ const OPP_TYPES = {
   '急性子': { guard: 44, patience: 48, interest: 34, desc: '没耐心，要你三句话说清楚',
     mul: { '摆事实': 1.3, '讲故事': 0.85, '共情': 0.8, '施压': 1.15, '让步': 1.05, '亮底牌': 1.35 } }
 };
+const KEY_ROUND_LIMIT = 8;
 const MOVES = {
   '摆事实': { attr: '专业', cost: 6,  tip: '把做过的、算过的摊出来' },
   '讲故事': { attr: '表达', cost: 7,  tip: '讲你要做的事，讲得让人想看下去' },
@@ -2694,7 +2695,7 @@ function keyRound(S, move, rng) {
     if (K.interest >= 70 && K.guard <= 35) { K.over = true; K.result = '谈成'; }
     else if (K.patience <= 0) { K.over = true; K.result = '谈崩'; K.why = '对方不想再听了'; }
     else if (K.nerve <= 0) { K.over = true; K.result = '留口子'; K.why = '你自己先撑不住了'; }
-    else if (K.round >= 8) {
+    else if (K.round >= KEY_ROUND_LIMIT) {
       const score = K.interest - K.guard;
       K.over = true;
       K.result = score >= 15 ? '谈成' : score >= -12 ? '留口子' : '谈崩';
@@ -2706,8 +2707,10 @@ function keyRound(S, move, rng) {
     K.guard = 0; K.interest = 100; K.cost = 0;
     rec.note = '言出法随，事情谈成';
     rec.st = { guard: 0, interest: 100, patience: Math.round(K.patience), nerve: Math.round(K.nerve) };
-  } else if (fdm(S).fiat && K.over && move === '稳一稳') {
-    K.over = false; K.result = null; K.why = null;
+  } else if (fdm(S).fiat && move === '稳一稳') {
+    K.over = K.round >= KEY_ROUND_LIMIT;
+    K.result = K.over ? '留口子' : null;
+    K.why = K.over ? '这次先谈到这里' : null;
   }
   rec.result = K.result;
   return rec;
@@ -4065,7 +4068,7 @@ const API = {
   WIND, ERA, windMul, windTick, yearSnap, yearDiff,
   RIFT_KINDS, addRift, easeRift, riftTick, noteAil, chronicLoad, energyCap,
   LEVELS, jobLv, nextReview, jobTick, review, quitJob, takeJob, jobLabel, addDebt, debtTick, payDebt, activeDebts,
-  METRICS, SCENES, OPP_TYPES, MOVES, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
+  METRICS, SCENES, OPP_TYPES, MOVES, KEY_ROUND_LIMIT, normLadder, curMile, mileStat, ladderBlock, judgeClaim,
   startKey, keyRound, settleKey,
   sanitizeTurn, sanitizeConvo, sanitizeStop, salaryRange, ASK_KINDS, PLEDGE_KINDS,
   DIFFS, STEP_TYPES, guessAttr, splitAct, splitAsks, simplePlan, sanitizePlan, stepNeed, runSteps, moneyCeil, lendCap,
