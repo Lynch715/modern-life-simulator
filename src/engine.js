@@ -3838,6 +3838,7 @@ function migrate(S) {
   S.msgs = S.msgs.filter(isObj);
   S.debts = S.debts.filter(d => isObj(d) && d.due);
   S.appts = S.appts.filter(isObj);
+  S.unresolved = API.mergeUnresolved(S.unresolved);
   if (S.convo && !Array.isArray(S.convo.lines)) S.convo = null;
   if (S.key && (!S.key.opp || !Array.isArray(S.key.log))) S.key = null;
   if (S.pending && !S.pending.prompt) S.pending = null;

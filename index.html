@@ -197,6 +197,9 @@ h4{margin:18px 0 8px;font-size:calc(13px * var(--ui-scale));font-weight:600;colo
 .li{padding:7px 0;border-bottom:1px dashed var(--dash);font-size:calc(13.5px * var(--ui-scale))}
 .li:last-child{border:none}
 .li span{color:var(--dim2);font-size:calc(12px * var(--ui-scale))}
+.unresolved-actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 3px}
+.unresolved-actions button{min-height:36px}
+.unresolved-actions button:first-child{color:var(--gold);border-color:var(--goldLine)}
 .rel{float:right;color:var(--gold)!important}
 .rel.bad{color:var(--bad)!important}
 .msgs .msg{background:var(--card2);border-radius:10px;padding:9px 12px;margin-bottom:8px}
@@ -221,7 +224,7 @@ h4{margin:18px 0 8px;font-size:calc(13px * var(--ui-scale));font-weight:600;colo
 #chatDone{font-size:calc(12.5px * var(--ui-scale));color:var(--gold);border:1px solid var(--goldLine);border-radius:14px;padding:5px 10px}
 #chatName{font-size:calc(15px * var(--ui-scale));cursor:pointer}
 .tapcard{font-style:normal;font-size:calc(12px * var(--ui-scale));color:var(--dim2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle}
-#chatSub{font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:2px}
+#chatSub,#chatDate{font-size:calc(12px * var(--ui-scale));color:var(--dim2);margin-top:2px}
 #chatBody{flex:1;overflow-y:auto;padding:14px 14px 4px;overscroll-behavior:contain}
 .bub{max-width:76%;padding:9px 12px;border-radius:13px;margin-bottom:10px;font-size:calc(var(--fs,16.5px) - 1.5px);line-height:1.65;position:relative;white-space:pre-wrap}
 .bub.ta{background:var(--ta);border:1px solid var(--line);border-top-left-radius:4px}
@@ -456,7 +459,7 @@ html,body{max-width:100%;overflow-x:hidden}
   <section id="chat">
     <div id="chatHd">
       <button id="chatBack">‹</button>
-      <div id="chatFace"></div><div><div id="chatName">—</div><div id="chatSub"></div></div>
+      <div id="chatFace"></div><div><div id="chatName">—</div><div id="chatSub"></div><div id="chatDate"></div></div>
       <button id="chatDone">聊完了</button>
     </div>
     <div id="chatBody"></div>
@@ -4418,6 +4421,7 @@ function migrate(S) {
   S.msgs = S.msgs.filter(isObj);
   S.debts = S.debts.filter(d => isObj(d) && d.due);
   S.appts = S.appts.filter(isObj);
+  S.unresolved = API.mergeUnresolved(S.unresolved);
   if (S.convo && !Array.isArray(S.convo.lines)) S.convo = null;
   if (S.key && (!S.key.opp || !Array.isArray(S.key.log))) S.key = null;
   if (S.pending && !S.pending.prompt) S.pending = null;
@@ -4942,6 +4946,87 @@ function context(S, action, chat = false) {
 }
 const topicKey=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/[\s，。！？、；：,.!?;:「」“”"'（）()…—-]/g,'');
 const sameTopic=(a,b)=>!!topicKey(a)&&topicKey(a)===topicKey(b);
+
+const DAY_NUMBER = '[0-9零〇一二两三四五六七八九十百千]+';
+function dayNumber(text) {
+  if (/^\d+$/.test(text)) return Number(text);
+  const digits = '零一二三四五六七八九';
+  const units = { 十:10, 百:100, 千:1000 };
+  let value = 0, tail = 0;
+  for (const ch of text.replace(/两/g, '二').replace(/〇/g, '零')) {
+    if (units[ch]) { value += (tail || 1) * units[ch]; tail = 0; }
+    else tail = tail * 10 + (/\d/.test(ch) ? Number(ch) : digits.indexOf(ch));
+  }
+  return value + tail;
+}
+const ADVANCE_REQUEST = new RegExp(`^(?:请)?(?:把(?:游戏)?时间)?(?:向后推进|往后推(?:进)?|推进|快进|跳过|先过|往后过|再过)\\s*(${DAY_NUMBER})\\s*(?:个)?(天|日|周|星期)(?=$|[\\s，。！？、,.!?（(；;]|继续|再(?:说|聊|去|看))`);
+const STORY_TIME_JUMP = new RegExp(`^(?:转眼[，,]?|就这样[，,]?)?(?:(?:过了|又过了)\\s*(${DAY_NUMBER})(?:个)?(天|日|周|星期)|(${DAY_NUMBER})(?:个)?(天|日|周|星期)后|(次日|第二天|翌日))\\s*[，,。\\n]`);
+function fiatTimeChanges(changes, action, narrative = '') {
+  if (changes && (own(changes, 'date') || own(changes, 'days'))) return changes;
+  const request = String(action || '').normalize('NFKC').trim().match(ADVANCE_REQUEST);
+  // 只读正文开头明确落在新一天的过渡语，避免把对白、回顾或约定读成时间推进。
+  const holdTime = /(?:不要|别|不许)(?:快进|跳过时间|推进时间)|时间(?:暂停|不动|不变)|留在今天/.test(action);
+  const text = String(narrative).normalize('NFKC').trim();
+  const transition = !request && !holdTime && text.match(STORY_TIME_JUMP);
+  const future = transition && /^(?:记得|别忘了|到时候|[^，。！？,.!?]{0,8}(?:将会|预计|打算|准备再))/.test(text.slice(transition[0].length).trim());
+  const story = !future && transition;
+  const count = request?.[1] || story?.[1] || story?.[3];
+  const unit = request?.[2] || story?.[2] || story?.[4];
+  const days = count ? dayNumber(count) * (/周|星期/.test(unit) ? 7 : 1) : story?.[5] ? 1 : 0;
+  return Number.isSafeInteger(days) && days > 0 ? { ...changes, days } : changes;
+}
+const TOPIC_DATE = new RegExp(`(?:([0-9零〇一二三四五六七八九]{4})年)?(${DAY_NUMBER})月(${DAY_NUMBER})[日号]`, 'g');
+const TOPIC_SLOT = /^(?:(?:上午|中午|下午|早上|晚上|傍晚)(?:[0-9一二两三四五六七八九十]+点(?:半|[0-9一二三四五六七八九十]+分)?)?|[0-9一二两三四五六七八九十]+点(?:半|[0-9一二三四五六七八九十]+分)?)?[前后]?/;
+const TOPIC_RELATIVE = new RegExp(`下?周[一二三四五六日天末]|今天|今[早晚]|明天|明[早晚]|后天|${DAY_NUMBER}天后`, 'g');
+function unresolvedParts(text) {
+  let body = text.normalize('NFKC');
+  const dates = [...body.matchAll(TOPIC_DATE)];
+  const relative = dates.length ? [] : [...body.matchAll(TOPIC_RELATIVE)];
+  const time = dates.length === 1 ? dates[0] : relative.length === 1 ? relative[0] : null;
+  const timeEnd = time ? time.index + time[0].length : 0;
+  const slot = time ? body.slice(timeEnd).match(TOPIC_SLOT)[0] : '';
+  if (time) body = body.slice(0, time.index) + body.slice(timeEnd + slot.length);
+  body = topicKey(body.replace(/与/g, '和'));
+
+  // 同一项送物可以从收件方或物品开头，收件方和具体物品需同时吻合。
+  const delivery = body.match(/^给(.+?)的(.+?)(?:要)?(?:送到|提到|带到|拿到)(.+)$/) ||
+    body.match(/^把(.+?)(?:送到|提到|带到|拿到)(.+?)(?:送到(.+))?$/);
+  const leadingRecipient = body.startsWith('给');
+  const recipient = delivery?.[leadingRecipient ? 1 : 2];
+  const goods = delivery?.[leadingRecipient ? 2 : 1];
+  const place = delivery?.[3] || '';
+  const key = delivery ? `送物|${recipient}|${goods}` : body;
+  const date = time?.[2] ? [time[1] ? dayNumber(time[1]) : null, dayNumber(time[2]), dayNumber(time[3])] : null;
+  return { text, key, place, date, timeEnd, slot, relative:date ? '' : time?.[0] || '' };
+}
+function sameUnresolved(a, b) {
+  if (sameTopic(a.text, b.text)) return true;
+  if (!a.key || a.key !== b.key || (a.place && b.place && a.place !== b.place)) return false;
+  if (a.date && b.date && (a.date[1] !== b.date[1] || a.date[2] !== b.date[2] ||
+    (a.date[0] !== null && b.date[0] !== null && a.date[0] !== b.date[0]))) return false;
+  if (a.relative && b.relative && a.relative !== b.relative) return false;
+  return !a.slot || !b.slot || a.slot === b.slot || !!a.date !== !!b.date;
+}
+function mergeUnresolved(rows) {
+  const merged = [];
+  for (const text of Array.isArray(rows) ? rows : []) {
+    if (typeof text !== 'string' || !text.trim()) continue;
+    const current = unresolvedParts(text.trim());
+    const i = merged.findIndex(t => sameUnresolved(t, current));
+    if (i < 0) { merged.push(current); continue; }
+    const prev = merged[i];
+    const detail = t => (t.date ? 8 + (t.date[0] !== null ? 4 : 0) : t.relative ? 2 : 0) + (t.slot ? 1 : 0);
+    const [keep, other] = detail(current) > detail(prev) ? [current, prev] : [prev, current];
+    let combined = keep.text;
+    if (keep.date && other.date && !keep.slot && other.slot) {
+      const normalized = combined.normalize('NFKC');
+      combined = normalized.slice(0, keep.timeEnd) + other.slot + normalized.slice(keep.timeEnd);
+    }
+    if (!keep.place && other.place) combined += `（送到${other.place}）`;
+    merged[i] = combined === keep.text ? keep : unresolvedParts(combined);
+  }
+  return merged.map(t => t.text);
+}
 const recallCue=s=>/(回顾|还记得|记不记得|以前|当年|之前|上次|曾经|历史|原先|最早|那件事|刚才|前面说|earlier|previous|recall|before)/i.test(String(s||''));
 const quietScene=s=>/(亲热|亲昵|亲吻|接吻|亲了|吻了|亲一下|拥抱|抱抱|抱一会|抱着|依偎|靠在.{0,5}肩|靠着.{0,5}肩|独处|温存|说悄悄话|安静待|静静待)/.test(String(s||''));
 const topicPivot=s=>quietScene(s)||/(换个话题|不说这个|先不聊|聊点别的|别再提)/.test(String(s||''));
@@ -4984,9 +5069,10 @@ function storyTopics(S, cue) {
 }
 function mergeStoryTopics(S, action, next) {
   const visible = new Set(storyTopics(S, storyCue(S, action)));
-  // 模型只能结掉它读到的待办，未送入本段的仍留在存档。
-  const hidden = (S.unresolved || []).filter(t => !visible.has(t));
-  return [...new Set(next.concat(hidden))];
+  const incoming = next.filter(t => typeof t === 'string').map(unresolvedParts);
+  // 未送入本段的待办照留。模型重述现有事项时保留旧条目里较具体的时间。
+  const retained = (S.unresolved || []).filter(t => !visible.has(t) || incoming.some(x=>sameUnresolved(x,unresolvedParts(t))));
+  return retained.concat(next);
 }
 function cleanProgress(p) {
   if(!obj(p))return undefined;
@@ -4994,6 +5080,7 @@ function cleanProgress(p) {
 }
 function recordProgress(S,d,action) {
   const p=cleanProgress(d.progress), closed=[...(Array.isArray(d.resolvedInfo)?d.resolvedInfo:[]),...(p?p.closed:[])];
+  S.unresolved=mergeUnresolved(S.unresolved);
   if(!p&&!closed.length&&!S.storyProgress)return;
   const R=S.storyProgress || (S.storyProgress={resolved:[],beats:[]});
   if(!Array.isArray(R.resolved))R.resolved=[];
@@ -5002,9 +5089,18 @@ function recordProgress(S,d,action) {
   const mentioned=t=>!!topicKey(t)&&topicKey(action).includes(topicKey(t));
   R.resolved=R.resolved.filter(t=>!mentioned(t));
   for(const t of closed)if(!R.resolved.some(x=>sameTopic(x,t)))R.resolved.push(String(t));
-  S.unresolved=(S.unresolved||[]).filter(t=>!R.resolved.some(x=>sameTopic(x,t)));
+  const resolved = R.resolved.filter(t=>typeof t==='string').map(unresolvedParts);
+  S.unresolved=S.unresolved.filter(t=>{
+    const topic = unresolvedParts(t);
+    return !resolved.some(x=>sameUnresolved(x,topic));
+  });
   if(p)R.beats.push({seg:S.seg,focus:p.focus,change:p.change});
   R.beats=R.beats.slice(-8);
+}
+function closeUnresolved(S, text) {
+  if (!S.unresolved.includes(text)) return false;
+  recordProgress(S, { resolvedInfo:[text] }, '');
+  return true;
 }
 function storyContext(S,action) {
   const R=S.storyProgress||{}, beats=(R.beats||[]).slice(-3);
@@ -5024,7 +5120,7 @@ function settle(S, raw, action) {
   if (!obj(raw) || typeof raw.narrative !== 'string' || !raw.narrative.trim() || raw._partial || !obj(raw.fiatChanges)) throw Error('这一段的世界改写数据没收完整，尚未结算，请重试');
   const next = clean(S), d = clean(raw);
   // 在副本里完成所有改写，任何数据错误都不会留下半笔账或半个新身份。
-  applyChanges(next, d.fiatChanges);
+  applyChanges(next, fiatTimeChanges(d.fiatChanges, action, d.narrative));
   if (!own(d.fiatChanges,'over')) { next.over=false; next.ending=null; }
   const W = worldOf(next);
   W.commands.push({ seg:S.seg, date:E.dateStr(next.date), command:String(action), result:String(d.summary || d.narrative) });
@@ -5068,6 +5164,7 @@ function archivePlan(S) {
   });
 }
 Object.assign(E, { cleanFiat:clean, normalizeFiatState:normalizeState, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
+  fiatTimeChanges, mergeUnresolved, closeUnresolved,
   fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext,
   topicKey, recallCue, topicPivot, continueScene, relatedTo, relevantHistory, storyCue, storyTopics, mergeStoryTopics });
 });
@@ -5242,7 +5339,7 @@ function actionAttrs(action, args, close) {
 function dispatchAction(event) {
   const el = event.target.closest('[data-ui-action]');
   if (!el) return;
-  const actions = { openThread, openCard, giveFromCard, openConvo, askLove, doGive, openShop, doComment, showNpc, doBuy, doDropGig, doTakeGig };
+  const actions = { openThread, openCard, giveFromCard, openConvo, askLove, doGive, openShop, doComment, showNpc, doBuy, doDropGig, doTakeGig, workOnUnresolved, dismissUnresolved };
   const fn = Object.prototype.hasOwnProperty.call(actions, el.dataset.uiAction) && actions[el.dataset.uiAction];
   if (!fn) return;
   let args; try { args = JSON.parse(el.dataset.uiArgs); } catch (_) { return; }
@@ -6530,7 +6627,7 @@ function renderOptions(opts) {
 const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没改的字段必须省略，不能拿0或空数组占位。所有数值都是改写后的绝对值，只有 moneyDelta 是增减量；同一笔钱选一种方式填写。
 - player:{name,gender,age,money,energy,attributes:{专业,表达,谋划,情绪,体能},信誉,人品,ideal,skillName,bg:{edu,school,major,persona,looks}}。数值不受普通量表约束；无限财富可把 money 写成“无限”。
 - job:{employer,title,lv,salary,out}：任何自定义身份、头衔、级别和月薪都可直接设置，转职不要求先辞职。
-- date:{y,m,d} 或 days:相对今天推进的天数，可负数回到过去；没要求时间变化就省略，不自动多过一天。
+- date:{y,m,d} 或 days:从当前游戏日期到本段结束累计经过的天数，可负数回到过去。若玩家快进，或正文确实从现在演到几天后，必须填其中之一。回顾、约定、预计和同一天内的动作不改日期。
 - health:{clear:true} 立即清除所有病症与病根；也可指定 status/chronic 数组。永生、青春常驻等长期设定另记 rules。
 - home:{name,kind:"买或租",place,price,tier,rent}：可以直接获得新住处，默认全款；多处房产可逐个写 assets，所有资产都会保留。
 - businesses:[{name,kind,detail,staff:[]}]：可同时持有任意多的事业，任意规模；assets:[{name,detail,quantity,value}] 可记任意物品、股份、房产、载具、领地或能力，没有商品目录限制。按name更新，移除填remove:true。
@@ -6546,7 +6643,7 @@ function fiatBase() {
 【本局最高玩法规则】
 - 玩家这次明确指定的结果和限制必须兑现，优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
 - 不用“系统不支持”“硬条件不足”“先完成待办”“等退休/养病/攒钱”等理由打折；不把直接获得改成申请、面试、等待或追加代价，不在段尾翻案。
-- 玩家没让时间走就留在今天；要求跨时就同步改date/days。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
+- 留意当前游戏日期。玩家未要求跨天的日常对话留在今天。若玩家要求过一段时间，或允许叙事推进到新的日期，必须在fiatChanges里同步本段结束日期或累计天数。不得用情节里提及的过去或未来日期代替本段结束日期。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
 - 玩家明确说“别替我答应/等我选/先不做”的部分留给玩家，不擅自扩张他的意图。括号里的世界改写与写法要求都有效。
 - 数值、人物、身份和资产的变化必须填fiatChanges，不能只有爽文而面板没有成果；无法归入现有面板的全部记facts/assets/rules。已经满足的愿望照样承认，可以重申或扩大。
 ${FIAT_FIELDS}
@@ -6560,7 +6657,7 @@ ${SCENE_TOPIC_RULE}
 只输出一个合法JSON：{"narrative":"兑现指令的故事","summary":"本次实际成果","fiatChanges":{},"progress":{"focus":"事件短标题","change":"本段新增的进展","closed":["已解决或放下的未决原文"]},"unresolved":["仍未了结且玩家愿意管的事"],"options":["接下来可以做的事"]}
 【叙事】${PERSON()}。${STYLES[styleOf()].rule}`; }
 function fiatPrompt(action, settledNote) { return `【眼下的世界与已有记录，玩家的新指令可改写】\n${E.fiatContext(S,historyCue(action))}\n\n${E.storyContext(S,historyCue(action))}\n\n【玩家这次的完整指令】\n${action}\n\n${settledNote ? '【面板操作已经落实的部分，只写过程，不要重复增减】'+settledNote : '尚未结算任何新钱或时间'}。逐项兑现，返回完整的故事与fiatChanges，不要遗漏或重复。`; }
-function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
+function fiatChatSystem(group) { return `${fiatBase()}\n${CHAT_SYSTEM}\n普通聊天仍像真人说话，先直接回答主角最新一句，之前答完的细节不反复追问。已经落实的收付不重复。玩家要求把聊天接到几天后时，回应发生在新的日期，必须返回fiatChanges.date或fiatChanges.days。约好几天后再见仍是今天。要求世界改变时返回fiatChanges，不要再用ask、pay或deal重复结算同一成果。只输出合法JSON，${group ? 'replies:[{who:"群成员名字",text:"回应"}]' : 'reply:["对主角这句的回应"],quick:["后续回复"]'}，以及gist、summary、fiatChanges字段；没有改写就省略fiatChanges。`; }
 async function doFiatAction(action, typed, settledNote) {
   if (busy || !S || !String(action || '').trim()) return;
   if (S.pending?.keyMeta?.kind === 'raise') { renderOptions([]); toast('先记下已经谈完的结果'); return; }
@@ -6591,11 +6688,11 @@ async function writeFiatPending(P) {
     setBusy(false); return;
   }
   S = settled.state;
+  rebuildTop();
   if (curChapter) { const mark=curChapter.querySelector('.chapmark'); if(mark) mark.textContent=E.shortDate(S.date); }
   updateChapterNarrative(settled.narrative); saveGame();
   try { await finishChapter(); } catch(e) { console.error('保存章节：',e); }
-  await queueArchive(S);
-  try { rebuildTop(); renderPanel(); renderOptions(S.lastOptions); }
+  try { await queueArchive(S); renderPanel(); renderOptions(S.lastOptions); }
   catch(e) { console.error(e); closePanel(); renderOptions(S.lastOptions); toast('进度已保存，面板暂未展开，可以继续行动'); }
   finally { setBusy(false); }
 }
@@ -6684,7 +6781,7 @@ async function doAction(action, typed) {
   await runSegment({ quick: true });
 }
 async function skipAhead() {
-  if (S && E.fdm(S).fiat) return doFiatAction('按我已经生效的世界设定，继续过一段日子；不要擅自推翻我的成果。', false);
+  if (S && E.fdm(S).fiat) return doFiatAction('先过一天，按我已经生效的世界设定，写新的一天发生的事。', false);
   if (busy || !S || S.over) return;
   if (S.promiseAsk) { toast('先把约好的事定下来'); return; }
   if (S.pending) { await retryPending(); return; }
@@ -7219,13 +7316,33 @@ function renderLadder() {
     });
     box.push('</div>');
   });
-  box.push(`<h4>未了的事</h4><div class="card">${S.unresolved.map(u => `<div class="li">${esc(u)}</div>`).join('') || '<div class="tip">暂时没有</div>'}</div>`);
+  box.push(`<h4>未了的事</h4><div class="card">${S.unresolved.map(u => `<div class="li">${esc(u)}
+    <div class="unresolved-actions">
+      <button type="button" class="ghost sm" ${actionAttrs('workOnUnresolved', [u])}>去办</button>
+      <button type="button" class="ghost sm" ${actionAttrs('dismissUnresolved', [u, '已办'])}>已办</button>
+      <button type="button" class="ghost sm" ${actionAttrs('dismissUnresolved', [u, '放下'])}>放下</button>
+    </div></div>`).join('') || '<div class="tip">暂时没有</div>'}</div>`);
   const ap = (S.appts || []).filter(a => !a.done);
   box.push(`<h4>约好的事</h4><div class="card">${ap.length
     ? ap.map(a => `<div class="li"><span>${a.m}月${a.d}日</span> ${esc(a.title)}<span class="rel">${Math.max(0, E.daysBetween(S.date, { y: a.y, m: a.m, d: a.d }))}天后</span></div>`).join('')
     : '<div class="tip">没有</div>'}</div>`);
   if (S.stats.keys) box.push(`<div class="card tip">关键局打过 ${S.stats.keys} 场，谈成 ${S.stats.keyWins || 0} 场。</div>`);
   return box.join('');
+}
+function workOnUnresolved(text) {
+  if (busy || !S?.unresolved.includes(text)) return;
+  closePanel();
+  const input = $('freeAct');
+  if (!input) { toast('先处理当前剧情，再回来办这件事'); return; }
+  input.value = text;
+  input.focus();
+  input.scrollIntoView({ block: 'nearest' });
+}
+function dismissUnresolved(text, status) {
+  if (busy || !S || !E.closeUnresolved(S, text)) return;
+  saveGame();
+  renderPanel();
+  toast(status === '已办' ? '已标为办完' : '已放下这件事');
 }
 async function repairLadder() {
   if (!canAct() || S.ideal.stages.length) return;
@@ -7604,16 +7721,19 @@ function renderConvo() {
     $('chatName').onclick = () => showNpc(n.name);
     $('chatSub').textContent = callName(n);
   }
+  $('chatDate').textContent = E.dateStr(S.date);
   let lastDate = '';
+  const dateLine = date => {
+    if (!date || date === lastDate) return '';
+    lastDate = date;
+    return `<div class="sysline">${esc(date)}</div>`;
+  };
   const hist = (c.hist || []).map(m => {
-    const d = m.date && m.date !== lastDate ? `<div class="sysline">${esc(m.date)}</div>` : '';
-    lastDate = m.date || lastDate;
-    return d + bubHtml(m.me ? 'me' : 'ta', m.text, { payId: m.payId, from: g ? m.from : '' });
+    return dateLine(m.date) + bubHtml(m.me ? 'me' : 'ta', m.text, { payId: m.payId, from: g ? m.from : '' });
   }).join('');
   const nowD = E.shortDate(S.date);
-  const sep = hist && c.lines.length && lastDate !== nowD ? `<div class="sysline">${esc(nowD)}</div>` : '';
-  $('chatBody').innerHTML = (hist + sep + c.lines.map(l =>
-    l.who === 'sys' ? `<div class="sysline">${esc(l.text)}</div>` : bubHtml(l.who, l.text, { mood: l.mood, payId: l.payId, from: g ? l.from : '' })).join(''))
+  $('chatBody').innerHTML = (hist + c.lines.map(l =>
+    l.who === 'sys' ? `<div class="sysline">${esc(l.text)}</div>` : dateLine(l.date || nowD) + bubHtml(l.who, l.text, { mood: l.mood, payId: l.payId, from: g ? l.from : '' })).join(''))
     || '<div class="sysline">说点什么</div>';
   const q = !g && !busy && (c.quick || []).length ? c.quick : [];
   $('chatQuick').innerHTML = q.map((t, i) => `<button onclick="quickSay(${i})">${esc(t)}</button>`).join('');
@@ -7658,14 +7778,14 @@ async function chatPay(kind) {
     const g = E.groupList(S).find(x => x.id === c.group);
     const r = E.groupPacket(S, g, amt, note, Math.random);
     if (!r.ok) { toast(r.why); return; }
-    c.lines.push({ who: 'me', text: '', payId: r.pay.id });
+    c.lines.push({ who: 'me', text: '', payId: r.pay.id, date: E.shortDate(S.date) });
     renderConvo(); rebuildTop(); saveGame();
     await groupTurn(`[在群里发了个${amt}元的拼手气红包${note ? '：' + note : ''}。引擎分好了：${r.split.map(x => `${x.who}抢到${x.amount}`).join('，')}]`);
     return;
   }
   const r = E.payOut(S, c.name, amt, kind, note);
   if (!r.ok) { toast(r.why); return; }
-  c.lines.push({ who: 'me', text: '', payId: r.pay.id });
+  c.lines.push({ who: 'me', text: '', payId: r.pay.id, date: E.shortDate(S.date) });
   if (r.debt) c.lines.push({ who: 'sys', text: r.debt });
   renderConvo(); rebuildTop(); saveGame();
   await convoTurn(`[给你${kind === '红包' ? '发了个红包' : '转账'} ${amt}元${note ? '：' + note : ''}${r.debt ? `（${r.debt}）` : ''}]`, null);
@@ -7685,11 +7805,22 @@ async function convoSend() {
   if (!say) return;
   $('chatIn').value = '';
   c.quick = [];
-  c.lines.push({ who: 'me', text: say });
+  c.lines.push({ who: 'me', text: say, date: E.shortDate(S.date) });
   c.turns++;
   renderConvo();
   if (c.group) await groupTurn(say);
   else await convoTurn(say, null);
+}
+async function applyFiatChatChanges(changes, say, raw) {
+  if (!E.fdm(S).fiat || raw?._partial) return false;
+  const result = E.fiatTimeChanges(changes, say);
+  if (!result) return false;
+  await queueArchive(S);
+  const date = E.shortDate(S.date);
+  E.applyFiatChanges(S, result);
+  for (const line of S.convo?.lines || []) if (!line.date && line.who !== 'sys') line.date = date;
+  rebuildTop();
+  return true;
 }
 async function convoTurn(say, judge) {
   if (!canAct()) return;
@@ -7702,10 +7833,12 @@ async function convoTurn(say, judge) {
   try {
     const cue = historyCue(say), fiat = E.fdm(S).fiat;
     const world = fiat ? `【可改写的世界】${E.fiatContext(S, cue, true)}\n${await recallHistory(S, say)}` : '';
-    const d = E.sanitizeConvo(await llmJSON(world + convoPrompt(n, say, judge), null, {
+    const raw = await llmJSON(world + convoPrompt(n, say, judge), null, {
       maxTokens: fiat ? 8000 : 1200, temperature: 1.05, system: fiat ? fiatChatSystem(false) : CONVO_SYSTEM
-    }), S);
-    if (!judge && !d.fiatChanges && !d.ask && !d.pay && !d.refund && !d.deal.length) {
+    });
+    const d = E.sanitizeConvo(raw, S);
+    const changed = await applyFiatChatChanges(d.fiatChanges, say, raw);
+    if (!judge && !changed && !d.ask && !d.pay && !d.refund && !d.deal.length) {
       const previous = (c.hist || []).filter(l => !l.me).concat(c.lines.filter(l => l.who === 'ta')).slice(-24).map(l => l.text);
       const original = d.replies.length ? d.replies : [d.reply];
       d.replies = original.map(t => trimRepeatedReply(t, cue, previous)).filter(Boolean);
@@ -7715,7 +7848,10 @@ async function convoTurn(say, judge) {
         if (!d.replies.length) { d.reply = '……'; d.rel = 0; d.cold = false; }
       }
     }
-    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); if ((d.fiatChanges.npcs||[]).some(x=>x.rel!==undefined)) c.rel=0; d.rel=0; d.ask=null; d.pay=null; d.deal=[]; rebuildTop(); }
+    if (changed) {
+      if (Array.isArray(d.fiatChanges?.npcs) && d.fiatChanges.npcs.some(x=>x?.rel!==undefined)) c.rel=0;
+      d.rel=0; d.ask=null; d.pay=null; d.deal=[];
+    }
     if (d.summary) c.summary = d.summary;
     if (d.gist) c.gist = d.gist;
     c.rel = E.clamp(c.rel + d.rel, -12, 12);          // 一场聊天，关系最多动 12
@@ -7736,8 +7872,9 @@ async function convoTurn(say, judge) {
     c.paidNote = '';
     c.quick = d.quick;
     const reps = d.replies.length ? d.replies : [d.reply];
-    for (const t of reps.slice(0, -1)) c.lines.push({ who: 'ta', text: t });
-    const line = { who: 'ta', text: reps[reps.length - 1], mood: d.mood };
+    const date = E.shortDate(S.date);
+    for (const t of reps.slice(0, -1)) c.lines.push({ who: 'ta', text: t, date });
+    const line = { who: 'ta', text: reps[reps.length - 1], mood: d.mood, date };
     if (d.pay && !judge) {
       const py = E.payIn(S, n.name, d.pay.amount, d.pay.kind, d.pay.note, 'chat');
       if (py) line.payId = py.id;
@@ -7824,10 +7961,12 @@ async function groupTurn(say) {
   try {
     const cue = historyCue(say), fiat = E.fdm(S).fiat;
     const world = fiat ? `【可改写的世界】${E.fiatContext(S, cue, true)}\n${await recallHistory(S, say)}` : '';
-    const d = E.sanitizeGroup(await llmJSON(world + groupPrompt(g, say), null, {
+    const raw = await llmJSON(world + groupPrompt(g, say), null, {
       maxTokens: fiat ? 8000 : 1400, temperature: 1.05, system: fiat ? fiatChatSystem(true) : CHAT_SYSTEM
-    }), g.members, S);
-    if (!d.fiatChanges && !d.deal.length) {
+    });
+    const d = E.sanitizeGroup(raw, g.members, S);
+    const changed = await applyFiatChatChanges(d.fiatChanges, say, raw);
+    if (!changed && !d.deal.length) {
       let trimmed = false;
       for (const r of d.replies) {
         const previous = (c.hist || []).concat(c.lines).filter(l => !l.me && l.who !== 'me' && l.from === r.who).slice(-24).map(l => l.text);
@@ -7837,10 +7976,11 @@ async function groupTurn(say) {
       d.replies = d.replies.filter(r => r.text);
       if (trimmed) d.gist = d.summary = '';
     }
-    if (d.fiatChanges) { await queueArchive(S); E.applyFiatChanges(S, d.fiatChanges); d.deal=[]; rebuildTop(); }
+    if (changed) d.deal=[];
     if (d.gist) c.gist = d.gist;
     if (d.summary) c.summary = d.summary;
-    for (const r of d.replies) c.lines.push({ who: 'ta', from: E.whoIs(S,r.who), text: r.text });
+    const date = E.shortDate(S.date);
+    for (const r of d.replies) c.lines.push({ who: 'ta', from: E.whoIs(S,r.who), text: r.text, date });
     if (!d.replies.length) c.lines.push({ who: 'sys', text: '群里没人接话' });
     for (const dl of d.deal) {
       if (E.addPledge(S, { who: dl.who, what: dl.what, kind: dl.kind, inDays: dl.inDays }))
@@ -7858,7 +7998,7 @@ function endGroup(c, toPanel) {
   const said = c.lines.filter(l => l.who !== 'sys');
   if (g && said.length) {
     const dt = E.shortDate(S.date);
-    for (const l of said) g.msgs.push({ from: l.who === 'me' ? '' : l.from, me: l.who === 'me', text: String(l.text || '').slice(0, 200), date: dt, payId: l.payId });
+    for (const l of said) g.msgs.push({ from: l.who === 'me' ? '' : l.from, me: l.who === 'me', text: String(l.text || '').slice(0, 200), date: l.date || dt, payId: l.payId });
     g.msgs = g.msgs.slice(-200);
     g.gist = c.gist || g.gist;
     const spoke = new Set(said.filter(l => l.who === 'ta').map(l => l.from));
@@ -7952,7 +8092,7 @@ function endConvo(goOn, toPanel) {
     S.recent = S.recent.slice(-8);
     S.history.push({ seg: S.seg, date: E.shortDate(S.date), summary: `跟${c.name}聊：${c.summary || '说了会儿话'}` });
     const dt = E.shortDate(S.date);
-    for (const l of said) S.msgs.push({ from: c.name, me: l.who === 'me', text: String(l.text || '').slice(0, 120), date: dt, kind: 'talk', read: true, payId: l.payId });
+    for (const l of said) S.msgs.push({ from: c.name, me: l.who === 'me', text: String(l.text || '').slice(0, 120), date: l.date || dt, kind: 'talk', read: true, payId: l.payId });
     S.msgs = S.msgs.slice(-240);
   }
   const canContinue = closeConvoView(toPanel);

@@ -54,6 +54,27 @@ const turn=(s,raw,action='继续')=>E.settleFiatTurn(s,{narrative:'新的进展�
  const old=mk('都市传奇');E.migrate(old);ok(!old.storyProgress,'加载旧档不会凭空添加剧情或追溯结算');
 }
 {
+ const a='给姥姥家的茶与点心要送到村东头', b='八月十一号中午前把茶和点心提到姥姥家';
+ const dated=b+'（送到村东头）', later='八月十二日中午前把茶和点心提到姥姥家';
+ const s=mk();
+ s.date={y:2027,m:12,d:30};
+ s.unresolved=[a,b,later,'周五收拾次卧','周六收拾次卧'];
+ const restored=E.migrate(clone(s));
+ assert.deepStrictEqual(restored.unresolved,[dated,later,'周五收拾次卧','周六收拾次卧']);
+ assert.deepStrictEqual(E.migrate(clone(restored)).unresolved,restored.unresolved);
+ const next=turn(restored,{unresolved:[a,later]},'继续');
+ ok(next.unresolved.includes(dated)&&next.unresolved.includes(later),'模型改写条目时保留旧档的日期、地点和另一天的同类任务');
+ const snapshot=clone(next);
+ ok(E.closeUnresolved(next,dated)&&!next.unresolved.includes(dated)&&next.unresolved.includes(later),'手动销项只关闭对应事项');
+ ok(next.player.money===snapshot.player.money&&E.daysBetween(next.date,snapshot.date)===0,'手动销项不执行剧情、消费或推进时间');
+ ok(!turn(E.migrate(clone(next)),{unresolved:[a,b,later]}).unresolved.includes(dated),'刷新和模型换词后不自动恢复已销事项');
+ const advance=turn(next,{narrative:'三天后，你提货回来。'},'继续');
+ ok(E.dateStr(advance.date)==='2028年1月2日 星期日'&&advance.stats.days===next.stats.days+3,'明确跨天正文在跨年时同步存档日期与计天');
+ ok(E.daysBetween(next.date,turn(next,{narrative:'过了三天，你提货回来。',fiatChanges:{days:3}},'快进三天').date)===3,'结构化日期和玩家指令不会重复结算');
+ ok(E.daysBetween(next.date,turn(next,{narrative:'“三天后，我来取货。”她问。'},'确认三天后能否取货').date)===0,'对白中的未来约定不改变当前日期');
+ ok(E.daysBetween(next.date,turn(next,{narrative:'次日，你提货回来。'},'留在今天').date)===0,'玩家要求停在今天时不从正文推断日期');
+}
+{
  const old=mk('都市传奇');
  E.addNpcs(old,[{name:'陈晓',tie:'同事'},{name:'周青',tie:'同事'}],2);
  old.npcs[0].talk='说话客气，带"哈""辛苦了""收到"，事说清楚就停；爱用"哈哈哈"';

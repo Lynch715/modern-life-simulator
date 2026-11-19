@@ -271,6 +271,87 @@ function context(S, action, chat = false) {
 }
 const topicKey=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/[\s，。！？、；：,.!?;:「」“”"'（）()…—-]/g,'');
 const sameTopic=(a,b)=>!!topicKey(a)&&topicKey(a)===topicKey(b);
+
+const DAY_NUMBER = '[0-9零〇一二两三四五六七八九十百千]+';
+function dayNumber(text) {
+  if (/^\d+$/.test(text)) return Number(text);
+  const digits = '零一二三四五六七八九';
+  const units = { 十:10, 百:100, 千:1000 };
+  let value = 0, tail = 0;
+  for (const ch of text.replace(/两/g, '二').replace(/〇/g, '零')) {
+    if (units[ch]) { value += (tail || 1) * units[ch]; tail = 0; }
+    else tail = tail * 10 + (/\d/.test(ch) ? Number(ch) : digits.indexOf(ch));
+  }
+  return value + tail;
+}
+const ADVANCE_REQUEST = new RegExp(`^(?:请)?(?:把(?:游戏)?时间)?(?:向后推进|往后推(?:进)?|推进|快进|跳过|先过|往后过|再过)\\s*(${DAY_NUMBER})\\s*(?:个)?(天|日|周|星期)(?=$|[\\s，。！？、,.!?（(；;]|继续|再(?:说|聊|去|看))`);
+const STORY_TIME_JUMP = new RegExp(`^(?:转眼[，,]?|就这样[，,]?)?(?:(?:过了|又过了)\\s*(${DAY_NUMBER})(?:个)?(天|日|周|星期)|(${DAY_NUMBER})(?:个)?(天|日|周|星期)后|(次日|第二天|翌日))\\s*[，,。\\n]`);
+function fiatTimeChanges(changes, action, narrative = '') {
+  if (changes && (own(changes, 'date') || own(changes, 'days'))) return changes;
+  const request = String(action || '').normalize('NFKC').trim().match(ADVANCE_REQUEST);
+  // 只读正文开头明确落在新一天的过渡语，避免把对白、回顾或约定读成时间推进。
+  const holdTime = /(?:不要|别|不许)(?:快进|跳过时间|推进时间)|时间(?:暂停|不动|不变)|留在今天/.test(action);
+  const text = String(narrative).normalize('NFKC').trim();
+  const transition = !request && !holdTime && text.match(STORY_TIME_JUMP);
+  const future = transition && /^(?:记得|别忘了|到时候|[^，。！？,.!?]{0,8}(?:将会|预计|打算|准备再))/.test(text.slice(transition[0].length).trim());
+  const story = !future && transition;
+  const count = request?.[1] || story?.[1] || story?.[3];
+  const unit = request?.[2] || story?.[2] || story?.[4];
+  const days = count ? dayNumber(count) * (/周|星期/.test(unit) ? 7 : 1) : story?.[5] ? 1 : 0;
+  return Number.isSafeInteger(days) && days > 0 ? { ...changes, days } : changes;
+}
+const TOPIC_DATE = new RegExp(`(?:([0-9零〇一二三四五六七八九]{4})年)?(${DAY_NUMBER})月(${DAY_NUMBER})[日号]`, 'g');
+const TOPIC_SLOT = /^(?:(?:上午|中午|下午|早上|晚上|傍晚)(?:[0-9一二两三四五六七八九十]+点(?:半|[0-9一二三四五六七八九十]+分)?)?|[0-9一二两三四五六七八九十]+点(?:半|[0-9一二三四五六七八九十]+分)?)?[前后]?/;
+const TOPIC_RELATIVE = new RegExp(`下?周[一二三四五六日天末]|今天|今[早晚]|明天|明[早晚]|后天|${DAY_NUMBER}天后`, 'g');
+function unresolvedParts(text) {
+  let body = text.normalize('NFKC');
+  const dates = [...body.matchAll(TOPIC_DATE)];
+  const relative = dates.length ? [] : [...body.matchAll(TOPIC_RELATIVE)];
+  const time = dates.length === 1 ? dates[0] : relative.length === 1 ? relative[0] : null;
+  const timeEnd = time ? time.index + time[0].length : 0;
+  const slot = time ? body.slice(timeEnd).match(TOPIC_SLOT)[0] : '';
+  if (time) body = body.slice(0, time.index) + body.slice(timeEnd + slot.length);
+  body = topicKey(body.replace(/与/g, '和'));
+
+  // 同一项送物可以从收件方或物品开头，收件方和具体物品需同时吻合。
+  const delivery = body.match(/^给(.+?)的(.+?)(?:要)?(?:送到|提到|带到|拿到)(.+)$/) ||
+    body.match(/^把(.+?)(?:送到|提到|带到|拿到)(.+?)(?:送到(.+))?$/);
+  const leadingRecipient = body.startsWith('给');
+  const recipient = delivery?.[leadingRecipient ? 1 : 2];
+  const goods = delivery?.[leadingRecipient ? 2 : 1];
+  const place = delivery?.[3] || '';
+  const key = delivery ? `送物|${recipient}|${goods}` : body;
+  const date = time?.[2] ? [time[1] ? dayNumber(time[1]) : null, dayNumber(time[2]), dayNumber(time[3])] : null;
+  return { text, key, place, date, timeEnd, slot, relative:date ? '' : time?.[0] || '' };
+}
+function sameUnresolved(a, b) {
+  if (sameTopic(a.text, b.text)) return true;
+  if (!a.key || a.key !== b.key || (a.place && b.place && a.place !== b.place)) return false;
+  if (a.date && b.date && (a.date[1] !== b.date[1] || a.date[2] !== b.date[2] ||
+    (a.date[0] !== null && b.date[0] !== null && a.date[0] !== b.date[0]))) return false;
+  if (a.relative && b.relative && a.relative !== b.relative) return false;
+  return !a.slot || !b.slot || a.slot === b.slot || !!a.date !== !!b.date;
+}
+function mergeUnresolved(rows) {
+  const merged = [];
+  for (const text of Array.isArray(rows) ? rows : []) {
+    if (typeof text !== 'string' || !text.trim()) continue;
+    const current = unresolvedParts(text.trim());
+    const i = merged.findIndex(t => sameUnresolved(t, current));
+    if (i < 0) { merged.push(current); continue; }
+    const prev = merged[i];
+    const detail = t => (t.date ? 8 + (t.date[0] !== null ? 4 : 0) : t.relative ? 2 : 0) + (t.slot ? 1 : 0);
+    const [keep, other] = detail(current) > detail(prev) ? [current, prev] : [prev, current];
+    let combined = keep.text;
+    if (keep.date && other.date && !keep.slot && other.slot) {
+      const normalized = combined.normalize('NFKC');
+      combined = normalized.slice(0, keep.timeEnd) + other.slot + normalized.slice(keep.timeEnd);
+    }
+    if (!keep.place && other.place) combined += `（送到${other.place}）`;
+    merged[i] = combined === keep.text ? keep : unresolvedParts(combined);
+  }
+  return merged.map(t => t.text);
+}
 const recallCue=s=>/(回顾|还记得|记不记得|以前|当年|之前|上次|曾经|历史|原先|最早|那件事|刚才|前面说|earlier|previous|recall|before)/i.test(String(s||''));
 const quietScene=s=>/(亲热|亲昵|亲吻|接吻|亲了|吻了|亲一下|拥抱|抱抱|抱一会|抱着|依偎|靠在.{0,5}肩|靠着.{0,5}肩|独处|温存|说悄悄话|安静待|静静待)/.test(String(s||''));
 const topicPivot=s=>quietScene(s)||/(换个话题|不说这个|先不聊|聊点别的|别再提)/.test(String(s||''));
@@ -313,9 +394,10 @@ function storyTopics(S, cue) {
 }
 function mergeStoryTopics(S, action, next) {
   const visible = new Set(storyTopics(S, storyCue(S, action)));
-  // 模型只能结掉它读到的待办，未送入本段的仍留在存档。
-  const hidden = (S.unresolved || []).filter(t => !visible.has(t));
-  return [...new Set(next.concat(hidden))];
+  const incoming = next.filter(t => typeof t === 'string').map(unresolvedParts);
+  // 未送入本段的待办照留。模型重述现有事项时保留旧条目里较具体的时间。
+  const retained = (S.unresolved || []).filter(t => !visible.has(t) || incoming.some(x=>sameUnresolved(x,unresolvedParts(t))));
+  return retained.concat(next);
 }
 function cleanProgress(p) {
   if(!obj(p))return undefined;
@@ -323,6 +405,7 @@ function cleanProgress(p) {
 }
 function recordProgress(S,d,action) {
   const p=cleanProgress(d.progress), closed=[...(Array.isArray(d.resolvedInfo)?d.resolvedInfo:[]),...(p?p.closed:[])];
+  S.unresolved=mergeUnresolved(S.unresolved);
   if(!p&&!closed.length&&!S.storyProgress)return;
   const R=S.storyProgress || (S.storyProgress={resolved:[],beats:[]});
   if(!Array.isArray(R.resolved))R.resolved=[];
@@ -331,9 +414,18 @@ function recordProgress(S,d,action) {
   const mentioned=t=>!!topicKey(t)&&topicKey(action).includes(topicKey(t));
   R.resolved=R.resolved.filter(t=>!mentioned(t));
   for(const t of closed)if(!R.resolved.some(x=>sameTopic(x,t)))R.resolved.push(String(t));
-  S.unresolved=(S.unresolved||[]).filter(t=>!R.resolved.some(x=>sameTopic(x,t)));
+  const resolved = R.resolved.filter(t=>typeof t==='string').map(unresolvedParts);
+  S.unresolved=S.unresolved.filter(t=>{
+    const topic = unresolvedParts(t);
+    return !resolved.some(x=>sameUnresolved(x,topic));
+  });
   if(p)R.beats.push({seg:S.seg,focus:p.focus,change:p.change});
   R.beats=R.beats.slice(-8);
+}
+function closeUnresolved(S, text) {
+  if (!S.unresolved.includes(text)) return false;
+  recordProgress(S, { resolvedInfo:[text] }, '');
+  return true;
 }
 function storyContext(S,action) {
   const R=S.storyProgress||{}, beats=(R.beats||[]).slice(-3);
@@ -353,7 +445,7 @@ function settle(S, raw, action) {
   if (!obj(raw) || typeof raw.narrative !== 'string' || !raw.narrative.trim() || raw._partial || !obj(raw.fiatChanges)) throw Error('这一段的世界改写数据没收完整，尚未结算，请重试');
   const next = clean(S), d = clean(raw);
   // 在副本里完成所有改写，任何数据错误都不会留下半笔账或半个新身份。
-  applyChanges(next, d.fiatChanges);
+  applyChanges(next, fiatTimeChanges(d.fiatChanges, action, d.narrative));
   if (!own(d.fiatChanges,'over')) { next.over=false; next.ending=null; }
   const W = worldOf(next);
   W.commands.push({ seg:S.seg, date:E.dateStr(next.date), command:String(action), result:String(d.summary || d.narrative) });
@@ -397,6 +489,7 @@ function archivePlan(S) {
   });
 }
 Object.assign(E, { cleanFiat:clean, normalizeFiatState:normalizeState, applyFiatChanges:applyAtomic, fiatContext:context, settleFiatTurn:settle, fiatAdvance:advance,
+  fiatTimeChanges, mergeUnresolved, closeUnresolved,
   fiatArchivePlan:archivePlan, cleanStoryProgress:cleanProgress, recordStoryProgress:recordProgress, storyContext,
   topicKey, recallCue, topicPivot, continueScene, relatedTo, relevantHistory, storyCue, storyTopics, mergeStoryTopics });
 });
