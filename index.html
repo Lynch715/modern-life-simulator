@@ -1097,16 +1097,19 @@ function dayTick(S, rng) {
 /* ---------- 明细账 ---------- */
 // 每笔进出记一行，按月归档；月底对不上的差额在账本里显示成「零碎」
 function acctKey(d) { return d.y + '-' + String(d.m).padStart(2, '0'); }
+function compareAcctMonths(a, b) {
+  return Number(a.slice(0, -3)) - Number(b.slice(0, -3)) || Number(a.slice(-2)) - Number(b.slice(-2));
+}
 function acct(S, item, amt, note, moneyBefore) {
-  amt = Math.round(num(amt));
+  amt = item === '取货币基金' ? r2(num(amt)) : Math.round(num(amt));
   if (!amt) return;
   S.acct = S.acct || {};
   const k = acctKey(S.date);
   if (!S.acct[k]) {
     const before = moneyBefore != null ? moneyBefore : S.player.money - amt;
     S.acct[k] = { open: before, rows: [] };
-    const ks = Object.keys(S.acct).sort();
-    while (ks.length > 13) delete S.acct[ks.shift()];
+    const ks = Object.keys(S.acct).filter(month => month !== k).sort(compareAcctMonths);
+    while (ks.length >= 13) delete S.acct[ks.shift()];
   }
   S.acct[k].rows.push({ d: S.date.d, item, amt, note: note ? String(note).slice(0, 30) : '' });
 }
@@ -1321,11 +1324,11 @@ function advance(S, opt) {
     days++;
     S.stats.days++;
     if (S.flags.cool > 0) S.flags.cool--;
+    kidsGrow(S);
 
     // 生日：开局那个月日
     if (S.date.m === S.startDate.m && S.date.d === S.startDate.d && S.date.y > S.startDate.y) {
       S.player.age = (S.player.age0 || 22) + (S.date.y - S.startDate.y);
-      kidsGrow(S);
       events.push({ t: '家里', s: `你${S.player.age}岁了${(S.family.kids || []).filter(k => !k.unborn).length ? `，${S.family.kids.filter(k => !k.unborn).map(k => k.name + k.age + '岁').join('、')}` : ''}` });
     }
 
@@ -2457,22 +2460,27 @@ function wantKid(S, rng) {
   return { ok: true, ck };
 }
 const KID_MING = ['念','安','一','小满','年年','知','麦','屿','禾','早早','团团','多多','星','沐','昀'];
-function familyTick(S, rng) {
+function birthKids(S, rng, catchUp = false) {
   const ev = [];
   let stop = null;
-  S.family = S.family || { partner: null, kids: [], past: [] };
-  const P = partnerOf(S);
-
-  // 孩子出生
   for (const k of (S.family.kids || [])) {
     if (k.unborn && S.stats.days >= k.dueDay) {
+      const due = catchUp ? addDays(S.date, k.dueDay - S.stats.days) : S.date;
+      const born = Number.isFinite(due.y) ? due : S.date;
       k.unborn = false;
-      k.name = (S.player.name || '').slice(0, 1) + pick(rng, KID_MING);
-      k.bornY = S.date.y; k.born = shortDate(S.date); k.age = 0;
+      k.name = (S.player.name || '').slice(0, 1) + pick(rng || mkRng(k.dueDay), KID_MING);
+      k.bornY = born.y; k.born = shortDate(born); k.age = 0;
+      delete k.ageAt;
       ev.push({ t: '家里', s: `孩子出生了，叫${k.name}` });
       stop = { kind: '家里', detail: `孩子生下来了，${k.name}` };
     }
   }
+  return { ev, stop };
+}
+function familyTick(S, rng) {
+  S.family = S.family || { partner: null, kids: [], past: [] };
+  const P = partnerOf(S);
+  let { ev, stop } = birthKids(S, rng);
   // 过日子的热乎气
   if (P) {
     const days = S.stats.days;
@@ -2501,8 +2509,24 @@ function kidCost(S) {
   }
   return c;
 }
-function kidsGrow(S) {
-  for (const k of (S.family.kids || [])) if (!k.unborn) k.age++;
+function kidBirthday(k) {
+  const match = String(k.born || '').match(/^(?:(-?\d+)[年/-])?(\d{1,2})[月/-](\d{1,2})日?$/);
+  if (!match || (match[1] === undefined && k.bornY == null)) return null;
+  const date = { y: Number(match[1] ?? k.bornY), m: Number(match[2]), d: Number(match[3]) };
+  const actual = fromDate(dOf(date));
+  return actual.y === date.y && actual.m === date.m && actual.d === date.d ? date : null;
+}
+function kidsGrow(S, restore = false) {
+  for (const k of S.family.kids || []) {
+    if (k.unborn) continue;
+    const birthday = kidBirthday(k);
+    const base = k.ageAt || birthday || (k.ageAt = { ...S.date, age: num(k.age) });
+    const beforeBirthday = S.date.m < base.m || (S.date.m === base.m && S.date.d < base.d);
+    const age = Math.max(0, num(base.age) + S.date.y - base.y - Number(beforeBirthday));
+    // 旧沙盒的显式年龄可能比从录入日倒推的年龄大。
+    if (restore && fdm(S).fiat && !k.ageAt && num(k.age) > age) k.ageAt = { ...S.date, age: num(k.age) };
+    else k.age = age;
+  }
 }
 function kidStage(k) {
   if (k.unborn) return '还没出生';
@@ -4111,6 +4135,7 @@ function fixLife(S) {
 /* ================= 银行：存款、理财、贷款、征信 ================= */
 const DEPO = { 3: 0.008, 12: 0.011, 36: 0.015 };        // 定期：月数 → 年利率
 const CUR_RATE = 0.001, MMF_RATE = 0.015;
+const CUR_DAILY = CUR_RATE / 365, MMF_DAILY = MMF_RATE / 365;
 const LOANS = {
   '信用贷': { lo: 0.04, hi: 0.09, terms: [12, 24, 36], fee: 0.01 },
   '消费贷': { lo: 0.09, hi: 0.14, terms: [12], fee: 0.01 },
@@ -4215,10 +4240,15 @@ function withdrawFixed(S, id) {
   const f = B.fixed.splice(i, 1)[0];
   const early = S.stats.days < f.dueDay;
   const days = Math.max(0, S.stats.days - f.day);
-  const int = Math.round(f.amount * (early ? CUR_RATE : f.rate) * (early ? days / 365 : f.term / 12));
-  cashAdd(S, f.amount + int);
-  acct(S, early ? '定期提前取出' : '定期到期', f.amount + int, `利息${int}`);
+  const int = early ? Math.round(f.amount * CUR_DAILY * days) : fixedInterest(f);
+  const back = finiteNumber(f.amount + int);
+  cashAdd(S, back);
+  acct(S, early ? '定期提前取出' : '定期到期', back, `利息${int}`);
   return { ok: true, early, int, note: `${early ? '提前取出' : '到期取出'}定期${f.amount}，利息${int}${early ? '（提前取只算活期）' : ''}` };
+}
+function fixedInterest(f) { return Math.round(finiteNumber(f.amount * f.rate * (f.term / 12))); }
+function wealthReturn(w) {
+  return Math.round(finiteNumber(w.amount * (1 + w.rate * 90 / 365)));
 }
 // 理财
 function invest(S, kind, amount, rng) {
@@ -4248,7 +4278,7 @@ function invest(S, kind, amount, rng) {
   cashAdd(S, amount);
   return { ok: false, why: '没有这种理财' };
 }
-function fundValue(S) { const B = bankOf(S); return Math.round(B.fund.units * B.nav); }
+function fundValue(S) { const B = bankOf(S); return Math.round(finiteNumber(B.fund.units * B.nav)); }
 function redeem(S, kind, amount) {
   const input = Number(amount);
   if (!Number.isFinite(input) || input < 0 || (input > 0 && Math.round(input) <= 0))
@@ -4256,9 +4286,10 @@ function redeem(S, kind, amount) {
   amount = input;
   const B = bankOf(S);
   if (kind === '货币基金') {
-    amount = Math.min(Math.round(num(amount)) || Math.floor(B.mmf), Math.floor(B.mmf));
+    amount = input === 0 ? B.mmf : Math.min(Math.round(input), B.mmf);
     if (amount <= 0) return { ok: false, why: '货币基金里没钱' };
     B.mmf = r2(B.mmf - amount); cashAdd(S, amount); acct(S, '取货币基金', amount);
+    if (!B.mmf) B.mmfAcc = 0;
     return { ok: true, note: `从货币基金取了${amount}` };
   }
   if (kind === '股票基金') {
@@ -4277,41 +4308,137 @@ function redeem(S, kind, amount) {
   }
   return { ok: false, why: '这个不能随时取' };
 }
-// 每天挂在日历上
-function bankTick(S, rng) {
-  const B = bankOf(S), p = S.player, ev = [];
-  let stop = null;
-  if (p.money > 0) B.curAcc += p.money * CUR_RATE / 365;
-  if (B.mmf > 0) { const g = B.mmf * MMF_RATE / 365 * (0.85 + rng() * 0.3); B.mmf = r2(B.mmf + g); B.mmfGain = r2(B.mmfGain + g); }
-  // 季度末结活期息
-  if ([3, 6, 9, 12].includes(S.date.m) && S.date.d === 21 && B.curAcc >= 1) {
+function growMmf(B, factor) {
+  if (!(B.mmf > 0)) return;
+  const carry = num(B.mmfAcc);
+  const raw = finiteNumber((B.mmf + carry) * factor + carry);
+  const gain = r2(raw);
+  B.mmfAcc = raw - gain;
+  B.mmf = r2(B.mmf + gain);
+  B.mmfGain = r2(B.mmfGain + gain);
+}
+function mmfFactor(days) { return Math.expm1(Math.log1p(MMF_DAILY) * days); }
+function accrueCurrent(S, days) {
+  const B = bankOf(S);
+  if (S.player.money > 0) B.curAcc = finiteNumber(B.curAcc + S.player.money * CUR_DAILY * days);
+}
+function creditCurrent(S) {
+  const B = bankOf(S);
+  if (B.curAcc >= 1) {
     const int = Math.round(B.curAcc); B.curAcc = 0;
     cashAdd(S, int); acct(S, '活期利息', int);
   }
+}
+function settleBankMaturities(S, rng, ev) {
+  const B = bankOf(S);
   for (const f of B.fixed.slice()) if (S.stats.days >= f.dueDay) { const r = withdrawFixed(S, f.id); ev.push({ t: '钱', s: r.note.replace('到期取出', '到期了，转回账上：') }); }
   for (const w of B.wm.slice()) if (S.stats.days >= w.dueDay) {
-    const lose = rng() < 0.03;
-    const back = Math.round(w.amount * (1 + (lose ? -rng() * 0.005 : w.rate * 90 / 365)));
+    const draw = rng || mkRng(w.dueDay ^ Math.imul(w.id, 0x9e3779b1));
+    const lose = draw() < 0.03;
+    const back = lose ? Math.round(w.amount * (1 - draw() * 0.005)) : wealthReturn(w);
     B.wm = B.wm.filter(x => x.id !== w.id);
-    cashAdd(S, back); acct(S, '银行理财到期', back, `本金${w.amount}`);
+    cashAdd(S, back); acct(S, '银行理财到期', back, `本金${w.amount}，收益${back - w.amount}`);
     ev.push({ t: '钱', s: `银行理财到期，${w.amount}变成${back}${lose ? '，没达到业绩基准' : ''}` });
   }
+}
+function stockTick(S, rng) {
+  const B = bankOf(S);
   // 股票基金：每周走一步，跟风向挂钩
-  if (dOf(S.date).getDay() === 5) {
-    const mood = (S.wind && S.wind.mood) || '平';
-    const mu = 0.001 + (mood === '热' ? 0.002 : mood === '冷' ? -0.002 : 0) - ((S.era || []).length ? 0.0005 : 0);
-    const z = (rng() + rng() + rng() + rng() - 2) * 1.73;
-    B.nav = Math.max(0.3, r2((B.nav * (1 + mu + z * 0.021)) * 1000) / 1000);
-    if (B.fund.units > 0) {
-      const val = fundValue(S), mark = B.fund.mark || B.fund.cost;
-      const ch = (val - mark) / Math.max(1, mark);
-      if (Math.abs(ch) >= 0.2 && B.fund.cost >= 3000) {
-        B.fund.mark = val;
-        stop = { kind: '钱', detail: `股票基金${ch > 0 ? '涨' : '跌'}了一大截，眼下值${val}（本金${B.fund.cost}）` };
+  const mood = (S.wind && S.wind.mood) || '平';
+  const mu = 0.001 + (mood === '热' ? 0.002 : mood === '冷' ? -0.002 : 0) - ((S.era || []).length ? 0.0005 : 0);
+  const z = (rng() + rng() + rng() + rng() - 2) * 1.73;
+  const nav = finiteNumber(B.nav * (1 + mu + z * 0.021));
+  B.nav = Math.max(0.3, nav > Number.MAX_VALUE / 1000 ? nav : r2(nav * 1000) / 1000);
+  if (B.fund.units > 0) {
+    const val = fundValue(S), mark = B.fund.mark || B.fund.cost;
+    const ch = (val - mark) / Math.max(1, mark);
+    if (Math.abs(ch) >= 0.2 && B.fund.cost >= 3000) {
+      B.fund.mark = val;
+      return { kind: '钱', detail: `股票基金${ch > 0 ? '涨' : '跌'}了一大截，眼下值${val}（本金${B.fund.cost}）` };
+    }
+  }
+  return null;
+}
+function bankTick(S, rng) {
+  const B = bankOf(S), ev = [];
+  accrueCurrent(S, 1);
+  if (B.mmf > 0) growMmf(B, MMF_DAILY * (0.85 + rng() * 0.3));
+  if (S.date.m % 3 === 0 && S.date.d === 21) creditCurrent(S);
+  settleBankMaturities(S, rng, ev);
+  const stop = dOf(S.date).getDay() === 5 ? stockTick(S, rng) : null;
+  return { ev, stop };
+}
+// 沙盒跨日只处理银行资产。活期按计息区间累加，定期和理财按实际日期回款。
+function advanceBankCalendar(S, to, days) {
+  if (days <= 0) return [];
+  const B = bankOf(S), ev = [], from = S.date, start = S.stats.days, end = start + days;
+  growMmf(B, mmfFactor(days));
+  if (B.fund.units > 0) {
+    const friday = (4 - dOf(from).getDay() + 7) % 7 + 1;
+    for (let day = start + friday; day <= end; day += 7) stockTick(S, mkRng(Math.imul(day, 0x9e3779b1)));
+  }
+  const maturities = [...new Set([...B.fixed, ...B.wm].map(p => Math.max(start + 1, Math.ceil(p.dueDay))))]
+    .filter(day => day <= end).sort((a, b) => a - b);
+  let i = 0, day = start;
+  const quarter = { y: from.y, m: Math.ceil(from.m / 3) * 3, d: 21 };
+  const nextQuarter = () => {
+    quarter.m += 3;
+    if (quarter.m > 12) { quarter.y++; quarter.m = 3; }
+  };
+  if (from.m === quarter.m && from.d >= 21) nextQuarter();
+  while (day < end) {
+    const due = maturities[i] ?? Infinity;
+    const quarterDay = (S.player.money > 0 || B.curAcc >= 1) && quarter.y <= to.y
+      ? start + daysBetween(from, quarter) : Infinity;
+    const next = Math.min(end, due, Number.isFinite(quarterDay) ? quarterDay : Infinity);
+    accrueCurrent(S, next - day);
+    day = next;
+    S.date = day === end ? to : addDays(from, day - start);
+    S.stats.days = day;
+    if (day === quarterDay) { creditCurrent(S); nextQuarter(); }
+    if (day === due) {
+      settleBankMaturities(S, null, ev);
+      i++;
+      // 回款前可能没有现金可计息。下一次结息日必须在当前日期之后。
+      if (quarterDay === Infinity) {
+        quarter.y = S.date.y;
+        quarter.m = Math.ceil(S.date.m / 3) * 3;
+        if (S.date.m === quarter.m && S.date.d >= 21) nextQuarter();
       }
     }
   }
-  return { ev, stop };
+  return ev;
+}
+function restoreFiatBank(S) {
+  const B = bankOf(S);
+  if (B.calendarIncome) return;
+  B.calendarIncome = true;
+  // 老档只保留部分月账。买入和赎回能与现有份额对上时，才从交易日期补息。
+  if (B.mmf > 0 && B.mmfGain === 0) {
+    const moves = Object.entries(S.acct || {}).flatMap(([month, book]) => {
+      const parts = month.match(/^(-?\d+)-(\d{2})$/);
+      if (!parts || !Array.isArray(book?.rows)) return [];
+      return book.rows.filter(r => r?.item === '买货币基金' || r?.item === '取货币基金')
+        .map(r => ({ ago: daysBetween({ y: Number(parts[1]), m: Number(parts[2]), d: Number(r.d) }, S.date), amount: -num(r.amt) }))
+        .filter(r => r.ago >= 0);
+    }).sort((a, b) => b.ago - a.ago);
+    const history = { mmf: 0, mmfGain: 0, mmfAcc: 0 };
+    let principal = 0, last = moves[0]?.ago || 0;
+    for (const { ago, amount } of moves) {
+      growMmf(history, mmfFactor(last - ago));
+      principal += amount;
+      if (principal < 0) break;
+      history.mmf = r2(history.mmf + amount);
+      last = ago;
+    }
+    if (principal === B.mmf) {
+      growMmf(history, mmfFactor(last));
+      B.mmf = history.mmf;
+      B.mmfGain = history.mmfGain;
+      B.mmfAcc = history.mmfAcc;
+    }
+  }
+  settleBankMaturities(S, null, []);
 }
 // 每月 1 号扣月供，挂在 moneyTick 里
 function loanTick(S) {
@@ -4433,6 +4560,11 @@ function migrate(S) {
   fixPace(S);
   fixWho(S);
   if (API.normalizeFiatState) API.normalizeFiatState(S);
+  if (fdm(S).fiat) {
+    birthKids(S, null, true);
+    restoreFiatBank(S);
+  }
+  kidsGrow(S, true);
   return S;
 }
 
@@ -4637,14 +4769,14 @@ function setNpcPos(S, n, x, fresh) {
 
 /* ---------- 导出 ---------- */
 const API = {
-  SAVE_VERSION, FIAT_AMOUNT, fundAction, finiteNumber, finiteState, cashAdd, personAge, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, EVT_TAGS,
+  SAVE_VERSION, FIAT_AMOUNT, fundAction, finiteNumber, finiteState, cashAdd, personAge, EDUS, SCHOOLS, MAJORS, PERSONAS, LOOKS, bgEffect, bgLine, ORIGINS, CITIES, FREEDOM, TRACKS, SLOTS, ACTS, ATTRS, SLEEP_EN, DEF_SCHEDULE, PACES, setPace, fixPace, acct, acctKey, compareAcctMonths, EVT_TAGS,
   npcMem, markIntimate, lovers, whoIs, fixWho, guessGender, num, clamp, r2, mkRng, d20, rollMod, rnd, pick, fateInfo, applyFate, fdm,
   dOf, fromDate, addDays, wdOf, isRest, dateStr, shortDate, daysBetween, festivalOf,
   newState, todayPlan, dayTick, moneyTick, peerTick, npcTick, advance, settleFocus, applyConvo,
   rollCheck, attrVal, applyTurn, addNpcs, growAttr, fixJob,
   addMoment, likeMoment, commentMoment, unreadMoments, momentRel, addLiker,
   simRatio, stuckLevel, pickNudge, capMoney, bandNeed, NEED_BAND,
-  housePrice, canBuy, buyHouse, homeWorth, fixMortgage, homePayment, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, kidCost, kidsGrow, kidStage,
+  housePrice, canBuy, buyHouse, homeWorth, fixMortgage, homePayment, partnerOf, startRomance, marry, breakUp, wantKid, familyTick, birthKids, kidCost, kidBirthday, kidsGrow, kidStage,
   scoreLines, endReason, endingScore, keepGoing,
   migrate,
   BIZ_KINDS, bizSetup, bizBase, openBiz, bizCandidates, hireBiz, fireBiz, raiseBiz, bizMonth, closeBiz, madeName,
@@ -4663,7 +4795,7 @@ const API = {
   TIERS, relTier, TIER_LEND, TIER_ASK, TIER_OFF, askMod, isKinNpc, HOUSING, homeTier, rentFor, moveCost, moveHome,
   STRAIN, JOBS, jobBoard, boardNext, applyPost, findPost, takePost, postPay, GIGS, gigPay, gigWhen, takeGig, dropGig, gigToday,
   ITEMS, SHOP_CATS, itemOf, itemPrice, shopFriend, bag, hasItem, buyItem, bagFx, itemOld, useItem, careTags, giftValue, giveItem,
-  DEPO, LOANS, bankOf, creditWord, jobTenure, loanQuote, takeLoan, prepay, deposit, withdrawFixed, invest, fundValue, redeem, bankTick, loanTick, bankLine, slotsLeft, useSlot,
+  DEPO, LOANS, bankOf, creditWord, jobTenure, loanQuote, takeLoan, prepay, deposit, withdrawFixed, fixedInterest, wealthReturn, invest, fundValue, redeem, bankTick, advanceBankCalendar, restoreFiatBank, loanTick, bankLine, slotsLeft, useSlot,
   FUN, funOf, funCost, doFun, BUSY, npcBusy, talkOf, fixNpcLife, pingTick, settlePings, helpTick, giveLiJin, lifeTick, fixLife
 };
 if (typeof module !== 'undefined' && module.exports) { module.exports = API; require('./fiat.js')(API); }
@@ -4705,6 +4837,7 @@ function worldOf(S) {
 function normalizeState(S) {
   const numbers = (x, defaults) => { for (const [k,v] of Object.entries(defaults)) x[k]=finite(x[k],v); };
   const strings = (x, keys) => { for (const k of keys) if (x[k] !== undefined) x[k]=String(x[k] ?? ''); };
+  numbers(S.stats, {days:0});
   if (obj(S.fiatWorld)) {
     for(const k of ['facts','rules','assets','businesses','homes']) S.fiatWorld[k]=(Array.isArray(S.fiatWorld[k])?S.fiatWorld[k]:[])
       .map(x=>typeof x==='string'?{name:x,detail:''}:x).filter(x=>obj(x)&&(x.name||x.title||x.what)).map(x=>({...x,name:String(x.name||x.title||x.what)}));
@@ -4723,7 +4856,11 @@ function normalizeState(S) {
   if (obj(S.family)) {
     if (S.family.partner !== null && !obj(S.family.partner)) S.family.partner=null;
     if (S.family.partner) { strings(S.family.partner,['name','stage','since','marriedAt']); numbers(S.family.partner,{warm:100,sinceDay:S.stats.days}); }
-    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{strings(k,['name','born']);numbers(k,{age:0,bornY:S.date.y,dueDay:S.stats.days});return k;});
+    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{
+      strings(k,['name','born']); numbers(k,{age:0});
+      if (k.unborn) numbers(k,{dueDay:S.stats.days + 270});
+      return k;
+    });
   }
   for (const key of ['status','chronic']) S[key]=(Array.isArray(S[key])?S[key]:[]).filter(obj).map(x=>{strings(x,['name','desc']);numbers(x,{days:1,eased:0});return x;});
   const B=E.bankOf(S);
@@ -4774,23 +4911,31 @@ function validDate(d) {
   if (!Number.isFinite(dt.getTime()) || dt.getFullYear() !== d.y || dt.getMonth() + 1 !== d.m || dt.getDate() !== d.d) throw Error('时间改写的日期格式有误，请重试');
   return { y: d.y, m: d.m, d: d.d };
 }
-function setTime(S, date, days, explicitAge) {
+function setTime(S, date, days, rng) {
   const old = S.date;
   const next = date !== undefined ? validDate(date) : E.addDays(old, finite(days));
   validDate(next);
   const delta = E.daysBetween(old, next);
-  S.date = next;
-  S.stats.days = finite(S.stats.days) + delta;
-  // 沙盒里推进日期本身不改年龄；年龄变化由同一条指令的player.age明确给出。
+  E.restoreFiatBank(S);
+  const events = E.advanceBankCalendar(S, next, delta);
+  if (delta <= 0) {
+    S.date = next;
+    S.stats.days += delta;
+  } else {
+    events.push(...E.birthKids(S, rng, true).ev);
+  }
+  E.kidsGrow(S);
+  // 主角和NPC仍由玩家指定年龄。
   for (const n of S.npcs) { n.age=finite(n.age)+(old.y-finite(n.ageY,old.y)); n.ageY=next.y; }
   S.player.age0 = S.player.age - (next.y - S.startDate.y);
-  // 时间是玩家直接改写的，不逐日强制触发账单、衰老、退休、失败或到期弹窗。
-  return delta;
+  return { days: delta, events };
 }
 function applyChanges(S, input) {
   if (!E.fdm(S).fiat || !obj(input)) return false;
   const c = clean(input), W = worldOf(S), p = S.player;
   normalizeState(S);
+  E.kidsGrow(S);
+  if (c.date !== undefined || own(c, 'days')) setTime(S, c.date, c.days);
   const beforeMoney = finite(p.money);
   const P = obj(c.player) ? c.player : {};
   if (P.money === '无限' || P.money === '无穷') {
@@ -4801,8 +4946,7 @@ function applyChanges(S, input) {
   for (const k of ['money', 'energy', 'age', '信誉', '人品', '资历天']) if (own(P, k)) p[k] = finite(P[k], p[k]);
   if (own(c, 'moneyDelta')) p.money = safeAdd(p.money, c.moneyDelta);
   if (obj(P.attributes)) for (const k of E.ATTRS) if (own(P.attributes, k)) p.attrs[k] = p.attrF[k] = finite(P.attributes[k], p.attrs[k]);
-  if (c.date !== undefined || own(c, 'days')) setTime(S, c.date, c.days, own(P, 'age'));
-  else if (own(P, 'age')) p.age0 = p.age - (S.date.y - S.startDate.y);
+  if (own(P, 'age')) p.age0 = p.age - (S.date.y - S.startDate.y);
   if (obj(P.bg)) for (const k of ['edu', 'school', 'major', 'persona', 'looks']) if (typeof P.bg[k] === 'string') p.bg[k] = P.bg[k];
   if (typeof P.track === 'string') {
     if (E.TRACKS[P.track]) p.track = P.track;
@@ -4843,7 +4987,10 @@ function applyChanges(S, input) {
   if (obj(c.bank)) {
     const B = E.bankOf(S);
     if (own(c.bank, 'credit')) B.credit = finite(c.bank.credit, B.credit);
-    if (own(c.bank, 'mmf')) B.mmf = finite(c.bank.mmf, B.mmf);
+    if (own(c.bank, 'mmf')) {
+      B.mmf = finite(c.bank.mmf, B.mmf);
+      B.mmfAcc = 0;
+    }
     if (own(c.bank, 'nav')) B.nav = Math.max(Number.MIN_VALUE, finite(c.bank.nav, B.nav));
     if (obj(c.bank.fund)) for (const k of ['units', 'cost', 'mark']) if (own(c.bank.fund, k)) B.fund[k] = finite(c.bank.fund[k], B.fund[k]);
     for (const k of ['fixed', 'wm', 'loans']) if (Array.isArray(c.bank[k])) {
@@ -4887,7 +5034,24 @@ function applyChanges(S, input) {
   if (obj(c.family)) {
     if (own(c.family,'partner') && c.family.partner!==null && !obj(c.family.partner)) throw Error('伴侣资料需要是一个对象或空值');
     if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, S.family.partner||{}, c.family.partner);
-    if (Array.isArray(c.family.kids)) S.family.kids = c.family.kids.filter(x => obj(x) && x.name).map(x => Object.assign({ age: 0, unborn: false, born: E.shortDate(S.date), bornY: S.date.y }, x));
+    if (Array.isArray(c.family.kids)) {
+      for (const x of c.family.kids.filter(x => obj(x) && x.name)) {
+        const kids = S.family.kids;
+        const i = kids.findIndex(k => k.name === (x.oldName || x.name));
+        if (x.remove === true) {
+          if (i >= 0) kids.splice(i, 1);
+          continue;
+        }
+        const age = Math.max(0, Math.trunc(finite(x.age)));
+        const k = Object.assign({}, kids[i] || {
+          age, unborn: false, born: E.shortDate(S.date), bornY: S.date.y - age
+        }, x);
+        if (!k.unborn && (own(x, 'born') || own(x, 'bornY'))) delete k.ageAt;
+        if (!k.unborn && own(x, 'age') && i >= 0 && age !== kids[i].age) k.ageAt = { ...S.date, age };
+        if (i < 0) kids.push(k); else kids[i] = k;
+      }
+    }
+    E.kidsGrow(S);
   }
   upsert(W.assets, c.assets, name => ({ name, detail: '', quantity: 1 }));
   const businesses=(Array.isArray(c.businesses)?c.businesses:[]).map(b=>typeof b==='string'?{name:b}:b).filter(obj);
@@ -5134,11 +5298,13 @@ function settle(S, raw, action) {
   return { state:next, narrative:d.narrative };
 }
 function advance(S, opt) {
-  const from = Object.assign({}, S.date), days = Math.max(0, finite(opt.maxDays, 1));
-  setTime(S, undefined, days, false);
+  normalizeState(S);
+  E.kidsGrow(S);
+  const from = Object.assign({}, S.date);
+  const { days, events } = setTime(S, undefined, Math.max(0, finite(opt.maxDays, 1)), opt.rng);
   const stop = { kind: '久', detail: '按你的世界设定继续，日常结算不擅自推翻已兑现的指令' };
   S.stats.stops[stop.kind] = finite(S.stats.stops[stop.kind]) + 1;
-  return { from, to:S.date, days, events:[], stop };
+  return { from, to:S.date, days, events, stop };
 }
 function applyAtomic(S, changes) {
   if (!E.fdm(S).fiat) return false;
@@ -6632,7 +6798,7 @@ const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没�
 - home:{name,kind:"买或租",place,price,tier,rent}：可以直接获得新住处，默认全款；多处房产可逐个写 assets，所有资产都会保留。
 - businesses:[{name,kind,detail,staff:[]}]：可同时持有任意多的事业，任意规模；assets:[{name,detail,quantity,value}] 可记任意物品、股份、房产、载具、领地或能力，没有商品目录限制。按name更新，移除填remove:true。
 - npcs:[{name,oldName,gender,age,job,tie,rel,close,note,talk,facts:[],mem:[]}]：可创建或改写人物；相同名字更新已有角色，改名时name写新名、oldName写旧名，需要移除的人填remove:true，不要把没提到的人删掉。
-- family:{partner:{name,stage,warm}或null,kids:[{name,age,unborn:false}]}，可以直接改写家庭。
+- family:{partner:{name,stage,warm}或null,kids:[{name,age,unborn:false}]}，可以直接改写家庭。孩子按姓名局部更新，移除填remove:true。引擎按出生日期自动算周岁，只有玩家明确改年龄才填age。
 - clearDebts:true 清掉所有欠款和房贷；bank:{credit,mmf,fund:{units,cost,mark},fixed:[],wm:[],loans:[]}；借款只在玩家明确要求借款时生成，不擅自加贷款。
 - milestones:[现有阶梯的完整标题或自定义成果]：直接达成指定步骤，可以跳级，全部完成填["*"]。
 - facts:[{name,detail}] 保存任何不属于现有面板的成果、身份、能力和世界事实；rules:[{name,detail}] 保存今后持续生效的规则，同名更新，取消填remove:true。超出常理、超出现成系统的愿望也必须在这里有真实、持久的落点。
@@ -6644,6 +6810,7 @@ function fiatBase() {
 - 玩家这次明确指定的结果和限制必须兑现，优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
 - 不用“系统不支持”“硬条件不足”“先完成待办”“等退休/养病/攒钱”等理由打折；不把直接获得改成申请、面试、等待或追加代价，不在段尾翻案。
 - 留意当前游戏日期。玩家未要求跨天的日常对话留在今天。若玩家要求过一段时间，或允许叙事推进到新的日期，必须在fiatChanges里同步本段结束日期或累计天数。不得用情节里提及的过去或未来日期代替本段结束日期。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
+- 向前过日子时，引擎自动更新孩子周岁、货币基金收益、活期利息，以及定期和银行理财到期款，别在fiatChanges里再算一遍。
 - 玩家明确说“别替我答应/等我选/先不做”的部分留给玩家，不擅自扩张他的意图。括号里的世界改写与写法要求都有效。
 - 数值、人物、身份和资产的变化必须填fiatChanges，不能只有爽文而面板没有成果；无法归入现有面板的全部记facts/assets/rules。已经满足的愿望照样承认，可以重申或扩大。
 ${FIAT_FIELDS}
@@ -7244,19 +7411,19 @@ function workedText(d) {
 let acctMonth = null;
 function renderAcct() {
   const A = S.acct || {};
-  const ks = Object.keys(A).sort();
+  const ks = Object.keys(A).sort(E.compareAcctMonths);
   const cur = E.acctKey(S.date);
   if (!ks.length) return '<div class="tip">从这个月起开始记账，下一笔进出就会出现在这儿。</div>';
-  if (!acctMonth || !A[acctMonth]) acctMonth = ks[ks.length - 1];
+  if (!acctMonth || !A[acctMonth]) acctMonth = A[cur] ? cur : ks[ks.length - 1];
   const i = ks.indexOf(acctMonth), M = A[acctMonth];
-  const isCur = acctMonth === cur || i === ks.length - 1 && acctMonth > cur;
-  const close = i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
+  const isCur = E.compareAcctMonths(acctMonth, cur) >= 0;
+  const close = !isCur && i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
   const rows = M.rows.slice();
   const sum = rows.reduce((a, r) => E.finiteNumber(a + r.amt), 0);
   const odd = Math.round(close - M.open - sum);
   const fmt = v => (v < 0 ? '−' : '+') + cashText(Math.abs(v));
-  const [y, m] = acctMonth.split('-').map(Number);
-  const tabs = ks.slice(-6).map(k => { const [yy, mo] = k.split('-').map(Number); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
+  const m = Number(acctMonth.slice(-2));
+  const tabs = ks.slice(-6).map(k => { const yy = Number(k.slice(0, -3)), mo = Number(k.slice(-2)); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
   const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.max(0, odd);
   const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.min(0, odd);
   return `<div class="segs wrap acctTabs">${tabs}</div>
@@ -8977,14 +9144,14 @@ function bankCard() {
   const L = B.loans.filter(x => x.left > 0 || x.owe > 0);
   const li = (title, right, tip, btns) => `<div class="li"><div class="lirow"><b>${title}</b><span class="rel">${right}</span></div>${tip ? `<div class="tip">${tip}</div>` : ''}${btns ? `<div class="lirow">${btns}</div>` : ''}</div>`;
   const rows = [];
-  for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，到期自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
-  if (B.mmf >= 1) rows.push(li('货币基金', yuan(Math.floor(B.mmf)), `年化1.5%上下，累计收益${yuan(B.mmfGain)}`, `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>`));
-  for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜${esc(w.due)}到期，之前取不出来`));
+  for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，利息${yuan(E.fixedInterest(f))}元，本息自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
+  if (B.mmf > 0 || B.mmfGain > 0) rows.push(li('货币基金', cashText(B.mmf), `年化1.5%上下，累计收益${cashText(B.mmfGain)}元`, B.mmf > 0 ? `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>` : ''));
+  for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜预计收益${yuan(E.wealthReturn(w) - w.amount)}元｜${esc(w.due)}到期，之前取不出来`));
   if (B.fund.units > 0) rows.push(li('股票基金', yuan(fv), `本金${yuan(B.fund.cost)}，<span class="${fv >= B.fund.cost ? 'good' : 'bad'}">${fv >= B.fund.cost ? '赚' : '亏'}${yuan(Math.abs(fv - B.fund.cost))}</span>｜净值${B.nav.toFixed(3)}`, `<button class="ghost sm" onclick="bankDo('fundOut')">卖掉</button>`));
   for (const l of L) rows.push(li(esc(l.kind), `本金${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.owe ? `｜<u>逾期未补${yuan(l.owe)}${l.late ? '，'+l.late+'个月' : ''}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">${l.left ? '提前还' : '补欠款'}</button>`));
   return `<h4>银行</h4><div class="card">
     <div class="lines"><div><b>征信</b><span class="${B.credit < 45 ? 'bad' : B.credit >= 65 ? 'good' : ''}">${E.creditWord(B.credit)}</span></div>
-    <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
+    <div><b>活期</b><span>年利率0.1%，每季末月21日结息｜待结利息${cashText(E.r2(B.curAcc))}元</span></div></div>
     ${rows.join('') || '<div class="tip">没有存款、理财和贷款。</div>'}
     <div class="btns"><button class="ghost" onclick="openDeposit()">存定期</button><button class="ghost" onclick="openInvest()">买理财</button><button class="ghost" onclick="openLoan()">贷款</button></div>
     <div class="tip">${E.fdm(S).fiat ? '借款仍记录余额和还款计划；言出法随下，征信不阻挡买房和贷款。' : '月供扣不出来就是逾期：连着三个月会被催收，征信坏了买房、贷款都难。'}</div></div>`;
@@ -9003,7 +9170,7 @@ async function bankDo(what, id) {
     return bankAfter(E.withdrawFixed(S, id));
   }
   if (what === 'mmfOut') {
-    const v = await actionAsk({ title: '从货币基金取多少', text: `里面有 ${Math.floor(E.bankOf(S).mmf)}。`, input: { value: String(Math.floor(E.bankOf(S).mmf)), number: true }, ok: '取' });
+    const v = await actionAsk({ title: '从货币基金取多少', text: `余额 ${cashText(E.bankOf(S).mmf)} 元，填 0 全部取出。`, input: { value: '0', number: true }, ok: '取' });
     if (v === null) return;
     if (!String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0) { toast('金额要填有效的非负数'); return; }
     return bankAfter(E.redeem(S, '货币基金', Number(v)));

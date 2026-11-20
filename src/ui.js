@@ -1301,7 +1301,7 @@ const FIAT_FIELDS = `【世界改写数据】fiatChanges 是局部修改，没�
 - home:{name,kind:"买或租",place,price,tier,rent}：可以直接获得新住处，默认全款；多处房产可逐个写 assets，所有资产都会保留。
 - businesses:[{name,kind,detail,staff:[]}]：可同时持有任意多的事业，任意规模；assets:[{name,detail,quantity,value}] 可记任意物品、股份、房产、载具、领地或能力，没有商品目录限制。按name更新，移除填remove:true。
 - npcs:[{name,oldName,gender,age,job,tie,rel,close,note,talk,facts:[],mem:[]}]：可创建或改写人物；相同名字更新已有角色，改名时name写新名、oldName写旧名，需要移除的人填remove:true，不要把没提到的人删掉。
-- family:{partner:{name,stage,warm}或null,kids:[{name,age,unborn:false}]}，可以直接改写家庭。
+- family:{partner:{name,stage,warm}或null,kids:[{name,age,unborn:false}]}，可以直接改写家庭。孩子按姓名局部更新，移除填remove:true。引擎按出生日期自动算周岁，只有玩家明确改年龄才填age。
 - clearDebts:true 清掉所有欠款和房贷；bank:{credit,mmf,fund:{units,cost,mark},fixed:[],wm:[],loans:[]}；借款只在玩家明确要求借款时生成，不擅自加贷款。
 - milestones:[现有阶梯的完整标题或自定义成果]：直接达成指定步骤，可以跳级，全部完成填["*"]。
 - facts:[{name,detail}] 保存任何不属于现有面板的成果、身份、能力和世界事实；rules:[{name,detail}] 保存今后持续生效的规则，同名更新，取消填remove:true。超出常理、超出现成系统的愿望也必须在这里有真实、持久的落点。
@@ -1313,6 +1313,7 @@ function fiatBase() {
 - 玩家这次明确指定的结果和限制必须兑现，优先于所有旧事实、旧判定、历史、资历、钱、关系、年龄、常理及世界设定。可以改写已发生的结果、跳级、回到过去、改变人物和创造超常能力，不设固定动作白名单或最多几件事。
 - 不用“系统不支持”“硬条件不足”“先完成待办”“等退休/养病/攒钱”等理由打折；不把直接获得改成申请、面试、等待或追加代价，不在段尾翻案。
 - 留意当前游戏日期。玩家未要求跨天的日常对话留在今天。若玩家要求过一段时间，或允许叙事推进到新的日期，必须在fiatChanges里同步本段结束日期或累计天数。不得用情节里提及的过去或未来日期代替本段结束日期。日常账单、随机惩罚、自动结局不会推翻玩家的世界规则。
+- 向前过日子时，引擎自动更新孩子周岁、货币基金收益、活期利息，以及定期和银行理财到期款，别在fiatChanges里再算一遍。
 - 玩家明确说“别替我答应/等我选/先不做”的部分留给玩家，不擅自扩张他的意图。括号里的世界改写与写法要求都有效。
 - 数值、人物、身份和资产的变化必须填fiatChanges，不能只有爽文而面板没有成果；无法归入现有面板的全部记facts/assets/rules。已经满足的愿望照样承认，可以重申或扩大。
 ${FIAT_FIELDS}
@@ -1913,19 +1914,19 @@ function workedText(d) {
 let acctMonth = null;
 function renderAcct() {
   const A = S.acct || {};
-  const ks = Object.keys(A).sort();
+  const ks = Object.keys(A).sort(E.compareAcctMonths);
   const cur = E.acctKey(S.date);
   if (!ks.length) return '<div class="tip">从这个月起开始记账，下一笔进出就会出现在这儿。</div>';
-  if (!acctMonth || !A[acctMonth]) acctMonth = ks[ks.length - 1];
+  if (!acctMonth || !A[acctMonth]) acctMonth = A[cur] ? cur : ks[ks.length - 1];
   const i = ks.indexOf(acctMonth), M = A[acctMonth];
-  const isCur = acctMonth === cur || i === ks.length - 1 && acctMonth > cur;
-  const close = i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
+  const isCur = E.compareAcctMonths(acctMonth, cur) >= 0;
+  const close = !isCur && i < ks.length - 1 ? A[ks[i + 1]].open : S.player.money;
   const rows = M.rows.slice();
   const sum = rows.reduce((a, r) => E.finiteNumber(a + r.amt), 0);
   const odd = Math.round(close - M.open - sum);
   const fmt = v => (v < 0 ? '−' : '+') + cashText(Math.abs(v));
-  const [y, m] = acctMonth.split('-').map(Number);
-  const tabs = ks.slice(-6).map(k => { const [yy, mo] = k.split('-').map(Number); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
+  const m = Number(acctMonth.slice(-2));
+  const tabs = ks.slice(-6).map(k => { const yy = Number(k.slice(0, -3)), mo = Number(k.slice(-2)); const mm = yy === S.date.y ? mo : `${yy % 100}年${mo}`; return `<button class="seg${k === acctMonth ? ' on' : ''}" onclick="acctMonth='${k}';renderPanel()">${mm}月</button>`; }).join('');
   const inSum = rows.filter(r => r.amt > 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.max(0, odd);
   const outSum = rows.filter(r => r.amt < 0).reduce((a, r) => E.finiteNumber(a + r.amt), 0) + Math.min(0, odd);
   return `<div class="segs wrap acctTabs">${tabs}</div>
@@ -3646,14 +3647,14 @@ function bankCard() {
   const L = B.loans.filter(x => x.left > 0 || x.owe > 0);
   const li = (title, right, tip, btns) => `<div class="li"><div class="lirow"><b>${title}</b><span class="rel">${right}</span></div>${tip ? `<div class="tip">${tip}</div>` : ''}${btns ? `<div class="lirow">${btns}</div>` : ''}</div>`;
   const rows = [];
-  for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，到期自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
-  if (B.mmf >= 1) rows.push(li('货币基金', yuan(Math.floor(B.mmf)), `年化1.5%上下，累计收益${yuan(B.mmfGain)}`, `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>`));
-  for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜${esc(w.due)}到期，之前取不出来`));
+  for (const f of B.fixed) rows.push(li(`定期${f.term === 36 ? '三年' : f.term === 12 ? '一年' : '三个月'}`, yuan(f.amount), `年利率${(f.rate * 100).toFixed(1)}%｜${esc(f.due)}到期，利息${yuan(E.fixedInterest(f))}元，本息自动转回账上`, `<button class="ghost sm" onclick="bankDo('fixedOut',${f.id})">提前取</button>`));
+  if (B.mmf > 0 || B.mmfGain > 0) rows.push(li('货币基金', cashText(B.mmf), `年化1.5%上下，累计收益${cashText(B.mmfGain)}元`, B.mmf > 0 ? `<button class="ghost sm" onclick="bankDo('mmfOut')">取出来</button>` : ''));
+  for (const w of B.wm) rows.push(li('银行理财', yuan(w.amount), `业绩基准${(w.rate * 100).toFixed(1)}%｜预计收益${yuan(E.wealthReturn(w) - w.amount)}元｜${esc(w.due)}到期，之前取不出来`));
   if (B.fund.units > 0) rows.push(li('股票基金', yuan(fv), `本金${yuan(B.fund.cost)}，<span class="${fv >= B.fund.cost ? 'good' : 'bad'}">${fv >= B.fund.cost ? '赚' : '亏'}${yuan(Math.abs(fv - B.fund.cost))}</span>｜净值${B.nav.toFixed(3)}`, `<button class="ghost sm" onclick="bankDo('fundOut')">卖掉</button>`));
   for (const l of L) rows.push(li(esc(l.kind), `本金${yuan(l.left)}`, `每月1号还${yuan(l.monthly)}｜年利率${(l.rate * 100).toFixed(1)}%｜还了${l.paid}/${l.months}期${l.owe ? `｜<u>逾期未补${yuan(l.owe)}${l.late ? '，'+l.late+'个月' : ''}</u>` : ''}`, `<button class="ghost sm" onclick="bankDo('prepay',${l.id})">${l.left ? '提前还' : '补欠款'}</button>`));
   return `<h4>银行</h4><div class="card">
     <div class="lines"><div><b>征信</b><span class="${B.credit < 45 ? 'bad' : B.credit >= 65 ? 'good' : ''}">${E.creditWord(B.credit)}</span></div>
-    <div><b>活期</b><span>就是账上的钱，年利率0.1%，季度末结息</span></div></div>
+    <div><b>活期</b><span>年利率0.1%，每季末月21日结息｜待结利息${cashText(E.r2(B.curAcc))}元</span></div></div>
     ${rows.join('') || '<div class="tip">没有存款、理财和贷款。</div>'}
     <div class="btns"><button class="ghost" onclick="openDeposit()">存定期</button><button class="ghost" onclick="openInvest()">买理财</button><button class="ghost" onclick="openLoan()">贷款</button></div>
     <div class="tip">${E.fdm(S).fiat ? '借款仍记录余额和还款计划；言出法随下，征信不阻挡买房和贷款。' : '月供扣不出来就是逾期：连着三个月会被催收，征信坏了买房、贷款都难。'}</div></div>`;
@@ -3672,7 +3673,7 @@ async function bankDo(what, id) {
     return bankAfter(E.withdrawFixed(S, id));
   }
   if (what === 'mmfOut') {
-    const v = await actionAsk({ title: '从货币基金取多少', text: `里面有 ${Math.floor(E.bankOf(S).mmf)}。`, input: { value: String(Math.floor(E.bankOf(S).mmf)), number: true }, ok: '取' });
+    const v = await actionAsk({ title: '从货币基金取多少', text: `余额 ${cashText(E.bankOf(S).mmf)} 元，填 0 全部取出。`, input: { value: '0', number: true }, ok: '取' });
     if (v === null) return;
     if (!String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0) { toast('金额要填有效的非负数'); return; }
     return bankAfter(E.redeem(S, '货币基金', Number(v)));

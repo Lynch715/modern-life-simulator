@@ -30,6 +30,7 @@ function worldOf(S) {
 function normalizeState(S) {
   const numbers = (x, defaults) => { for (const [k,v] of Object.entries(defaults)) x[k]=finite(x[k],v); };
   const strings = (x, keys) => { for (const k of keys) if (x[k] !== undefined) x[k]=String(x[k] ?? ''); };
+  numbers(S.stats, {days:0});
   if (obj(S.fiatWorld)) {
     for(const k of ['facts','rules','assets','businesses','homes']) S.fiatWorld[k]=(Array.isArray(S.fiatWorld[k])?S.fiatWorld[k]:[])
       .map(x=>typeof x==='string'?{name:x,detail:''}:x).filter(x=>obj(x)&&(x.name||x.title||x.what)).map(x=>({...x,name:String(x.name||x.title||x.what)}));
@@ -48,7 +49,11 @@ function normalizeState(S) {
   if (obj(S.family)) {
     if (S.family.partner !== null && !obj(S.family.partner)) S.family.partner=null;
     if (S.family.partner) { strings(S.family.partner,['name','stage','since','marriedAt']); numbers(S.family.partner,{warm:100,sinceDay:S.stats.days}); }
-    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{strings(k,['name','born']);numbers(k,{age:0,bornY:S.date.y,dueDay:S.stats.days});return k;});
+    S.family.kids=(Array.isArray(S.family.kids)?S.family.kids:[]).filter(obj).map(k=>{
+      strings(k,['name','born']); numbers(k,{age:0});
+      if (k.unborn) numbers(k,{dueDay:S.stats.days + 270});
+      return k;
+    });
   }
   for (const key of ['status','chronic']) S[key]=(Array.isArray(S[key])?S[key]:[]).filter(obj).map(x=>{strings(x,['name','desc']);numbers(x,{days:1,eased:0});return x;});
   const B=E.bankOf(S);
@@ -99,23 +104,31 @@ function validDate(d) {
   if (!Number.isFinite(dt.getTime()) || dt.getFullYear() !== d.y || dt.getMonth() + 1 !== d.m || dt.getDate() !== d.d) throw Error('时间改写的日期格式有误，请重试');
   return { y: d.y, m: d.m, d: d.d };
 }
-function setTime(S, date, days, explicitAge) {
+function setTime(S, date, days, rng) {
   const old = S.date;
   const next = date !== undefined ? validDate(date) : E.addDays(old, finite(days));
   validDate(next);
   const delta = E.daysBetween(old, next);
-  S.date = next;
-  S.stats.days = finite(S.stats.days) + delta;
-  // 沙盒里推进日期本身不改年龄；年龄变化由同一条指令的player.age明确给出。
+  E.restoreFiatBank(S);
+  const events = E.advanceBankCalendar(S, next, delta);
+  if (delta <= 0) {
+    S.date = next;
+    S.stats.days += delta;
+  } else {
+    events.push(...E.birthKids(S, rng, true).ev);
+  }
+  E.kidsGrow(S);
+  // 主角和NPC仍由玩家指定年龄。
   for (const n of S.npcs) { n.age=finite(n.age)+(old.y-finite(n.ageY,old.y)); n.ageY=next.y; }
   S.player.age0 = S.player.age - (next.y - S.startDate.y);
-  // 时间是玩家直接改写的，不逐日强制触发账单、衰老、退休、失败或到期弹窗。
-  return delta;
+  return { days: delta, events };
 }
 function applyChanges(S, input) {
   if (!E.fdm(S).fiat || !obj(input)) return false;
   const c = clean(input), W = worldOf(S), p = S.player;
   normalizeState(S);
+  E.kidsGrow(S);
+  if (c.date !== undefined || own(c, 'days')) setTime(S, c.date, c.days);
   const beforeMoney = finite(p.money);
   const P = obj(c.player) ? c.player : {};
   if (P.money === '无限' || P.money === '无穷') {
@@ -126,8 +139,7 @@ function applyChanges(S, input) {
   for (const k of ['money', 'energy', 'age', '信誉', '人品', '资历天']) if (own(P, k)) p[k] = finite(P[k], p[k]);
   if (own(c, 'moneyDelta')) p.money = safeAdd(p.money, c.moneyDelta);
   if (obj(P.attributes)) for (const k of E.ATTRS) if (own(P.attributes, k)) p.attrs[k] = p.attrF[k] = finite(P.attributes[k], p.attrs[k]);
-  if (c.date !== undefined || own(c, 'days')) setTime(S, c.date, c.days, own(P, 'age'));
-  else if (own(P, 'age')) p.age0 = p.age - (S.date.y - S.startDate.y);
+  if (own(P, 'age')) p.age0 = p.age - (S.date.y - S.startDate.y);
   if (obj(P.bg)) for (const k of ['edu', 'school', 'major', 'persona', 'looks']) if (typeof P.bg[k] === 'string') p.bg[k] = P.bg[k];
   if (typeof P.track === 'string') {
     if (E.TRACKS[P.track]) p.track = P.track;
@@ -168,7 +180,10 @@ function applyChanges(S, input) {
   if (obj(c.bank)) {
     const B = E.bankOf(S);
     if (own(c.bank, 'credit')) B.credit = finite(c.bank.credit, B.credit);
-    if (own(c.bank, 'mmf')) B.mmf = finite(c.bank.mmf, B.mmf);
+    if (own(c.bank, 'mmf')) {
+      B.mmf = finite(c.bank.mmf, B.mmf);
+      B.mmfAcc = 0;
+    }
     if (own(c.bank, 'nav')) B.nav = Math.max(Number.MIN_VALUE, finite(c.bank.nav, B.nav));
     if (obj(c.bank.fund)) for (const k of ['units', 'cost', 'mark']) if (own(c.bank.fund, k)) B.fund[k] = finite(c.bank.fund[k], B.fund[k]);
     for (const k of ['fixed', 'wm', 'loans']) if (Array.isArray(c.bank[k])) {
@@ -212,7 +227,24 @@ function applyChanges(S, input) {
   if (obj(c.family)) {
     if (own(c.family,'partner') && c.family.partner!==null && !obj(c.family.partner)) throw Error('伴侣资料需要是一个对象或空值');
     if (own(c.family, 'partner')) S.family.partner = c.family.partner === null ? null : Object.assign({ name: '', stage: '在一起', warm: 100, since: E.shortDate(S.date), sinceDay: S.stats.days, over: false }, S.family.partner||{}, c.family.partner);
-    if (Array.isArray(c.family.kids)) S.family.kids = c.family.kids.filter(x => obj(x) && x.name).map(x => Object.assign({ age: 0, unborn: false, born: E.shortDate(S.date), bornY: S.date.y }, x));
+    if (Array.isArray(c.family.kids)) {
+      for (const x of c.family.kids.filter(x => obj(x) && x.name)) {
+        const kids = S.family.kids;
+        const i = kids.findIndex(k => k.name === (x.oldName || x.name));
+        if (x.remove === true) {
+          if (i >= 0) kids.splice(i, 1);
+          continue;
+        }
+        const age = Math.max(0, Math.trunc(finite(x.age)));
+        const k = Object.assign({}, kids[i] || {
+          age, unborn: false, born: E.shortDate(S.date), bornY: S.date.y - age
+        }, x);
+        if (!k.unborn && (own(x, 'born') || own(x, 'bornY'))) delete k.ageAt;
+        if (!k.unborn && own(x, 'age') && i >= 0 && age !== kids[i].age) k.ageAt = { ...S.date, age };
+        if (i < 0) kids.push(k); else kids[i] = k;
+      }
+    }
+    E.kidsGrow(S);
   }
   upsert(W.assets, c.assets, name => ({ name, detail: '', quantity: 1 }));
   const businesses=(Array.isArray(c.businesses)?c.businesses:[]).map(b=>typeof b==='string'?{name:b}:b).filter(obj);
@@ -459,11 +491,13 @@ function settle(S, raw, action) {
   return { state:next, narrative:d.narrative };
 }
 function advance(S, opt) {
-  const from = Object.assign({}, S.date), days = Math.max(0, finite(opt.maxDays, 1));
-  setTime(S, undefined, days, false);
+  normalizeState(S);
+  E.kidsGrow(S);
+  const from = Object.assign({}, S.date);
+  const { days, events } = setTime(S, undefined, Math.max(0, finite(opt.maxDays, 1)), opt.rng);
   const stop = { kind: '久', detail: '按你的世界设定继续，日常结算不擅自推翻已兑现的指令' };
   S.stats.stops[stop.kind] = finite(S.stats.stops[stop.kind]) + 1;
-  return { from, to:S.date, days, events:[], stop };
+  return { from, to:S.date, days, events, stop };
 }
 function applyAtomic(S, changes) {
   if (!E.fdm(S).fiat) return false;
